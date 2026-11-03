@@ -136,15 +136,16 @@ routerAdd("POST", "/api/schedules/manage", function (e) {
         return e.json(409,{error:"schedule_changed",message:"此计划已被其他页面修改，请重新读取后再操作；本次未覆盖。"})
     }
     if (action === "delete") {
-      var removed=$app.db().newQuery(
-        "UPDATE agent_studio_schedules SET deleted=1,enabled=0,revision=revision+1,updated_ms={:now} WHERE id={:id} AND rh_user_id={:uid} AND revision={:rev}"
-      ).bind({ id: id, uid: uid, now: now,rev:Number(existing.revision) }).execute()
-      if(Number(removed.rowsAffected())!==1)return e.json(409,{error:"schedule_changed"})
-      $app.db().newQuery(
-        "UPDATE agent_studio_schedule_occurrences SET status='cancelled_schedule',updated_ms={:now} " +
-        "WHERE schedule_id={:id} AND rh_user_id={:uid} AND status IN ('pending','retryable')"
+      return e.json(200,require(__hooks+"/modules/business_monitors.js").scheduleMutation($app,uid,id,Number(existing.revision),action,body,function(tx,context){
+      tx.db().newQuery(
+        "UPDATE agent_studio_schedules SET deleted=1,enabled=0,revision=revision+1,updated_ms={:now} WHERE id={:id} AND rh_user_id={:uid}"
       ).bind({ id: id, uid: uid, now: now }).execute()
-      return e.json(200, { ok: true, id: id, deleted: true })
+      tx.db().newQuery(
+        "UPDATE agent_studio_schedule_occurrences SET status='cancelled_schedule',locked_until_ms=0,next_retry_ms=0,updated_ms={:now} " +
+        "WHERE schedule_id={:id} AND rh_user_id={:uid} AND status IN ('pending','retryable','launching')"
+      ).bind({ id: id, uid: uid, now: now }).execute()
+      return {ok:true,id:id,deleted:true,revision:context.revision+1}
+      }))
     }
     if (action === "toggle") {
       var enabled = body.enabled === true
@@ -152,59 +153,66 @@ routerAdd("POST", "/api/schedules/manage", function (e) {
       if (enabled && (!Number.isSafeInteger(nextAt) || nextAt < now - 90000 || nextAt > now + 367 * 86400000)) {
         return e.json(400, { error: "invalid_next_run_time" })
       }
-      var upd = $app.db().newQuery(
+      return e.json(200,require(__hooks+"/modules/business_monitors.js").scheduleMutation($app,uid,id,Number(existing.revision),action,{enabled:enabled,next_at_ms:nextAt},function(tx,context){
+      var upd = tx.db().newQuery(
         "UPDATE agent_studio_schedules SET enabled={:enabled}," +
         "next_at_ms=CASE WHEN {:enabled}=1 THEN {:next} ELSE next_at_ms END," +
         "revision=revision+1,updated_ms={:now} WHERE id={:id} AND rh_user_id={:uid} AND revision={:rev}"
       ).bind({ enabled: enabled ? 1 : 0, next: nextAt, now: now,
-        id: id, uid: uid, rev: Number(existing.revision) }).execute()
-      if (Number(upd.rowsAffected()) !== 1) return e.json(409, { error: "schedule_changed" })
-      if (!enabled) $app.db().newQuery(
-        "UPDATE agent_studio_schedule_occurrences SET status='cancelled_schedule',updated_ms={:now} " +
-        "WHERE schedule_id={:id} AND status IN ('pending','retryable')"
+        id: id, uid: uid, rev: context.revision }).execute()
+      if (Number(upd.rowsAffected()) !== 1) {var conflict=new Error("schedule_changed");conflict.code="schedule_changed";conflict.httpStatus=409;throw conflict}
+      if (!enabled) tx.db().newQuery(
+        "UPDATE agent_studio_schedule_occurrences SET status='cancelled_schedule',locked_until_ms=0,next_retry_ms=0,updated_ms={:now} " +
+        "WHERE schedule_id={:id} AND status IN ('pending','retryable','launching')"
       ).bind({ id: id, now: now }).execute()
-      return e.json(200, { ok: true, id: id, enabled: enabled })
+      return {ok:true,id:id,enabled:enabled}
+      }))
     }
     if (action === "run_now") {
       if (!Number(existing.enabled)) return e.json(409, { error: "schedule_disabled" })
+      return e.json(200,require(__hooks+"/modules/business_monitors.js").scheduleMutation($app,uid,id,Number(existing.revision),action,body,function(tx,context){
       var bucket = Math.floor(now / 60000)
       var due = bucket * 60000
       var occId = $security.sha256("schedule_occ:" + id + ":" + due).slice(0, 20)
       var runId = $security.sha256("schedule_run:" + id + ":" + due).slice(0, 15)
-      var inserted = $app.db().newQuery(
+      var inserted = tx.db().newQuery(
         "INSERT OR IGNORE INTO agent_studio_schedule_occurrences" +
         "(id,schedule_id,rh_user_id,scheduled_for_ms,schedule_revision,run_id,status,attempts," +
         "locked_until_ms,next_retry_ms,error,created_ms,updated_ms) VALUES " +
         "({:oid},{:id},{:uid},{:due},{:rev},{:rid},'pending',0,0,0,'',{:now},{:now})"
-      ).bind({ oid: occId, id: id, uid: uid, due: due, rev: Number(existing.revision),
+      ).bind({ oid: occId, id: id, uid: uid, due: due, rev: context.revision,
         rid: runId, now: now }).execute()
-      if (Number(inserted.rowsAffected()) === 0) return e.json(409, { error: "already_queued", message: "这一分钟已经发起过立即运行" })
-      return e.json(200, { ok: true, id: id, queued: true, run_id: runId })
+      if (Number(inserted.rowsAffected()) === 0) {var duplicate=new Error("already_queued");duplicate.code="already_queued";duplicate.httpStatus=409;throw duplicate}
+      return {ok:true,id:id,queued:true,run_id:runId}
+      }))
     }
     if (action === "retry_failed_start") {
+      return e.json(200,require(__hooks+"/modules/business_monitors.js").scheduleMutation($app,uid,id,Number(existing.revision),action,body,function(tx){
+      function retryFault(code,status){var ex=new Error(code);ex.code=code;ex.httpStatus=status||409;throw ex}
       var occurrenceId = String(body.occurrence_id || "").trim()
-      if (!/^[a-f0-9]{20}$/.test(occurrenceId)) return e.json(400, { error: "invalid_occurrence_id" })
+      if (!/^[a-f0-9]{20}$/.test(occurrenceId)) retryFault("invalid_occurrence_id",400)
       var oldAttempt = new DynamicModel({ id: "", run_id: "", status: "", schedule_revision: 0 })
       try {
-        $app.db().newQuery(
+        tx.db().newQuery(
           "SELECT id,run_id,status,schedule_revision FROM agent_studio_schedule_occurrences " +
           "WHERE id={:oid} AND schedule_id={:id} AND rh_user_id={:uid} AND status='failed_start'"
         ).bind({ oid: occurrenceId, id: id, uid: uid }).one(oldAttempt)
-      } catch (_) { return e.json(404, { error: "failed_occurrence_not_found" }) }
+      } catch (_) { retryFault("failed_occurrence_not_found",404) }
       if (Number(oldAttempt.schedule_revision) !== Number(existing.revision)) {
-        return e.json(409, { error: "schedule_changed", message: "计划已更新，请重新执行当前配置" })
+        retryFault("schedule_changed")
       }
       var collision = null
-      try { collision = $app.findRecordById("agent_runs", String(oldAttempt.run_id)) } catch (_) {}
-      if (!collision) { try { collision = $app.findRecordById("workflow_runs", String(oldAttempt.run_id)) } catch (_) {} }
-      if (collision) return e.json(409, { error: "run_already_exists", message: "运行实例已存在，请先查看运行状态" })
-      var retry = $app.db().newQuery(
+      try { collision = tx.findRecordById("agent_runs", String(oldAttempt.run_id)) } catch (_) {}
+      if (!collision) { try { collision = tx.findRecordById("workflow_runs", String(oldAttempt.run_id)) } catch (_) {} }
+      if (collision) retryFault("run_already_exists")
+      var retry = tx.db().newQuery(
         "UPDATE agent_studio_schedule_occurrences SET status='pending',attempts=0,next_retry_ms=0," +
         "locked_until_ms=0,error='',updated_ms={:now} " +
         "WHERE id={:oid} AND schedule_id={:id} AND rh_user_id={:uid} AND status='failed_start'"
       ).bind({ oid: occurrenceId, id: id, uid: uid, now: now }).execute()
-      if (Number(retry.rowsAffected()) !== 1) return e.json(409, { error: "occurrence_state_changed" })
-      return e.json(200, { ok: true, id: id, queued: true, run_id: String(oldAttempt.run_id) })
+      if (Number(retry.rowsAffected()) !== 1) retryFault("occurrence_state_changed")
+      return {ok:true,id:id,queued:true,run_id:String(oldAttempt.run_id)}
+      }))
     }
     if (action !== "create" && action !== "update") return e.json(400, { error: "unknown_action" })
     var name = String(body.name || "").trim().slice(0, 120)
@@ -276,23 +284,26 @@ routerAdd("POST", "/api/schedules/manage", function (e) {
         start: start, next: next, conn: modelConn, model: modelId, steps: maxSteps, now: now,enabled:savedEnabled }).execute()
       return e.json(200, { ok: true, id: id, revision: 1,enabled:savedEnabled===1 })
     }
-    var updated = $app.db().newQuery(
+    return e.json(200,require(__hooks+"/modules/business_monitors.js").scheduleMutation($app,uid,id,Number(existing.revision),action,body,function(tx,context){
+    var updated = tx.db().newQuery(
       "UPDATE agent_studio_schedules SET name={:name},target_kind={:tk},target_id={:tid},instruction={:inst}," +
       "recurrence_kind={:rk},interval_minutes={:interval},time_zone={:zone},local_time={:time},weekday={:weekday}," +
       "start_at_ms=CASE WHEN {:keepTiming}=1 THEN start_at_ms ELSE {:start} END," +
       "next_at_ms=CASE WHEN {:keepTiming}=1 THEN next_at_ms ELSE {:next} END," +
       "model_connection_id={:conn},model_id={:model},max_steps={:steps}," +
-      "revision=revision+1,updated_ms={:now} WHERE id={:id} AND rh_user_id={:uid} AND revision={:rev}"
+      "revision=revision+1,enabled={:enabled},updated_ms={:now} WHERE id={:id} AND rh_user_id={:uid} AND revision={:rev}"
     ).bind({ id: id, uid: uid, name: name, tk: targetKind, tid: targetId, inst: instruction,
       rk: kind, interval: interval, zone: zone, time: time, weekday: weekday,
       start: start, next: next, conn: modelConn, model: modelId, steps: maxSteps,
-      now: now, rev: Number(existing.revision),keepTiming:preserveTiming?1:0 }).execute()
-    if (Number(updated.rowsAffected()) !== 1) return e.json(409, { error: "schedule_changed" })
+      now: now, rev: context.revision, enabled:context.enabled?1:0,keepTiming:preserveTiming?1:0 }).execute()
+    if (Number(updated.rowsAffected()) !== 1) {var edited=new Error("schedule_changed");edited.code="schedule_changed";edited.httpStatus=409;throw edited}
     // Historical pending occurrences are never silently executed with edited parameters.
-    return e.json(200, { ok: true, id: id, revision: Number(existing.revision) + 1,enabled:savedEnabled===1 })
+    return {ok:true,id:id,revision:context.revision+1,enabled:context.enabled}
+    }))
   } catch (err) {
     try { $app.logger().error("schedule manage error", "err", String(err)) } catch (_) {}
-    return e.json(500, { error: "schedule_manage_failed" })
+    var messages={monitor_retry_requires_new_check:"监测检查采用固定采集范围，请重新启用或立即运行当前监测，不重试旧检查。",monitor_previous_check_incomplete:"请先完成或跳过当前监测检查。",monitor_configuration_changed:"采集配置已变化，请在业务任务中重新预览监测定义。",monitor_model_configuration_changed:"模型配置已变化，请重新验证模型并预览监测定义。",monitor_paused:"关联监测已暂停，请核对范围后再启用。"}
+    return e.json(err.httpStatus||500, { error:err.code||"schedule_manage_failed",message:messages[err.code]||undefined })
   }
 })
 
@@ -496,6 +507,14 @@ routerAdd("POST", "/api/internal/schedules/dispatch", function (e) {
       requestBody.config.tools = scheduledBuiltinTools
 
     } else { requestBody.workflow_id = String(task.target_id) }
+    try{
+      var monitoredBody=require(__hooks+"/modules/business_monitors.js").prepareLaunch($app,owner,task,occId,runId)
+      if(monitoredBody)requestBody=monitoredBody
+    }catch(monitorErr){
+      var monitorReason=String(monitorErr.code||"monitor_launch_invalid")
+      $app.db().newQuery("UPDATE agent_studio_schedule_occurrences SET status='skipped_overlap',error={:why},locked_until_ms=0,updated_ms={:now} WHERE id={:id} AND status='launching'").bind({id:occId,why:monitorReason,now:new Date().getTime()}).execute()
+      return e.json(200,{ok:true,scheduled:true,skipped:true,reason:monitorReason})
+    }
     var base = String($os.getenv("AGENT_STUDIO_WORKER_INTERNAL_URL") || "http://127.0.0.1:7000").replace(/\/+$/, "")
     if (!/^http:\/\/127\.0\.0\.1:\d{2,5}$/.test(base)) return e.json(503, { error: "worker_internal_url_invalid" })
     var response = null

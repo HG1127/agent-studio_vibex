@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import {confirmInStudio} from "@/lib/studioDialogs"
+import {newResearchLaunch,researchProfile} from '@/components/workflow-canvas/ResearchRunOptions'
 import {
   addEdge,
   applyEdgeChanges,
@@ -72,7 +73,7 @@ export type WorkflowRow = {
   updated: string
 }
 
-export type WfRunState = "running" | "awaiting_approval" | "succeeded" | "failed" | "cancelled"
+export type WfRunState = "running" | "paused" | "awaiting_approval" | "succeeded" | "failed" | "cancelled"
 
 export type LoopRunState = {
   round?: number
@@ -116,6 +117,7 @@ export type RunCheckpoint = {
 }
 
 export type RunDetailRow = {
+  research?: boolean
   id: string
   workflow_id: string
   workflow_name: string
@@ -189,6 +191,7 @@ export const CONDITION_OPS: { value: string; label: string }[] = [
 
 export const WF_RUN_STATE_META: Record<WfRunState, { label: string; badge: string }> = {
   running: { label: "运行中", badge: "bg-primary/10 text-primary" },
+  paused: { label: "已暂停", badge: "bg-muted text-muted-foreground" },
   awaiting_approval: { label: "等待批准", badge: "bg-secondary text-secondary-foreground" },
   succeeded: { label: "已完成", badge: "bg-primary/10 text-primary" },
   failed: { label: "失败", badge: "bg-destructive/10 text-destructive" },
@@ -392,6 +395,7 @@ export function useWorkflowCanvas() {
   const [liveRunId, setLiveRunId] = useState("")
   const [runDialogOpen, setRunDialogOpen] = useState(false)
   const [runInstruction, setRunInstruction] = useState("")
+  const [researchLaunch,setResearchLaunch]=useState(newResearchLaunch)
   const [isStarting, setIsStarting] = useState(false)
   const [cancelBusy, setCancelBusy] = useState(false)
   const [wfApprovalBusy, setWfApprovalBusy] = useState(false)
@@ -1604,6 +1608,7 @@ export function useWorkflowCanvas() {
           setNeedsRhLogin(true)
           return null
         }
+        if(res.status===403){setActiveRun(null);setRunEvents([]);setErrorMsg('来源权限已失效，当前不可读取研究运行。');return null}
         if (!res.ok) return null
         const data = await res.json()
         if (signal?.aborted) return null
@@ -1672,6 +1677,8 @@ export function useWorkflowCanvas() {
 
   const doStartRun = useCallback(async () => {
     if (!activeWorkflowId || isStarting) return
+    let research
+    try{research=researchProfile(researchLaunch,flowNodes)}catch(error){setErrorMsg(error instanceof Error?error.message:'研究配置无效');return}
     setIsStarting(true)
     setFollowRun(true)
     setErrorMsg("")
@@ -1679,7 +1686,7 @@ export function useWorkflowCanvas() {
       const res = await fetch(`${base}/api/workflow-runs/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
-        body: JSON.stringify({ workflow_id: activeWorkflowId, instruction: runInstruction.trim().slice(0, 2000) }),
+        body: JSON.stringify({ workflow_id: activeWorkflowId, instruction: runInstruction.trim().slice(0, 2000),research }),
       })
       if (res.status === 401 || res.status === 412) {
         setNeedsRhLogin(true)
@@ -1688,7 +1695,7 @@ export function useWorkflowCanvas() {
       }
       const data = await res.json().catch(() => null)
       if (!res.ok || !data?.run_id) {
-        setErrorMsg(data?.message || "启动运行失败，请稍后重试")
+        setErrorMsg(data?.message || data?.error || "启动运行失败，请稍后重试")
         return
       }
       const runId = String(data.run_id)
@@ -1701,14 +1708,14 @@ export function useWorkflowCanvas() {
     } finally {
       setIsStarting(false)
     }
-  }, [activeWorkflowId, base, isStarting, runInstruction, fetchRunDetail])
+  }, [activeWorkflowId, base, isStarting, runInstruction, fetchRunDetail,researchLaunch,flowNodes])
 
   const openRunDialog = useCallback(async () => {
     if (!rhUserId) {
       setNeedsRhLogin(true)
       return
     }
-    if (liveRunId && (activeRun?.status === "running" || activeRun?.status === "awaiting_approval")) {
+    if (liveRunId && (activeRun?.status === "running" || activeRun?.status === "awaiting_approval" || activeRun?.status === "paused")) {
       setErrorMsg("当前还有运行中的任务，先取消或等它结束")
       return
     }
@@ -1726,6 +1733,7 @@ export function useWorkflowCanvas() {
       }
     }
     setRunInstruction("")
+    setResearchLaunch(newResearchLaunch())
     setRunDialogOpen(true)
   }, [rhUserId, liveRunId, activeRun, validateGraphForRun, dirtyFlag, saveWorkflow])
 
@@ -1770,7 +1778,8 @@ export function useWorkflowCanvas() {
   const handleViewRun = useCallback(
     async (runId: string) => {
       setActiveRunId(runId)
-      await fetchRunDetail(runId)
+      const fresh=await fetchRunDetail(runId)
+      if(fresh&&!TERMINAL_STATES.includes(fresh.status))setLiveRunId(runId)
     },
     [fetchRunDetail],
   )
@@ -1946,7 +1955,7 @@ export function useWorkflowCanvas() {
   const dismissNotice = useCallback(() => setNoticeMsg(""), [])
 
   const isLiveRunning = Boolean(
-    liveRunId && (activeRun?.status === "running" || activeRun?.status === "awaiting_approval"),
+    liveRunId && (activeRun?.status === "running" || activeRun?.status === "awaiting_approval" || activeRun?.status === "paused"),
   )
   const viewingHistoryRun = Boolean(activeRunId && activeRunId !== liveRunId)
   const deleteTarget = workflows.find((item) => item.id === deleteTargetId) || null
@@ -2073,6 +2082,8 @@ export function useWorkflowCanvas() {
     closeRunDialog,
     runInstruction,
     setRunInstruction,
+    researchLaunch,
+    setResearchLaunch,
     isStarting,
     handleRunSubmit,
     cancelBusy,

@@ -22,6 +22,30 @@ function decodeKey(stored, secret, decrypt) {
   return output
 }
 
+// Successful server-side model tests authorize only the current permitted IDs.
+// Re-read this evidence before each Agent/Workflow/embedding model invocation.
+function verifiedModelIds(record) {
+  if (!record) return []
+  try {
+    if (record.getBool("enabled") !== true ||
+        String(record.getString("status") || "") !== "ok") return []
+    var stamp = String(record.getString("last_checked_at") || "")
+    if (!stamp || stamp.indexOf("0001-") === 0 ||
+        !isFinite(Date.parse(stamp)) || Date.parse(stamp) <= 0) return []
+    var raw = JSON.parse(record.getString("models") || "[]")
+    if (!Array.isArray(raw)) return []
+    var out = [], seen = {}
+    for (var i = 0; i < raw.length && i < 300; i++) {
+      if (typeof raw[i] !== "string") continue
+      var id = raw[i].trim()
+      if (!id || id.length > 200 || seen[id]) continue
+      seen[id] = true
+      out.push(id)
+    }
+    return out
+  } catch (_) { return [] }
+}
+
 function getDefault(app, uid) {
   var rows = []
   try {
@@ -29,14 +53,10 @@ function getDefault(app, uid) {
       "rh_user_id = {:uid}", "-created", 10, 0, { uid: String(uid || "") }) || []
   } catch (_) {}
   for (var i = 0; i < rows.length; i++) {
-    var enabled = false
-    try { enabled = rows[i].getBool("enabled") } catch (_) {}
-    if (!enabled) continue
-    var models = []
-    try { models = JSON.parse(rows[i].getString("models") || "[]") } catch (_) {}
-    if (Array.isArray(models) && models.length > 0) {
-      return { connection_id: String(rows[i].id), model_id: String(models[0]) }
-    }
+    if (!uid || String(rows[i].get("rh_user_id") || "") !== String(uid)) continue
+    var models = verifiedModelIds(rows[i])
+    if (models.length > 0)
+      return { connection_id: String(rows[i].id), model_id: models[0] }
   }
   return null
 }
@@ -52,6 +72,12 @@ function lookup(app, owner, id, model, security) {
   var enabled = false
   try { enabled = record.getBool("enabled") } catch (_) {}
   if (!enabled) return { ok:false, error:"custom_connection_disabled", detail:"该模型连接已停用，请在「模型连接」页重新启用" }
+  var verified = verifiedModelIds(record)
+  if (verified.length === 0)
+    return { ok:false, error:"custom_connection_unverified", detail:"模型连接未经最新服务端测试，请到「模型连接」页重新测试" }
+  var selected = String(model || "")
+  if (verified.indexOf(selected) < 0)
+    return { ok:false, error:"model_not_permitted", detail:"模型不在当前账号已验证的连接清单中，请重新选择" }
   var provider = "openai"
   try { provider = String(record.getString("provider") || "") } catch (_) {}
   if (provider !== "anthropic" && provider !== "gemini") provider = "openai"
@@ -67,8 +93,9 @@ function lookup(app, owner, id, model, security) {
   }
   return {
     ok:true, provider:provider, baseUrl:baseUrl, apiKey:apiKey,
-    model:String(model || ""), connectionId:connectionId,
+    model:selected, connectionId:connectionId,
   }
 }
 
-module.exports = { decodeKey:decodeKey, getDefault:getDefault, lookup:lookup }
+module.exports = { decodeKey:decodeKey, verifiedModelIds:verifiedModelIds,
+  getDefault:getDefault, lookup:lookup }

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { FolderOpen, Lock, Play, Search, Trash2, X } from "lucide-react"
 import type { SavedSpecRow } from "@/pages/Home/useHome"
+import {CapabilityPlan} from './CapabilityPlan'
 
 type SavedSpecsListProps = {
   savedList: SavedSpecRow[]
@@ -61,6 +62,7 @@ export function SavedSpecsList({
       </button>
     </div> : <ul className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
       {filtered.map(row=><li key={row.id} className="min-w-0 rounded-xl border border-border bg-card p-4 transition hover:border-primary/30">
+        <CapabilityPlan specId={row.id} revision={row.updated||''}/>
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-card-foreground" title={row.name||"未命名 Agent"}>

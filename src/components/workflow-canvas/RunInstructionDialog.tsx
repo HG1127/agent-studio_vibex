@@ -1,4 +1,5 @@
 import { Loader2, Play, TriangleAlert } from "lucide-react"
+import type {ReactNode} from 'react'
 import {
   Dialog,
   DialogContent,
@@ -16,6 +17,7 @@ type RunInstructionDialogProps = {
   setRunInstruction: (value: string) => void
   handleRunSubmit: () => void
   isStarting: boolean
+  children?: ReactNode
 }
 
 export function RunInstructionDialog({
@@ -25,10 +27,11 @@ export function RunInstructionDialog({
   setRunInstruction,
   handleRunSubmit,
   isStarting,
+  children,
 }: RunInstructionDialogProps) {
   return (
     <Dialog open={runDialogOpen} onOpenChange={(open) => !open && closeRunDialog()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[85svh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-card-foreground">运行这条工作流</DialogTitle>
           <DialogDescription>
@@ -42,6 +45,7 @@ export function RunInstructionDialog({
           maxLength={2000}
           onChange={(event) => setRunInstruction(event.target.value)}
         />
+        {children}
         <DialogFooter>
           <button
             type="button"

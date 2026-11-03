@@ -68,7 +68,7 @@ export function registerApplications({add,config,native=applicationNative,launch
  const desktop=permission.grants.filter(g=>g.adapter==='desktop'),controlled=desktop.filter(g=>g.control)
  const appSchema=list=>({type:'string',enum:list.map(g=>g.id)})
  const addTool=(name,description,properties,fn,required)=>{const s=schema(properties,required);if(name===(desktop.length?'apps.windows':'apps.task_start'))s['x-studio-applications']=permission.grants.map(g=>({id:g.id,name:g.name,adapter:g.adapter,control:g.control,...(g.adapter==='codex'?{allowWrite:g.allowWrite}:{})}));if(name==='apps.observe')s['x-studio-application-images']=permission.images;if(name==='apps.task_start')s['x-studio-app-workspace-write']=(config.roots||[]).some(r=>!r.allowedFiles&&r.readOnly!==true);add(name,description,s,fn)}
- const checked=async(id)=>{const g=grants.get(id);if(!g)throw Error('application_denied');const current=await inspectApplication(g.path,g,{resolveTarget:false});if(current.sha256!==g.sha256)throw Error('application_binary_changed');if(g.windowPath){const target=await inspectApplication(g.windowPath,g,{resolveTarget:false});if(target.sha256!==g.windowSha256)throw Error('application_binary_changed')}else if(g.adapter==='desktop'&&await resolveWindowTarget(g.path))throw Error('application_launcher_needs_review');return g}
+ const checked=async(id)=>{const g=grants.get(id);if(!g)throw Error('application_denied');try{const current=await inspectApplication(g.path,g,{resolveTarget:false});if(current.sha256!==g.sha256)throw Error('application_binary_changed');if(g.windowPath){const target=await inspectApplication(g.windowPath,g,{resolveTarget:false});if(target.sha256!==g.windowSha256)throw Error('application_binary_changed')}else if(g.adapter==='desktop'&&await resolveWindowTarget(g.path))throw Error('application_launcher_needs_review');return g}catch(error){if(error.code==='ENOENT')throw Error('application_binary_missing');if(['EACCES','EPERM'].includes(error.code))throw Error('application_binary_unreadable');throw error}}
  const windows=async(g,signal)=>{const list=await native({action:'windows',path:g.windowPath||g.path},{signal});const result=(Array.isArray(list)?list:[]).filter(w=>w&&w.path?.toLowerCase()===(g.windowPath||g.path).toLowerCase()&&/^\d+$/.test(w.id)).map(w=>({...w,title:redactApplicationText(w.title).slice(0,300)}));windowCache.set(g.id,new Set(result.map(w=>w.id)));return result}
 
  if(desktop.length){
@@ -76,10 +76,17 @@ export function registerApplications({add,config,native=applicationNative,launch
    exact(args,['app']);const g=await checked(args.app);signal?.throwIfAborted()
    const existing=await windows(g,signal)
    if(existing.length)return JSON.stringify({application:g.name,accepted:true,status:'ready',alreadyRunning:true,windows:existing.map(({path,...w})=>w)})
+   // Window discovery starts a native helper. Cancellation or an application
+   // update during that await must be checked before any launch side effect.
+   await checked(args.app);signal?.throwIfAborted()
    let exitCode=null,launchError=false
-   await new Promise((resolve,reject)=>{const child=launch(g.path,g.accessibility==='electron'?['--force-renderer-accessibility']:[],{shell:false,windowsHide:false,stdio:'ignore',cwd:path.dirname(g.path)});child.on('error',()=>{launchError=true;reject(Error('application_launch_failed'))});child.once('exit',code=>{exitCode=code});child.once('spawn',()=>{child.unref();resolve()})})
+   await new Promise((resolve,reject)=>{const child=launch(g.path,g.accessibility==='electron'?['--force-renderer-accessibility']:[],{shell:false,windowsHide:false,stdio:'ignore',cwd:path.dirname(g.path)});child.on('error',error=>{launchError=true;reject(Error(error.code==='ENOENT'?'application_binary_missing':['EACCES','EPERM'].includes(error.code)?'application_launch_denied':'application_launch_failed'))});child.once('exit',code=>{exitCode=code});child.once('spawn',()=>{child.unref();resolve()})})
    const deadline=Date.now()+launchWaitMs
-   do{signal?.throwIfAborted();if(launchError||exitCode!==null&&exitCode!==0)throw Error('application_launch_failed');const list=await windows(g,signal);if(list.length)return JSON.stringify({application:g.name,accepted:true,status:'ready',alreadyRunning:false,windows:list.map(({path,...w})=>w)});if(Date.now()>=deadline)break;await delay(pollMs,undefined,{signal})}while(true)
+   do{signal?.throwIfAborted();if(launchError)throw Error('application_launch_failed');const list=await windows(g,signal);if(list.length){await checked(args.app);signal?.throwIfAborted();return JSON.stringify({application:g.name,accepted:true,status:'ready',alreadyRunning:false,windows:list.map(({path,...w})=>w)})}if(Date.now()>=deadline)break;await delay(pollMs,undefined,{signal})}while(true)
+   // Single-instance apps/version launchers can exit before the real window
+   // appears. Only a window with the pinned identity proves readiness; wait
+   // for the bounded discovery period without ever launching a second time.
+   if(exitCode!==null&&exitCode!==0)throw Error('application_launch_failed')
    return JSON.stringify({application:g.name,accepted:true,status:'waiting_window',windows:[],retryLaunch:false,message:'启动请求已受理，但尚未发现可操作窗口。请刷新窗口检查启动弹窗；不会重复启动。'})
   })
   addTool('apps.windows','列出已授权应用的可见窗口。只返回该应用的窗口，不枚举其他应用的数据。',{app:appSchema(desktop)},async(args,signal)=>{exact(args,['app']);const g=await checked(args.app);return JSON.stringify({application:g.name,windows:(await windows(g,signal)).map(({path,...w})=>w)})})

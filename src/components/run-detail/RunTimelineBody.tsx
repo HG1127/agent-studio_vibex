@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import type { RunEventRow } from "@/pages/AgentRun/useAgentRun"
 import type { StepGroup } from "@/pages/RunDetail/useRunDetail"
+import { ToolResultReader } from '@/components/agent-run/ToolResultReader'
 
 type RunTimelineBodyProps = {
   stepGroups: StepGroup[]
@@ -53,6 +54,7 @@ function ToolResultText({ text }: { text: string }) {
 }
 
 function EventItem({ evItem }: { evItem: RunEventRow }) {
+  if(evItem.content.source_access_revoked===true)return <li className="rounded-xl border border-destructive/30 p-3 text-sm text-destructive">来源权限当前不可用，执行记录内容已隐藏。</li>
   if (evItem.event_type === "thinking") {
     return (
       <li className="rounded-xl border border-border bg-background p-3">
@@ -96,6 +98,7 @@ function EventItem({ evItem }: { evItem: RunEventRow }) {
         </p>
         <div className="mt-1.5">
           <ToolResultText text={contentText(evItem.content, "output")} />
+          {typeof evItem.content.result_id === 'string' && <ToolResultReader runId={evItem.run_id} resultId={evItem.content.result_id} />}
         </div>
       </li>
     )

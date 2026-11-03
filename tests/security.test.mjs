@@ -93,6 +93,13 @@ function harness(file, seeds = {}, opts = {}) {
               return out
             },
             all(out) {
+              if(sql === "SELECT source_scope FROM agent_studio_tool_results WHERE owner_uid={:uid} AND run_id={:rid}") {
+                for(const r of (collections.agent_studio_tool_results||[])) {
+                  if(r.get("owner_uid")===params.uid && r.get("run_id")===params.rid)out.push({source_scope:r.getString("source_scope")})
+                }
+                return out
+              }
+
               if (!sql.startsWith("SELECT s.id AS id, CASE WHEN f.spec_id IS NULL THEN 0 ELSE 1 END AS favorite FROM agent_specs s LEFT JOIN agent_spec_favorites f "))
                 throw new Error("unsupported_security_test_query")
               const start = Number(params.offset || 0)
@@ -162,6 +169,23 @@ function harness(file, seeds = {}, opts = {}) {
       const roleScope = {module:{exports:{}}}
       vm.runInNewContext(fs.readFileSync(path,"utf8"),roleScope,{filename:"agent_roles.js",timeout:1000})
       return roleScope.module.exports
+    }
+    if(path.endsWith("/modules/tool_results.js")||path.endsWith("/modules/authoring_requirements.js")){
+      // Exercise the actual requirement guard for legacy owner edits too.
+      // Tracked chains use real PB/SQLite in authoring-requirements.integration;
+      // unknown database operations still fail closed in this harness.
+      const filename=path.slice(path.lastIndexOf("/")+1)
+      const isolated={module:{exports:{}},__hooks:hooks,require:loadModule,
+        DynamicModel:class {constructor(defaults){Object.assign(this,defaults)}},arrayOf:()=>[]}
+      vm.runInNewContext(fs.readFileSync(hooks+"/modules/"+filename,"utf8"),isolated,{filename,timeout:900})
+      return isolated.module.exports
+    }
+    if(path.endsWith("/modules/model_connections.js")){
+      // Real pure Goja repository, exercised in the owner-scoped mock runtime.
+      const source=fs.readFileSync(hooks+"/modules/model_connections.js","utf8")
+      const isolated={module:{exports:{}}}
+      vm.runInNewContext(source,isolated,{filename:"model_connections.js",timeout:900})
+      return isolated.module.exports
     }
     throw new Error("unsupported_mock_hook_module")
   }

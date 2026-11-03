@@ -33,7 +33,8 @@ let modelCalls = 0
 let resolveWriteReceived
 const writeReceived = new Promise(resolve => { resolveWriteReceived = resolve })
 const writeServer = createServer(async (req, res) => {
-  for await (const _ of req) { /* drain */ }
+  let body='';for await(const chunk of req)body+=chunk.toString()
+  if(body.includes('"probe_only":true')){res.writeHead(200,{'Content-Type':'application/json'});res.end('{"probe":true}');return}
   acceptedWrites++
   if (resolveWriteReceived) resolveWriteReceived()
   // First request is held open long enough to kill PocketBase mid-flight.
@@ -45,6 +46,9 @@ const writeServer = createServer(async (req, res) => {
   }
 })
 const modelServer = createServer(async (req, res) => {
+    // Catalog verification uses only this deterministic local fixture.
+    if(req.method==='GET'&&req.url?.includes('/models')){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({data:[{id:"mock-model"}]}));return}
+
   let raw = ""
   for await (const part of req) raw += part.toString()
   modelCalls++
@@ -129,6 +133,10 @@ async function newRun(connectionId, instruction) {
     config: { max_steps: 4, tools: { CrashWrite: true },
       custom_model: { connection_id: connectionId, model_id: "mock-model" } },
   })
+  await requireOk('POST','/api/llm/agent-engine/'+run.run_id+'/tick',{})
+  const waiting=await requireOk('GET','/api/agent_runs/'+run.run_id)
+  assert.equal(waiting.status,'awaiting_approval','external writes require human approval before the crash scenario')
+  await requireOk('POST','/api/agent-runs/'+run.run_id+'/approve',{decision:'approve'})
   return run.run_id
 }
 try {
@@ -143,12 +151,14 @@ try {
     api_key: "test-only", base_url: "http://127.0.0.1:" + modelPort + "/v1",
     models: ["mock-model"],
   })
-  await requireOk("POST", "/api/tool-connections", {
+    await requireOk('POST','/api/model-connections/test',{connection_id:connection.item.id})
+  const writeTool = await requireOk("POST", "/api/tool-connections", {
     name: "CrashWrite", description: "Test-only external POST",
     url: "http://127.0.0.1:" + writePort + "/receipt", method: "POST",
     headers: [], body_template: "{{input}}",
   })
 
+  await requireOk('POST','/api/tool-connections/test',{connection_id:writeTool.item.id,input:'{"probe_only":true}',confirm_write:true})
   const crashedId = await newRun(connection.item.id, "write with crash")
   // The real PocketBase server performs the execution, not a fake mock of
   // the execution function. Force-kill that server during the remote POST.

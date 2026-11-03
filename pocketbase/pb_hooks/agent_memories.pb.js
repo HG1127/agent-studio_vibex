@@ -112,7 +112,7 @@ routerAdd("GET", "/api/agent_memories", function (e) {
       : $app.findRecordsByFilter("agent_memories", "", sort, perPage, (page - 1) * perPage)
     var items = []
     for (var i = 0; i < records.length; i++) {
-      items.push(records[i].publicExport())
+      items.push(require(__hooks+"/modules/tool_results.js").projectMemory($app,uid,records[i].publicExport()))
     }
     return e.json(200, { items: items, page: page, perPage: perPage, totalItems: items.length })
   } catch (err) {

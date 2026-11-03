@@ -1,4 +1,5 @@
-// Full HTTP proxy smoke. Fresh temporary PB + local Vite; no browser or real data.
+// Built-app HTTP proxy smoke. Run pnpm build first, as for the office browser
+// acceptance. Fresh temporary PB + production preview; no real data.
 import assert from "node:assert/strict"
 import fs from "node:fs"
 import path from "node:path"
@@ -13,6 +14,7 @@ const binary = process.env.POCKETBASE_BIN || path.join(root,"vibex-local/bin/win
 const vite = path.join(root,"node_modules/vite/bin/vite.js")
 assert.ok(fs.existsSync(binary), "PocketBase binary must exist")
 assert.ok(fs.existsSync(vite), "Install dependencies before Vite proxy smoke")
+assert.ok(fs.existsSync(path.join(root,'dist/index.html')), "Build the standalone frontend before proxy acceptance")
 const tmp=fs.mkdtempSync(path.join(os.tmpdir(),"agentstudio-proxy-"))
 const secret=randomBytes(48).toString("hex")
 async function port(){
@@ -51,18 +53,20 @@ const server=spawnHeadlessPocketBase(binary,[
  "--hooksDir="+path.join(root,"pocketbase/pb_hooks")
 ],{cwd:path.join(root,"pocketbase"),env})
 const site=spawn(process.execPath,[
- vite,"--config","vibex-local/vite.local.config.ts","--host","127.0.0.1",
+ vite,"preview","--config","vibex-local/vite.local.config.ts","--host","127.0.0.1",
  "--port",String(webPort),"--strictPort"
 ],{cwd:root,env,windowsHide:true,stdio:["ignore","pipe","pipe"]})
-let logs=""
+let logs="", stage="startup", transportDiagnostic=""
 for(const [name,proc] of [["PocketBase",server],["Vite",site]]){
  proc.stdout?.on("data",x=>logs=(logs+name+": "+x).slice(-10000))
  proc.stderr?.on("data",x=>logs=(logs+name+": "+x).slice(-10000))
 }
 async function waitReady(url){
- for(let i=0;i<200;i++){
+ stage="readiness "+url
+ const deadline=Date.now()+120000
+ while(Date.now()<deadline){
   try{
-   const response=await fetch(url,{signal:AbortSignal.timeout(450)})
+   const response=await fetch(url,{headers:{Connection:'close'},signal:AbortSignal.timeout(Math.max(1,Math.min(5000,deadline-Date.now())))})
    if(response.ok)return response
   }catch{}
   if(server.exitCode!==null || site.exitCode!==null)break
@@ -71,17 +75,29 @@ async function waitReady(url){
  throw Error("Timed out waiting for "+url+"; "+logs.slice(-1800))
 }
 async function req(method,endpoint,body,headers={}){
- const result=await fetch(webOrigin+endpoint,{
-  method,headers:{"Content-Type":"application/json",...headers},
+ stage=method+" "+endpoint
+ let result
+ try { result=await fetch(webOrigin+endpoint,{
+  // Keep the HTTP smoke independent of Undici's cached dev-proxy connections.
+  // Actual browser navigation/session behavior is covered by browser acceptance.
+  method,headers:{"Content-Type":"application/json",Connection:'close',...headers},
   ...(body===undefined?{}:{body:JSON.stringify(body)}),
   signal:AbortSignal.timeout(12000)
- })
+ }) }catch(error){
+   // Read-only diagnosis only; never resubmit a POST after an unknown outcome.
+   if(method==='GET'){
+     try{const direct=await fetch(pbOrigin+endpoint.replace(/^\/__pb/,''),{headers,signal:AbortSignal.timeout(3000)});transportDiagnostic='direct backend status '+direct.status;await direct.body?.cancel()}
+     catch{transportDiagnostic='direct backend unavailable'}
+   }
+   throw error
+ }
  return {status:result.status,data:await result.json().catch(()=>({}))}
 }
 try{
  await waitReady(pbOrigin+"/api/health")
  await waitReady(webOrigin+"/__pb/api/health")
  const page=await waitReady(webOrigin+"/login")
+ stage="read SPA document body"
  const html=await page.text()
  assert.match(html,/Agent Studio/)
  assert.doesNotMatch(html,/vibex\.runninghub\.cn/)
@@ -108,7 +124,7 @@ try{
  assert.equal(share.status,200,JSON.stringify(share))
  console.log("PASS standalone web proxy: SPA, PB health, setup, password login, bearer auth, forged-ID defense, internal sharing")
 }catch(error){
- console.error("FAIL standalone web proxy:",error)
+ console.error("FAIL standalone web proxy at "+stage+" ("+transportDiagnostic+"):",error)
  console.error(logs.slice(-2700))
  process.exitCode=1
 }finally{

@@ -25,6 +25,11 @@ server.stdout.on("data",x=>logs=(logs+x).slice(-15000))
 server.stderr.on("data",x=>logs=(logs+x).slice(-15000))
 let modelRequests = 0
 const model=createServer(async(request,response)=>{
+  if(request.method==="GET" && request.url==="/v1/models"){
+    response.writeHead(200,{"Content-Type":"application/json"})
+    response.end(JSON.stringify({data:[{id:"calc-model"}]}))
+    return
+  }
   let raw=""
   for await(const chunk of request) raw+=chunk.toString()
   const message=JSON.parse(raw||"{}")
@@ -84,6 +89,11 @@ try {
     name:"Calc mock",provider:"openai",base_url:"http://127.0.0.1:"+modelPort+"/v1",
     api_key:"test-only-key",models:["calc-model"],
   })
+  const modelProbe=await call("POST","/api/model-connections/test",{
+    connection_id:conn.item.id,
+  })
+  assert.equal(modelProbe.ok,true)
+  assert.equal(modelProbe.verified_saved_connection,true)
   const spec=await call("POST","/api/agent_specs",{
     name:"Calculate",
     spec:{goal:"calculate (2+3)*4",task_scope:"Use calculate tool",tools:["calculate"],deliverables:["result"],

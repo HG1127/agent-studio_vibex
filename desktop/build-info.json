@@ -1,6 +1,6 @@
 {
-  "sourceCommit": "36a005624b60a0b9de08c70638581f4de319bc02",
-  "version": "0.1.0-preview.14",
+  "sourceCommit": "f85b3cecb20ee7a5c648365851a8430435048fd6",
+  "version": "0.1.0-preview.16",
   "platform": "win32-x64",
   "codeSigned": false,
   "integratedSources": {
@@ -8,6 +8,10 @@
     "desktopUpdates": "e6d1625c561d7e46a3662b3c8a5712ed9cfaf290",
     "avatarSettings": "df17d1c6654b9df4f2ba83e6aec43caa18121be9",
     "applicationDiscovery": "df17d1c6654b9df4f2ba83e6aec43caa18121be9",
-    "versionCenter": "36a005624b60a0b9de08c70638581f4de319bc02"
-  }
+    "versionCenter": "36a005624b60a0b9de08c70638581f4de319bc02",
+    "researchPlatform": "research-acceptance-before-unified.json:40-E2E-and-original-UI-PASS",
+    "agentDesignTransport": "f85b3cecb20ee7a5c648365851a8430435048fd6",
+    "applicationLaunchFeedback": "ccbf7cb083f3c0cf10e8653ef7e359fae16ea166"
+  },
+  "sourceState": "local-research-integration-uncommitted"
 }

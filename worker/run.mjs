@@ -1,10 +1,12 @@
 #!/usr/bin/env node
-// Standalone worker for Agent Studio VibeX. No third-party dependencies.
+// Standalone worker for Agent Studio. Office child rendering uses declared deps.
 // Designed to run under systemd, Docker restart policies or Windows Task Scheduler.
 import { setTimeout as sleep } from "node:timers/promises"
 import { randomBytes } from "node:crypto"
 import { resolveWorkerRequestTimeout } from "./config.mjs"
 import { nextScheduleTime } from "../src/lib/scheduleTime.js"
+import {advanceMaterialJob} from './material-jobs.mjs'
+import {advanceReportJob} from './report-jobs.mjs'
 
 const args = new Set(process.argv.slice(2))
 const once = args.has("--once")
@@ -39,8 +41,11 @@ function log(level, message, context = {}) {
   const line = { time: new Date().toISOString(), level, message, ...context }
   process.stdout.write(JSON.stringify(line) + "\n")
 }
-process.on("SIGINT", () => { active = false })
-process.on("SIGTERM", () => { active = false })
+const reportAbort=new AbortController()
+let reportActive=null
+function stop(){active=false;reportAbort.abort()}
+process.on("SIGINT", stop)
+process.on("SIGTERM", stop)
 
 async function advance(componentSnapshot) {
   const response = await fetch(endpoint + "/api/internal/worker/step", {
@@ -160,11 +165,33 @@ async function advanceKnowledgeIndex() {
   return payload
 }
 
+async function advanceBusinessJobs(){
+  const response=await fetch(endpoint+"/api/internal/worker/jobs-step",{
+    method:"POST",headers:{"Content-Type":"application/json","X-Agent-Studio-Worker-Token":token},body:"{}",signal:AbortSignal.timeout(Math.min(timeout,40000)),
+  })
+  if(response.status===404)return {idle:true}
+  if(response.status===401||response.status===403){const error=new Error("Business job worker authentication rejected");error.fatal=true;throw error}
+  if(!response.ok)throw new Error("Business job dispatcher failed: "+response.status)
+  const payload=await response.json()
+  if(payload.ok!==true)throw new Error("Business job response invalid")
+  return payload.job
+}
+async function advanceMonitors(){
+  const response=await fetch(endpoint+'/api/internal/worker/monitors-step',{method:'POST',headers:{'Content-Type':'application/json','X-Agent-Studio-Worker-Token':token},body:'{}',signal:AbortSignal.timeout(Math.min(timeout,40000))})
+  if(response.status===404)return {idle:true}
+  if(response.status===401||response.status===403){const error=new Error('Monitor worker authentication rejected');error.fatal=true;throw error}
+  if(!response.ok)throw new Error('Monitor dispatcher failed: '+response.status)
+  return (await response.json()).monitor
+}
+
 // Schedules and semantic indexing are independent queues. A transient failure
 // in either must not prevent ready Agent/Workflow tasks from advancing.
 // Retry windows are per-subsystem so one broken endpoint does not flood logs
 // or impose its backoff on otherwise healthy queues.
 const subservices = {
+  business:{failures:0,nextAttemptAt:0,seenSuccess:false},
+  monitors:{failures:0,nextAttemptAt:0,seenSuccess:false},
+  materials:{failures:0,nextAttemptAt:0,seenSuccess:false},
   schedules: { failures: 0, nextAttemptAt: 0, seenSuccess: false },
   knowledge: { failures: 0, nextAttemptAt: 0, seenSuccess: false },
 }
@@ -248,6 +275,21 @@ while (active) {
     const scheduleResult = await optionalService(
       "schedules", dispatchScheduledTask, { scheduled: false })
     const result = await advance(componentSnapshot())
+    const businessJob=await optionalService("business",advanceBusinessJobs,{idle:true})
+    const monitorResult=await optionalService("monitors",advanceMonitors,{idle:true})
+    if(!monitorResult.idle)log(monitorResult.status==='incomplete'?'error':'info','monitor_advanced',{check_id:monitorResult.check_id,status:monitorResult.status||'advanced'})
+    // A single office renderer may work alongside interactive advancement.
+    // --once awaits it so operators and isolated tests have a precise boundary.
+    if(!reportActive){
+      reportActive=advanceReportJob(endpoint,token,reportAbort.signal)
+        .then(job=>{if(!job.idle)log(job.status==='failed'?'error':'info','report_job_advanced',{job_id:job.job_id,status:job.status})})
+        .catch(error=>{if(reportAbort.signal.aborted)return;log('error','report_job_error',{detail:String(error.message||error).slice(0,120)});if(once||error.fatal){process.exitCode=1;stop()}})
+        .finally(()=>{reportActive=null})
+      if(once)await reportActive
+    }
+    const materialJob=await optionalService("materials",()=>advanceMaterialJob(endpoint,token),{idle:true})
+    if(!materialJob.idle)log(materialJob.status==="failed"?"error":"info","material_job_advanced",{job_id:materialJob.job_id,status:materialJob.status||"failed"})
+    if(!businessJob.idle)log(businessJob.status==="failed"?"error":"info","business_job_advanced",{job_id:businessJob.job_id,status:businessJob.status})
     const indexResult = await optionalService(
       "knowledge", advanceKnowledgeIndex, { idle: true })
     if (indexResult.indexed_batch > 0) log("info", "knowledge_index_advanced", {
@@ -261,7 +303,7 @@ while (active) {
     if (once) break
     // Work is still serialized, but each optional subsystem has an independent
     // retry window; no extra delay is imposed on successful Agent steps.
-    await sleep(result.idle && !scheduleResult.scheduled && indexResult.idle
+    await sleep(result.idle && !scheduleResult.scheduled && indexResult.idle && businessJob.idle && materialJob.idle && monitorResult.idle
       ? interval : Math.max(100, Math.min(500, interval)))
   } catch (error) {
     failures++
@@ -273,5 +315,7 @@ while (active) {
     await sleep(backoff)
   }
 }
+reportAbort.abort()
+if(reportActive)await reportActive
 if (heartbeatTimer) clearInterval(heartbeatTimer)
 log("info", "worker_stopped", { executed, failures, worker: instanceId.slice(-8) })

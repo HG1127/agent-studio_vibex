@@ -41,6 +41,9 @@ const website = createServer(async (req, res) => {
 })
 const websiteUrl = await listen(website)
 const model = createServer(async (req, res) => {
+    // Catalog verification uses only this deterministic local fixture.
+    if(req.method==='GET'&&req.url?.includes('/models')){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({data:[{id:"fixture"}]}));return}
+
   let raw = ''; for await (const b of req) raw += b
   const messages = JSON.parse(raw).messages, text = messages.map(m => Array.isArray(m.content) ? m.content.filter(b => b.type === 'text').map(b => b.text).join('\n') : m.content).join('\n')
   const images = messages.flatMap(m => Array.isArray(m.content) ? m.content.filter(b => b.type === 'image_url') : [])
@@ -209,6 +212,7 @@ try {
   passed('real allowlisted application launch without model-controlled commands')
 
   const modelConnection = await ok('POST', '/api/model-connections', { name: 'Local fixture', provider: 'openai', api_key: 'test-only', base_url: modelUrl + '/v1', models: ['fixture'] })
+    await ok('POST','/api/model-connections/test',{connection_id:modelConnection.item.id})
   const spec = await ok('POST', '/api/agent_specs', { name: '本地文件 Agent', spec: { goal: '创建文件', tools: [], task_plan: ['创建文件', '总结'], deliverables: ['文件'], done_criteria: ['文件创建成功'] } })
   const run = await ok('POST', '/api/agent-runs/start', { spec_id: spec.id, instruction: '创建 agent-result.txt', model: 'fixture', config: { local_device_id: paired.device_id, max_steps: 6, tools: {}, custom_model: { connection_id: modelConnection.item.id, model_id: 'fixture' } } })
   const tick = () => ok('POST', '/api/llm/agent-engine/' + run.run_id + '/tick', {})

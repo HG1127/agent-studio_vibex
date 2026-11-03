@@ -5,6 +5,9 @@ import type { AgentCapabilityRequirement } from "../../lib/agentCapabilityPlan"
 import type { AgentRole } from "../../lib/agentRoles"
 
 export type AgentSpec = {
+  /** Research dependency IDs are distinct from reviewed desktop capability objects. */
+  research_capability_requirements?: string[]
+  _studio_authoring?: {request_id:string}
   goal: string
   task_scope: string
   deliverables: string[]
@@ -43,6 +46,10 @@ export const CONFIGURED_TOOLS: string[] = []
 
 // 内置五件套：执行引擎真实实现，所有助手始终可用，无需接入
 export const BUILTIN_TOOL_OPTIONS: { id: string; title: string; desc: string }[] = [
+  {id:'business_record_write',title:'保存调研事实',desc:'在当前调研任务中保存带证据和版本的正式事实'},
+  {id:'business_material_read',title:'读取原始材料',desc:'读取当前调研任务已上传材料的文字和位置，未提供 OCR'},
+  {id:'business_job_submit',title:'冻结事实集',desc:'按当前正式记录生成不可变事实集'},
+  {id:'business_report_render',title:'生成事实报告',desc:'根据冻结事实集生成可下载报告，不能替代业务复核'},
   { id: "calculate", title: "计算器", desc: "对算术表达式真实求值，支持 + - * / % 与括号" },
   { id: "summarize", title: "文本整理摘要", desc: "调用模型对给定文本做整理、摘要与提炼" },
   { id: "knowledge_search", title: "知识库检索", desc: "在关联知识库中检索带引用的资料片段，未关联时搜索方案文本" },

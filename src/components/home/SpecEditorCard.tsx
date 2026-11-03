@@ -29,6 +29,7 @@ import { safeMarketplaceQuery, agentResourceSetupUrl } from "@/lib/toolSearchPri
 import { AgentCapabilityPlanner } from "@/components/home/AgentCapabilityPlanner"
 import { AgentRoleDesigner } from "@/components/agents/AgentRoleDesigner"
 import { AgentRevisionPreview, type AgentRevisionProposal } from "./AgentRevisionPreview"
+import {AuthoringRequirements} from './AuthoringRequirements'
 
 type SpecEditorCardProps = {
   spec: AgentSpec
@@ -355,6 +356,7 @@ export function SpecEditorCard(p: SpecEditorCardProps) {
         </Button>}
       </div>
 
+      <AuthoringRequirements spec={p.spec}/>
       {p.focus !== "resources" && <div role="tablist" aria-label="Agent 方案设计模块"
         className="flex flex-wrap gap-1 border-b border-border bg-background/60 px-3 py-2 sm:px-5">
         {tabs.map((tab,index)=><button key={tab.id} type="button" role="tab"

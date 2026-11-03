@@ -1,7 +1,7 @@
 /// <reference path="../pb_data/types.d.ts" />
 // pb_hooks/agent_specs.pb.js — 业务 collection + REST CRUD 路由 (self-contained)
 //
-// 由 mcp__rh-pb-hooks__install_business_collection 装. 不要直接 Read+Write 这个文件.
+// Independent standalone routes; never upload this source to the old VibeX app.
 // 业务字段: rh_user_id:text, name:text, spec:json, source:text, template_key:text
 // 路由: list,get,create,update,delete
 // list filter 字段: rh_user_id,source
@@ -219,12 +219,13 @@ routerAdd("POST", "/api/agent_specs", function (e) {
     rec.set("spec", body.spec)
     rec.set("source", body.source === undefined || body.source === null ? "" : String(body.source))
     rec.set("template_key", body.template_key === undefined || body.template_key === null ? "" : String(body.template_key))
+    require(__hooks+"/modules/authoring_requirements.js").guard($app,rec,null)
     $app.save(rec)
     return e.json(200, rec.publicExport())
   } catch (err) {
     var msg = String(err && err.message || err)
     try { $app.logger().error("agent_specs create: " + msg) } catch (_) {}
-    return e.json(500, { error: "create_failed", message: msg, fingerprint: msg.substring(0, 80) })
+    return e.json(err.httpStatus||500, { error:err.code||"create_failed", message: msg, fingerprint: msg.substring(0, 80) })
   }
 })
 // PATCH /api/agent_specs/{id}  body 字段同 POST, 只更新 body 里出现的字段
@@ -284,6 +285,7 @@ routerAdd("PATCH", "/api/agent_specs/{id}", function (e) {
       if ("spec" in body) rec.set("spec", body.spec)
       if ("source" in body) rec.set("source", body.source === undefined || body.source === null ? "" : String(body.source))
       if ("template_key" in body) rec.set("template_key", body.template_key === undefined || body.template_key === null ? "" : String(body.template_key))
+      require(__hooks+"/modules/authoring_requirements.js").guard(tx,rec,previous)
       var current = helper.decode(rec)
       var changed = "spec" in body && helper.digest(current) !== oldHash
       var optimizationOrigin=null
@@ -308,7 +310,7 @@ routerAdd("PATCH", "/api/agent_specs/{id}", function (e) {
         optimizationOrigin=fromId
         var tracked=[
           "goal","task_scope","deliverables","task_plan","done_criteria",
-          "tools","knowledge_base_ids","require_plan_review","require_approval","roles","capability_requirements"
+          "tools","knowledge_base_ids","require_plan_review","require_approval","roles","capability_requirements","research_capability_requirements","_studio_authoring"
         ]
         for(var ci=0;ci<tracked.length;ci++){
           var key=tracked[ci]

@@ -96,7 +96,7 @@ routerAdd("POST", "/api/internal/templates", function(e) {
       if(!previewSource || String(previewSource.get("rh_user_id")||"")!==uid)
         return e.json(404,{error:"spec_not_found"})
       var copiedSpec=require(__hooks + "/modules/internal_template_copy.js")
-        .fromRecord(previewSource)
+        .fromRecord(previewSource,$app,uid)
       return e.json(200,{
         ok:true,name:String(previewSource.getString("name")||"未命名 Agent").slice(0,120),
         preview_spec:copiedSpec,
@@ -112,7 +112,7 @@ routerAdd("POST", "/api/internal/templates", function(e) {
       if (!spec || String(spec.get("rh_user_id")||"")!==uid)
         return e.json(404,{error:"spec_not_found"})
       var sourceName=String(spec.getString("name")||"未命名 Agent").slice(0,120)
-      var copied=require(__hooks + "/modules/internal_template_copy.js").fromRecord(spec)
+      var copied=require(__hooks + "/modules/internal_template_copy.js").fromRecord(spec,$app,uid)
       var snapshot=JSON.stringify(copied)
       var digest=$security.sha256(snapshot)
       if(body.confirm_safe!==true || String(body.preview_hash||"")!==digest) {
@@ -183,7 +183,7 @@ routerAdd("POST", "/api/internal/templates", function(e) {
            (Array.isArray(safe.roles) && safe.roles.some(function(role){return (!role || !Array.isArray(role.tools) ||
              role.tools.length>0 || (Array.isArray(role.skill_refs) && role.skill_refs.length>0))})) ||
            (Array.isArray(safe.capability_requirements) &&
-             safe.capability_requirements.some(function(need){return (!need ||
+             safe.capability_requirements.some(function(need){if(typeof need==="string")return !/^[a-z][a-z0-9_]{0,79}$/.test(need);return (!need ||
                !Array.isArray(need.suggested_tool_ids) || need.suggested_tool_ids.length>0)}))) {
           throw new Error("share_code_unavailable")
         }

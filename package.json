@@ -56,7 +56,7 @@
     "go-live:preflight": "node ops/standalone-preflight.mjs",
     "go-live:legacy-preflight": "node ops/internal-readiness.mjs",
     "go-live:gateway": "node ops/verify-gateway.mjs",
-    "test:e2e": "pnpm test:integration && pnpm test:worker && pnpm test:worker-crash && pnpm test:model-provider && pnpm test:tool-executor && pnpm test:tool-debug && pnpm test:internal-overview && pnpm test:internal-templates && pnpm test:gateway-boundary && pnpm test:concurrency && pnpm test:agent-effects && pnpm test:schedules && pnpm test:knowledge && pnpm test:semantic && pnpm test:migrations && pnpm test:standalone && pnpm test:company && pnpm test:team-knowledge && pnpm test:agent-collaboration && pnpm test:smithery-integration && pnpm test:v19-integration && pnpm test:agent-role-stages && pnpm test:local-executor && pnpm test:office-flow && pnpm test:skill-role && pnpm test:task-planning && pnpm test:browser-navigation && pnpm test:agent-review && pnpm test:agent-create-acceptance",
+    "test:e2e": "pnpm test:integration && pnpm test:worker && pnpm test:worker-crash && pnpm test:model-provider && pnpm test:tool-executor && pnpm test:tool-debug && pnpm test:internal-overview && pnpm test:internal-templates && pnpm test:gateway-boundary && pnpm test:concurrency && pnpm test:agent-effects && pnpm test:schedules && pnpm test:knowledge && pnpm test:semantic && pnpm test:migrations && pnpm test:standalone && pnpm test:company && pnpm test:team-knowledge && pnpm test:agent-collaboration && pnpm test:smithery-integration && pnpm test:v19-integration && pnpm test:agent-role-stages && pnpm test:local-executor && pnpm test:office-flow && pnpm test:skill-role && pnpm test:task-planning && pnpm test:browser-navigation && pnpm test:agent-review && pnpm test:agent-create-acceptance && pnpm test:research-core && pnpm test:research-vertical && pnpm test:application-feedback",
     "test:e2e:parallel": "node ops/e2e-parallel.mjs",
     "test:e2e:fast": "node ops/e2e-parallel.mjs",
     "worker": "node worker/run.mjs",
@@ -89,7 +89,11 @@
     "test:skill-role": "node tests/skill-role.integration.mjs",
     "test:applications-native": "node tests/local-applications.windows.mjs",
     "test:agent-review": "node tests/agent-review.chrome.mjs",
-    "test:agent-create-acceptance": "node tests/agent-creation-acceptance.chrome.mjs"
+    "test:agent-create-acceptance": "node tests/agent-creation-acceptance.chrome.mjs",
+    "test:research-core": "node tests/tool-results.integration.mjs && node tests/research-workflow.integration.mjs && node tests/research-reports.integration.mjs && node tests/research-monitors.integration.mjs && node tests/authoring-requirements.integration.mjs",
+    "test:research-vertical": "node tests/research-vertical.integration.mjs",
+    "test:research-ui": "node tests/authoring-requirements.integration.mjs --browser && node tests/tool-results.integration.mjs --browser && node tests/research-workflow.integration.mjs --browser",
+    "test:application-feedback": "node tests/application-feedback.chrome.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -145,7 +149,9 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "vaul": "^1.1.2",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@pdf-lib/fontkit": "1.1.1",
+    "pdf-lib": "1.17.1"
   },
   "devDependencies": {
     "@babel/parser": "^7.29.7",

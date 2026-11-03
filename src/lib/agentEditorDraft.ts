@@ -34,6 +34,11 @@ const texts = (value: unknown, maxItems = 40, maxChars = 1600): string[] =>
 export function sanitizeAgentDraftSpec(input: unknown): AgentSpec | null {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null
   const raw = input as Record<string, unknown>
+  if(raw._studio_authoring!==undefined){
+    const source=raw._studio_authoring as {request_id?:unknown}
+    if(!source||typeof source!=='object'||Array.isArray(source)||Object.keys(source).length!==1||typeof source.request_id!=='string'||!/^[A-Za-z0-9]{20}$/.test(source.request_id))return null
+  }
+  if(raw.research_capability_requirements!==undefined&&(!Array.isArray(raw.research_capability_requirements)||raw.research_capability_requirements.length>30||raw.research_capability_requirements.some(id=>typeof id!=='string'||id.length>100)))return null
   const result: AgentSpec = {
     goal: text(raw.goal, 6000),
     task_scope: text(raw.task_scope, 6000),
@@ -45,6 +50,8 @@ export function sanitizeAgentDraftSpec(input: unknown): AgentSpec | null {
     require_approval: raw.require_approval === true,
     require_plan_review: raw.require_plan_review === true,
     roles: sanitizeAgentRoles(raw.roles),
+    ...(raw._studio_authoring?{_studio_authoring:raw._studio_authoring as {request_id:string}}:{}),
+    ...(raw.research_capability_requirements?{research_capability_requirements:[...(raw.research_capability_requirements as string[])]}:{}),
     ...(Array.isArray(raw.capability_requirements)
       ? {capability_requirements: normalizeCapabilityRequirements(raw.capability_requirements)} : {}),
   }

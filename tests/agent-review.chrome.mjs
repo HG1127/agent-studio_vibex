@@ -125,6 +125,9 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
   let userToken=""
   try{
     mock=createServer(async(req,res)=>{
+    // Catalog verification uses only this deterministic local fixture.
+    if(req.method==='GET'&&req.url?.includes('/models')){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({data:[{id:"review-ui-model"}]}));return}
+
       let raw=""
       for await(const part of req)raw+=part.toString()
       const input=JSON.parse(raw||"{}")
@@ -251,6 +254,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
       base_url:"http://127.0.0.1:"+modelPort+"/v1",
       api_key:"review-test-only",models:["review-ui-model"],
     })
+    await api('POST','/api/model-connections/test',{connection_id:connection.item.id})
     const spec=await api("POST","/api/agent_specs",{
       name:"需求落地方案助手",
       spec:{goal:"生成草案，先人工确认，再给出落地计划",
@@ -687,8 +691,9 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
         await wait('document.querySelector("#agent-requirement")!==null','negative-scope requirement editor')
         await evaluate('document.querySelector("#agent-requirement").focus()')
         await cmd('Input.insertText',{text:'V30_DENY_RESOURCES：禁止使用 doc_search，也不要联网；只对我提供的文字做文本摘要。'})
-        await wait('[...document.querySelectorAll("button")].some(b=>b.textContent?.includes("生成 Agent 方案")&&!b.disabled)','verified model available for negative-scope generation')
-        await clickText('生成 Agent 方案');await wait('document.body.innerText.includes("已生成可编辑方案")','model-proposed conflicting resource plan')
+        await clickText('预览要求与能力依赖')
+        await wait('[...document.querySelectorAll("button")].some(b=>b.textContent?.includes("确认要求并生成方案")&&!b.disabled)','saved requirements and verified model available for negative-scope generation')
+        await clickText('确认要求并生成方案');await wait('document.body.innerText.includes("已生成可编辑方案")','model-proposed conflicting resource plan')
         await clickText('进入方案编辑');await wait('document.querySelector("input[aria-label=助手名称]")?.value==="禁止资源冲突验收"','conflicting draft rendered')
         await clickText('保存并继续：连接资源');await wait('new URLSearchParams(location.search).get("step")==="3"','negative-scope plan saved and resources opened')
         const rows=await api('GET','/api/agent_specs?perPage=100'),denied=rows.items.find(row=>row.name==='禁止资源冲突验收')
@@ -731,8 +736,9 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
       await cmd("Input.insertText",{text:requirement})
       await wait('document.querySelector("#agent-requirement")?.value.includes("V17_CREATE_JOURNEY")',
         "real user requirement typed")
-      await wait('[...document.querySelectorAll("button")].some(b=>b.textContent?.includes("生成 Agent 方案")&&!b.disabled)','model verified before generating the positive plan')
-      await clickText("生成 Agent 方案")
+      await clickText('预览要求与能力依赖')
+      await wait('[...document.querySelectorAll("button")].some(b=>b.textContent?.includes("确认要求并生成方案")&&!b.disabled)','saved requirements and verified model before generating the positive plan')
+      await clickText('确认要求并生成方案')
       await wait('document.body.innerText.includes("已生成可编辑方案")',
         "actual /api/llm/chat auto-generated AgentSpec")
       assert.ok(v17PlanCalls>=1,"Generate button failed to invoke isolated model backend")
@@ -1548,6 +1554,10 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
     await wait('location.pathname==="/agent-run" && !!document.querySelector("button[aria-label=\\\"随时调整 Agent 方案\\\"]")',
       "mobile run workspace ready")
     await clickText("调整 Agent 方案")
+    // Earlier CAS tests intentionally leave a stale draft. This independent
+    // layout check opens the formal version through the actual explicit choice.
+    await wait('document.querySelector("[role=dialog] textarea")!==null || document.body.innerText.includes("舍弃草稿并打开正式版本")','mobile editor or recovery choice')
+    if(await evaluate('document.body.innerText.includes("舍弃草稿并打开正式版本")'))await clickText('舍弃草稿并打开正式版本')
     await wait('document.querySelector("[role=dialog] textarea")!==null',"mobile quick editor opens")
     const mobileDialog=await evaluate(`(()=>{
       const el=document.querySelector('[role=dialog]')

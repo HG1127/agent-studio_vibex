@@ -20,6 +20,7 @@ let calls=0,logs='',server
 // Large JSON makes a write to the deliberately closed socket observable.
 const answer=JSON.stringify({name:'断线恢复测试',goal:'仅使用合成内容验证结果恢复',detail:'合成测试内容'.repeat(7000)})
 const provider=http.createServer(async(req,res)=>{
+  if(req.method==='GET'&&req.url==='/v1/models'){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({data:[{id:'fixture-model'}]}));return}
   for await(const _chunk of req) { /* drain synthetic prompt */ }
   calls++;received();await providerRelease
   res.writeHead(200,{'Content-Type':'application/json'})
@@ -57,6 +58,8 @@ try {
   const conn=await post('/api/model-connections',{name:'本地模拟模型',provider:'openai',
     base_url:'http://127.0.0.1:'+provider.address().port+'/v1',api_key:'synthetic-test-only',models:['fixture-model']},token)
   assert.equal(conn.status,200)
+  const verified=await post('/api/model-connections/test',{connection_id:conn.data.item.id},token)
+  assert.equal(verified.status,200);assert.equal(verified.data.ok,true)
   const payload={request_id:'disconnect-'+randomBytes(16).toString('hex'),connection_id:conn.data.item.id,
     model:'fixture-model',strict_model:true,page:'home',max_tokens:6500,messages:[{role:'user',content:'synthetic disconnect test'}]}
   const disconnected=http.request(origin+'/api/llm/chat',{method:'POST',headers:{'Content-Type':'application/json',Authorization:token}})

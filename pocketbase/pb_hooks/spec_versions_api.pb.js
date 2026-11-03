@@ -374,6 +374,13 @@ routerAdd("POST", "/api/spec-versions/{id}/publish", function (e) {
       })
     }
     var specId = String(verRec.get("spec_id") || "")
+    var releaseSpec=JSON.parse(verRec.getString("spec_snapshot")||"{}")
+    var releasePlan=require(__hooks+"/modules/capability_plan.js").compile($app,uid,releaseSpec)
+    if(!releasePlan.ready_for_release)return e.json(409,{
+      error:"capability_dependencies_unready",
+      message:"能力依赖尚未具备，请先处理待配置或需开发项目；当前版本仍保留为草稿。",
+      capability_plan:releasePlan,
+    })
     // 同 spec 下原 published 一律归档
     var archivedIds = []
     try {

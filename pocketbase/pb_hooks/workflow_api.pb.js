@@ -714,6 +714,12 @@ routerAdd("POST", "/api/workflow-runs/start", function (e) {
     if (!runtimeDeadline.ok)
       return e.json(400, { error: runtimeDeadline.error, message: "任务最长运行时间需为 1-1440 分钟，或留空禁用" })
 
+    var researchProfile=null
+    if(body.research!==undefined){
+      if(!require(__hooks+"/modules/studio_auth_helpers.js").currentUser(e))return e.json(403,{error:"research_profile_requires_employee"})
+      try{researchProfile=require(__hooks+"/modules/research_workflow.js").validate($app,uid,{nodes:nodes,edges:edges},body.research)}
+      catch(researchError){return e.json(researchError.httpStatus||400,{error:researchError.code||"invalid_research_profile"})}
+    }
     var col = $app.findCollectionByNameOrId("workflow_runs")
     var rec = new Record(col)
     rec.set("rh_user_id", uid)
@@ -722,7 +728,7 @@ routerAdd("POST", "/api/workflow-runs/start", function (e) {
     rec.set("workflow_name", String(wf.getString("name") || "未命名工作流"))
     rec.set("instruction", instruction.slice(0, 2000))
     rec.set("status", "running")
-    rec.set("graph_snapshot", { nodes: nodes, edges: edges })
+    rec.set("graph_snapshot", researchProfile?{nodes:nodes,edges:edges,research:researchProfile}:{nodes:nodes,edges:edges})
     rec.set("checkpoint", {
       queue: [startId], statuses: {}, outputs: {}, seq: 1, claim_until: 0, done_count: 0,
       execution_deadline_ms: runtimeDeadline.deadline_ms,
@@ -760,6 +766,10 @@ routerAdd("POST", "/api/workflow-runs/{id}/cancel", function (e) {
     var uid = String(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || ($os.getenv("AGENT_STUDIO_ALLOW_ANON") === "true" ? "local-anon" : "")).trim()
     if (!uid) return e.json(401, { error: "rh_login_required", message: "请先登录 RunningHub" })
     var id = String(e.request.pathValue("id") || "")
+    var researchRun=null
+    try{researchRun=$app.findRecordById("workflow_runs",id)}catch(_){}
+    if(researchRun&&researchRun.getString("rh_user_id")===uid&&JSON.parse(researchRun.getString("graph_snapshot")||"{}").research)
+      return e.json(200,require(__hooks+"/modules/research_workflow.js").control($app,uid,id,"cancel"))
     var outcome = { code: 200, status: "", pending: false, seq: 0, message: "" }
     // A cancel request is serialized against worker admission and checkpoint
     // saves; never revoke a lease that still owns an in-flight remote action.
@@ -831,7 +841,7 @@ routerAdd("POST", "/api/workflow-runs/{id}/cancel", function (e) {
   } catch (err) {
     var msg = String((err && err.message) || err)
     try { $app.logger().error("workflow run cancel error", "err", msg) } catch (_) {}
-    return e.json(500, { error: "internal", message: msg, fingerprint: msg.slice(0, 80) })
+    return e.json(err.httpStatus||500, { error: err.code||"internal", message: msg, fingerprint: msg.slice(0, 80) })
   }
 })
 
@@ -946,6 +956,10 @@ routerAdd("GET", "/api/workflow-runs/{id}/detail", function (e) {
       }
       return {}
     }
+    if(loadJson(run,"graph_snapshot").research){
+      try{require(__hooks+"/modules/research_workflow.js").assertSources($app,uid,id)}
+      catch(_){return e.json(403,{error:"research_source_access_denied"})}
+    }
     var evRows = []
     try {
       evRows = $app.findRecordsByFilter("workflow_events", "run_id = {:rid}", "seq,created", 500, 0, { rid: id })
@@ -967,6 +981,7 @@ routerAdd("GET", "/api/workflow-runs/{id}/detail", function (e) {
         id: String(run.id),
         workflow_id: String(run.getString("workflow_id") || ""),
         workflow_name: String(run.getString("workflow_name") || ""),
+        research: Boolean(loadJson(run,"graph_snapshot").research),
         instruction: String(run.getString("instruction") || ""),
         status: String(run.getString("status") || ""),
         result: String(run.getString("result") || ""),
@@ -1005,16 +1020,18 @@ routerAdd("GET", "/api/workflow-runs/recent", function (e) {
     var rows = $app.findRecordsByFilter("workflow_runs", filter, "-created", limit, 0, params)
     var items = []
     for (var i = 0; i < rows.length; i++) {
+      var researchBlocked=false
+      try{if(JSON.parse(rows[i].getString("graph_snapshot")||"{}").research)require(__hooks+"/modules/research_workflow.js").assertSources($app,uid,String(rows[i].id))}catch(_){researchBlocked=true}
       items.push({
         id: String(rows[i].id),
         workflow_id: String(rows[i].getString("workflow_id") || ""),
         workflow_name: String(rows[i].getString("workflow_name") || ""),
-        instruction: String(rows[i].getString("instruction") || "").slice(0, 120),
+        instruction: researchBlocked?"":String(rows[i].getString("instruction") || "").slice(0, 120),
         status: String(rows[i].getString("status") || ""),
         done_nodes: Number(rows[i].getInt("done_nodes") || 0),
         total_nodes: Number(rows[i].getInt("total_nodes") || 0),
-        result: String(rows[i].getString("result") || "").slice(0, 200),
-        error: String(rows[i].getString("error") || "").slice(0, 200),
+        result: researchBlocked?"":String(rows[i].getString("result") || "").slice(0, 200),
+        error: researchBlocked?"research_source_access_denied":String(rows[i].getString("error") || "").slice(0, 200),
         created: String(rows[i].getString("created") || ""),
       })
     }
@@ -1149,6 +1166,15 @@ routerAdd("POST", "/api/llm/workflow-engine/{id}/tick", function (e) {
       if (String(wRun.get("status")) !== "running") throw new Error("run_not_running")
       var cp = loadJson(wRun, "checkpoint")
       var graph = loadJson(wRun, "graph_snapshot")
+      if(graph.research){
+        var researchEngine=require(__hooks+"/modules/research_workflow.js")
+        try{return e.json(200,researchEngine.advance($app,uid,id))}
+        catch(researchError){
+          var researchLatest=$app.findRecordById("workflow_runs",id)
+          if(researchLatest.getString("status")==="running")researchEngine.control($app,uid,id,"fail",String(researchError.code||researchError.message||"research_stage_failed").slice(0,200))
+          return e.json(200,{ok:true,run_id:id,status:$app.findRecordById("workflow_runs",id).getString("status"),stepped:false,error:String(researchError.code||"research_stage_failed")})
+        }
+      }
       var nodes = (graph && graph.nodes) || []
       var edges = (graph && graph.edges) || []
       var instruction = String(wRun.getString("instruction") || "")

@@ -2,6 +2,8 @@ import { Loader2, Sparkles } from "lucide-react"
 import {useId} from 'react'
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import {AuthoringPlanSummary} from './AuthoringRequirements'
+import type {AuthoringPreview} from '@/lib/authoringRequirements'
 
 type CreateComposerProps = {
   userInput: string
@@ -11,10 +13,11 @@ type CreateComposerProps = {
   /** The wizard makes requirement capture the primary desktop task. */
   variant?: "default" | "focus"
   blockedReason?:string
+  authoringPreview?:AuthoringPreview|null
 }
 
 export function CreateComposer({
-  userInput, onUserInputChange, onCreate, isGenerating, variant = "default",blockedReason='',
+  userInput, onUserInputChange, onCreate, isGenerating, variant = "default",blockedReason='',authoringPreview=null,
 }: CreateComposerProps) {
   const focused = variant === "focus"
   const guardId=useId()
@@ -43,6 +46,7 @@ export function CreateComposer({
           : "例如：帮我创建一个能查资料写报告的助手，每周五自动整理行业新闻给我"}
         className={`mt-4 w-full flex-1 resize-y rounded-xl border border-border bg-background px-4 py-4 text-base leading-7 shadow-none placeholder:text-muted-foreground/65 focus-visible:ring-2 focus-visible:ring-primary ${focused ? "min-h-48" : "min-h-28"}`}
       />
+      {authoringPreview&&<section aria-label="生成前需求预览" className="mt-3 rounded border p-3"><p className="text-sm font-medium">请核对原始要求和能力缺口，再生成可编辑草案。</p><AuthoringPlanSummary plan={authoringPreview.plan}/></section>}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
         <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
           生成会调用当前账号的模型，可能产生费用；不会自动保存或发布。
@@ -58,12 +62,12 @@ export function CreateComposer({
           {isGenerating ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              正在生成方案…
+              {authoringPreview?'正在生成方案…':'正在核对需求…'}
             </>
           ) : (
             <>
               <Sparkles className="mr-2 h-4 w-4" />
-              生成 Agent 方案
+              {authoringPreview?'确认要求并生成方案':'预览要求与能力依赖'}
             </>
           )}
         </Button>

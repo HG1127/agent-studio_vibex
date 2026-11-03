@@ -10,6 +10,7 @@ import { WorkflowDiagnosticsPanel } from "./WorkflowDiagnosticsPanel"
 import { WorkflowNodePreviewPanel } from "./WorkflowNodePreviewPanel"
 import { RunTraceCard } from "@/components/run-detail/RunTraceCard"
 import { FailureTriageCard } from "@/components/run-detail/FailureTriageCard"
+import {ResearchStagesPanel} from './ResearchStagesPanel'
 
 type WcColumnProps = { p: ReturnType<typeof useWorkflowCanvas> }
 
@@ -131,6 +132,7 @@ export function WcRightColumn({ p, nodeTitles }: WcColumnProps & { nodeTitles: s
         <FailureTriageCard status={p.activeRun.status} checkpoint={p.activeRun.checkpoint} />
       )}
       {p.activeRun && <RunTraceCard runId={p.activeRun.id} kind="workflow" />}
+      {p.activeRun?.research&&<ResearchStagesPanel runId={p.activeRun.id} updated={p.activeRun.updated} onChanged={()=>void p.handleViewRun(p.activeRunId)} onOpen={id=>void p.handleViewRun(id)}/>}
       <div className="mt-auto">
         <RecentRunsList
           recentRuns={p.recentRuns}

@@ -115,7 +115,7 @@ routerAdd("GET", "/api/run_events", function (e) {
       : $app.findRecordsByFilter("run_events", "", sort, perPage, (page - 1) * perPage)
     var items = []
     for (var i = 0; i < records.length; i++) {
-      items.push(records[i].publicExport())
+      items.push(require(__hooks+"/modules/tool_results.js").projectEvent($app,uid,records[i].publicExport()))
     }
     return e.json(200, { items: items, page: page, perPage: perPage, totalItems: items.length })
   } catch (err) {
@@ -139,7 +139,7 @@ routerAdd("GET", "/api/run_events/{id}", function (e) {
     var _parent = null
     try { _parent = $app.findRecordById("agent_runs", String(rec.get("run_id") || "")) } catch (_) {}
     if (!_parent || String(_parent.get("rh_user_id") || "") !== uid) return e.json(404, { error: "not_found" })
-    return e.json(200, rec.publicExport())
+    return e.json(200, require(__hooks+"/modules/tool_results.js").projectEvent($app,uid,rec.publicExport()))
   } catch (err) {
     var msg = String(err && err.message || err)
     return e.json(500, { error: "get_failed", message: msg, fingerprint: msg.substring(0, 80) })

@@ -10,6 +10,7 @@ import {
 import { WcLeftColumn, WcRightColumn } from "@/components/workflow-canvas/WcSideColumns"
 import { WcLoginGate } from "@/components/workflow-canvas/WcLoginGate"
 import { SiteShell } from "@/components/site/SiteShell"
+import {ResearchRunOptions} from '@/components/workflow-canvas/ResearchRunOptions'
 import type { useWorkflowCanvas } from "./useWorkflowCanvas"
 
 export function WorkflowCanvasPage(p: ReturnType<typeof useWorkflowCanvas>) {
@@ -161,6 +162,7 @@ export function WorkflowCanvasPage(p: ReturnType<typeof useWorkflowCanvas>) {
               <div className="h-full w-full overflow-hidden rounded-xl border border-border bg-card">
                 <FlowCanvas
                   flowNodes={p.flowNodes}
+                  researchMode={p.activeRun?.research}
                   flowEdges={p.flowEdges}
                   onNodesChange={p.onNodesChange}
                   onEdgesChange={p.onEdgesChange}
@@ -228,7 +230,7 @@ export function WorkflowCanvasPage(p: ReturnType<typeof useWorkflowCanvas>) {
         setRunInstruction={p.setRunInstruction}
         handleRunSubmit={p.handleRunSubmit}
         isStarting={p.isStarting}
-      />
+      ><ResearchRunOptions nodes={p.flowNodes} models={p.customModels} value={p.researchLaunch} onChange={p.setResearchLaunch}/></RunInstructionDialog>
       <DeleteConfirmDialog
         deleteTarget={p.deleteTarget}
         cancelDelete={p.cancelDelete}

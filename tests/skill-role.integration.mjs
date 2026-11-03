@@ -31,6 +31,9 @@ test("Skill text import, owner review, role-only injection, immutable run and no
   const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),"agentstudio-skills-"))
   const modelPrompts=[]
   const model=createServer(async(req,res)=>{
+    // Catalog verification uses only this deterministic local fixture.
+    if(req.method==='GET'&&req.url?.includes('/models')){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({data:[{id:"mock-skill-role"}]}));return}
+
     // Decode UTF-8 after collecting network chunks; decoding each Buffer
     // individually corrupts multibyte Chinese at TCP chunk boundaries.
     const wireChunks=[]
@@ -155,6 +158,7 @@ test("Skill text import, owner review, role-only injection, immutable run and no
       name:"Skill model fixture",provider:"openai",base_url:modelBase,api_key:"synthetic-only",
       models:["mock-skill-role"]
     })
+    await ok('POST','/api/model-connections/test',{connection_id:modelConnection.item.id})
     const roles=[
       {id:"researcher",name:"第一性原理研究员",responsibility:"分析基本约束",tasks:["拆解假设"],
         inputs:["用户任务"],deliverables:["假设清单"],depends_on:[],tools:[],

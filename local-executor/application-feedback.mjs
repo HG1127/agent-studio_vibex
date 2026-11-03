@@ -1,0 +1,46 @@
+// Shared by the connector and employee UI. Never expose native error stacks,
+// executable paths or untrusted application text as a diagnostic message.
+export const APPLICATION_FAILURE_MESSAGES=Object.freeze({
+ application_launcher_needs_review:'此应用使用版本启动器。请打开“管理应用授权”，重新保存一次已勾选应用，以核对启动入口及实际窗口程序，再恢复连接。',
+ application_launch_failed:'应用启动失败或进程异常退出，未发现已授权应用的可用窗口。请检查应用是否可以手动打开；未自动重复启动。',
+ application_launch_denied:'Windows 拒绝启动此应用。请检查当前账号的应用访问权限及系统提示；未自动提权或重复启动。',
+ application_binary_missing:'已授权的应用文件已移动、卸载或更新。请打开“管理应用授权”，重新选择并保存当前安装的应用，再恢复连接。',
+ application_binary_unreadable:'暂时无法核验已授权应用文件。请检查安装目录的读取权限，再通过“管理应用授权”核对应用；未启动未核验的程序。',
+ application_path_denied:'应用启动路径无法通过安全核验。请在“管理应用授权”重新选择真实安装的应用。',
+ application_denied:'此应用不在当前电脑的授权范围内。请在“管理应用授权”核对选择并保存，再恢复连接。',
+ application_native_timeout:'读取应用窗口或控件超时。请检查应用是否卡住或有启动弹窗，再刷新应用窗口；未自动重复启动。',
+ application_native_unavailable:'本机应用窗口接口暂不可用。请检查桌面会话、应用运行权限和本机连接状态，再刷新应用窗口。',
+ application_binary_changed:'应用版本已变化，已阻止使用旧授权启动。请暂停连接，在“管理应用授权”重新保存当前应用，再恢复连接。',
+ application_action_declined:'本人未批准此应用操作，未执行，不会自动重试。',
+ application_observation_expired:'应用观察已过期，请重新观察窗口后再操作。',
+ application_window_changed:'目标应用窗口发生变化，已停止操作。请刷新应用窗口后重新观察。',
+ application_element_changed:'目标控件发生变化，已停止操作，请重新观察。',
+ application_user_takeover:'检测到键鼠活动，已停止应用操作，请核对实际结果。',
+ application_foreground_unavailable:'无法激活目标窗口，请检查是否有系统弹窗或更高权限窗口。',
+ application_sensitive_control:'不能操作密码、凭证或终端控件。',
+ application_task_denied:'任务的应用、工作目录或写入权限未授权。',
+ application_task_busy:'已有任务运行或任务数达到上限，请先停止或恢复连接。',
+ application_task_not_found:'未找到此连接启动的任务。连接重启后不会自动重交旧任务。',
+ application_capture_failed:'当前应用不支持窗口截图，可关闭截图授权后使用控件观察。',
+ application_windows_required:'此能力需要 Windows 桌面系统。',
+})
+
+export function applicationFailure(job){
+ const result=typeof job?.result==='string'?job.result.slice(0,4000):''
+ const error=typeof job?.error==='string'?job.error:''
+ let code=''
+ for(const value of [result,error]){
+  const candidate=value.trim().match(/^application_[a-z_]+$/)?.[0]||value.match(/\[code:(application_[a-z_]+)\]\s*$/)?.[1]
+  if(candidate&&Object.hasOwn(APPLICATION_FAILURE_MESSAGES,candidate)){code=candidate;break}
+ }
+ const states={
+  unknown:'本次操作的最终结果尚未确认，应用可能已经启动。请先刷新应用窗口并核对实际状态，避免重复启动或重复操作。',
+  expired:'本次操作已超时，请先刷新应用窗口核对是否已经启动，再决定下一步。',
+  cancelled:'已停止等待本次操作。已经发生的应用操作不会撤销，请先核对实际窗口。',
+ }
+ const message=Object.hasOwn(states,job?.status)?states[job.status]:code?APPLICATION_FAILURE_MESSAGES[code]:
+  '应用操作未完成，连接器未返回可识别的失败原因。请先刷新应用窗口核对实际状态，再检查本机连接并查看本次操作回执。'
+ const status=['failed','unknown','expired','cancelled'].includes(job?.status)?job.status:'unverified'
+ const id=typeof job?.id==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(job.id)?job.id:''
+ return {message,code,receipt:[message,'状态：'+status,code?'原因代码：'+code:'连接器诊断：未提供可识别的原因',id?'操作编号：'+id:''].filter(Boolean).join('\n')}
+}

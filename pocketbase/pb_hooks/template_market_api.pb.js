@@ -137,7 +137,7 @@ routerAdd("GET", "/api/templates/market", function (e) {
         return out
       }
       var allowed = {
-        calculate: "calculate", summarize: "summarize",
+        calculate: "calculate", summarize: "summarize", business_record_write:"business_record_write", business_material_read:"business_material_read", business_job_submit:"business_job_submit", business_report_render:"business_report_render",
         knowledge_search: "knowledge_search", web_search: "web_search",
         web_fetch: "web_fetch",
         "计算器": "calculate", "数学计算": "calculate", "统计计算": "calculate",
@@ -167,6 +167,8 @@ routerAdd("GET", "/api/templates/market", function (e) {
         quality_checks: [],
         require_approval: true,
         require_plan_review: input.require_plan_review === true,
+        ...(input.research_capability_requirements!==undefined?{research_capability_requirements:Array.isArray(input.research_capability_requirements)?input.research_capability_requirements.slice():["invalid_requirements"]}:{}),
+        capability_requirements:Array.isArray(input.capability_requirements)&&input.capability_requirements.length<=30&&input.capability_requirements.every(function(id){return typeof id==="string"&&id.length<=100})?input.capability_requirements.slice():input.capability_requirements===undefined?[]:["invalid_requirements"],
       }
     }
 
@@ -323,6 +325,11 @@ routerAdd("POST", "/api/templates/publish", function (e) {
     if (!specObj || typeof specObj !== "object") {
       return e.json(400, { error: "bad_request", message: "方案配置为空或已损坏，无法发布" })
     }
+    var templateSourceSpec=specObj
+    var templateCapabilities=require(__hooks+"/modules/capability_plan.js").compile($app,uid,specObj)
+    require(__hooks+"/modules/capability_plan.js").assignRequirements(specObj,templateCapabilities.requirements.map(function(item){return item.id}),templateSourceSpec)
+    if(templateCapabilities.requirements.some(function(item){return item.state==="development_required"}))
+      return e.json(409,{error:"capability_dependencies_unready",message:"方案要求的部分能力尚需开发，请保留草稿并查看能力依赖。",capability_plan:templateCapabilities})
     // Public templates are descriptive plans, never portable grants or credentials.
     // Keep known builtin capabilities only; recipient must attach their own resources.
     var safeTemplateSpec = function (raw) {
@@ -339,7 +346,7 @@ routerAdd("POST", "/api/templates/publish", function (e) {
         return out
       }
       var allowed = {
-        calculate: "calculate", summarize: "summarize",
+        calculate: "calculate", summarize: "summarize", business_record_write:"business_record_write", business_material_read:"business_material_read", business_job_submit:"business_job_submit", business_report_render:"business_report_render",
         knowledge_search: "knowledge_search", web_search: "web_search",
         web_fetch: "web_fetch",
         "计算器": "calculate", "数学计算": "calculate", "统计计算": "calculate",
@@ -369,10 +376,12 @@ routerAdd("POST", "/api/templates/publish", function (e) {
         quality_checks: [],
         require_approval: true,
         require_plan_review: input.require_plan_review === true,
+        ...(input.research_capability_requirements!==undefined?{research_capability_requirements:Array.isArray(input.research_capability_requirements)?input.research_capability_requirements.slice():["invalid_requirements"]}:{}),
       }
     }
 
     specObj = safeTemplateSpec(specObj)
+    require(__hooks+"/modules/capability_plan.js").assignRequirements(specObj,templateCapabilities.requirements.map(function(item){return item.id}),templateSourceSpec)
     if (!tplName) tplName = String(specRec.getString("name") || "").trim().slice(0, 120)
     if (!tplName) return e.json(400, { error: "bad_request", message: "模板名称必填" })
 
@@ -470,7 +479,7 @@ routerAdd("POST", "/api/templates/{id}/use", function (e) {
         return out
       }
       var allowed = {
-        calculate: "calculate", summarize: "summarize",
+        calculate: "calculate", summarize: "summarize", business_record_write:"business_record_write", business_material_read:"business_material_read", business_job_submit:"business_job_submit", business_report_render:"business_report_render",
         knowledge_search: "knowledge_search", web_search: "web_search",
         web_fetch: "web_fetch",
         "计算器": "calculate", "数学计算": "calculate", "统计计算": "calculate",
@@ -500,10 +509,13 @@ routerAdd("POST", "/api/templates/{id}/use", function (e) {
         quality_checks: [],
         require_approval: true,
         require_plan_review: input.require_plan_review === true,
+        ...(input.research_capability_requirements!==undefined?{research_capability_requirements:Array.isArray(input.research_capability_requirements)?input.research_capability_requirements.slice():["invalid_requirements"]}:{}),
       }
     }
 
+    var portableRequirements=Array.isArray(specObj.capability_requirements)&&specObj.capability_requirements.length<=30&&specObj.capability_requirements.every(function(id){return typeof id==="string"&&id.length<=100})?specObj.capability_requirements.slice():specObj.capability_requirements===undefined?[]:["invalid_requirements"]
     specObj = safeTemplateSpec(specObj)
+    specObj.capability_requirements=portableRequirements
     // 复制到调用者名下 agent_specs
     var tplName = String(tplRec.getString("name") || "助手方案").trim().slice(0, 100)
     var specCol = $app.findCollectionByNameOrId("agent_specs")

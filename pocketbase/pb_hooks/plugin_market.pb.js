@@ -324,7 +324,7 @@ routerAdd("POST", "/api/market/probe", function (e) {
           }
           hint = bits.join("、")
         }
-        out.push({ name: nm, description: String(t.description || "").slice(0, 400), args_hint: hint.slice(0, 300), input_schema: schema })
+        out.push({ name: nm, description: String(t.description || "").slice(0, 400), args_hint: hint.slice(0, 300), input_schema: schema, output_schema: t.outputSchema === undefined ? null : t.outputSchema })
       }
       return out
     }
@@ -521,7 +521,7 @@ routerAdd("POST", "/api/market/connect", function (e) {
           }
           hint = bits.join("、")
         }
-        out.push({ name: nm, description: String(t.description || "").slice(0, 400), args_hint: hint.slice(0, 300), input_schema: schema })
+        out.push({ name: nm, description: String(t.description || "").slice(0, 400), args_hint: hint.slice(0, 300), input_schema: schema, output_schema: t.outputSchema === undefined ? null : t.outputSchema })
       }
       return out
     }
@@ -869,7 +869,7 @@ routerAdd("POST", "/api/market/reprobe", function (e) {
           }
           hint = bits.join("、")
         }
-        out.push({ name: nm, description: String(t.description || "").slice(0, 400), args_hint: hint.slice(0, 300), input_schema: schema })
+        out.push({ name: nm, description: String(t.description || "").slice(0, 400), args_hint: hint.slice(0, 300), input_schema: schema, output_schema: t.outputSchema === undefined ? null : t.outputSchema })
       }
       return out
     }

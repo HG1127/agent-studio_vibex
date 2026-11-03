@@ -25,6 +25,11 @@ const semanticVector=text=>{
  return /协作|核验|审批|制度规定|材料核对|知识库/.test(t)?[1,0.01,0]:[0,1,0.01]
 }
 const embeddingServer=createServer(async(req,res)=>{
+ if(req.method==="GET" && req.url==="/v1/models"){
+  res.writeHead(200,{"Content-Type":"application/json"})
+  res.end(JSON.stringify({data:[{id:"team-vector-model"},{id:"other-vector-model"}]}))
+  return
+ }
  let raw=""
  for await(const part of req)raw+=part.toString()
  if(req.url!=="/v1/embeddings"){res.writeHead(404).end();return}
@@ -171,6 +176,11 @@ try{
  // connection. A mock LLM is used; no real tokens or billable calls are made.
  let modelCalls=0,contextSawSharedText=false,toolQuestion="协作流程"
  modelServer=createServer(async(req,res)=>{
+  if(req.method==="GET" && req.url==="/v1/models"){
+   res.writeHead(200,{"Content-Type":"application/json"})
+   res.end(JSON.stringify({data:[{id:"team-chat-model"}]}))
+   return
+  }
   let raw=""
   for await(const chunk of req)raw+=chunk.toString()
   if(req.url!=="/v1/chat/completions"){res.writeHead(404).end();return}
@@ -193,6 +203,11 @@ try{
   base_url:"http://127.0.0.1:"+mockPort+"/v1",
   api_key:"owner-independent-test-key",models:["team-chat-model"],
  },viewer.token)
+ const chatProbe=await expect("POST","/api/model-connections/test",{
+  connection_id:conn.item.id,
+ },viewer.token)
+ assert.equal(chatProbe.ok,true)
+ assert.equal(chatProbe.verified_saved_connection,true)
  const agent=await expect("POST","/api/agent_specs",{
   name:"共享知识检索助手",
   spec:{goal:"根据授权来源撰写引用",task_scope:"只使用已授权资料",
@@ -230,6 +245,11 @@ try{
   base_url:"http://127.0.0.1:"+embeddingPort+"/v1",
   api_key:"owner-embedding-key",models:["team-vector-model"],
  },ownerToken)
+ const ownerProbe=await expect("POST","/api/model-connections/test",{
+  connection_id:ownerConnection.item.id,
+ },ownerToken)
+ assert.equal(ownerProbe.ok,true)
+ assert.equal(ownerProbe.verified_saved_connection,true)
  await expect("POST","/api/knowledge-bases/semantic/settings",{
   connection_id:ownerConnection.item.id,model_name:"team-vector-model",
  },ownerToken)
@@ -263,6 +283,11 @@ try{
   api_key:"viewer-embedding-key",
   models:["team-vector-model","other-vector-model"],
  },viewer.token)
+ const viewerProbe=await expect("POST","/api/model-connections/test",{
+  connection_id:viewerConnection.item.id,
+ },viewer.token)
+ assert.equal(viewerProbe.ok,true)
+ assert.equal(viewerProbe.verified_saved_connection,true)
  await expect("POST","/api/knowledge-bases/semantic/settings",{
   connection_id:viewerConnection.item.id,model_name:"other-vector-model",
  },viewer.token)

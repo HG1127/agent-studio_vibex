@@ -117,6 +117,9 @@ test("Actual Agent Studio owner-approved five-stage execution uses local Chromiu
       ],write_paths:["/submit"]}],
     })
     modelServer=createServer(async(req,res)=>{
+    // Catalog verification uses only this deterministic local fixture.
+    if(req.method==='GET'&&req.url?.includes('/models')){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({data:[{id:"local-real-executor-model"}]}));return}
+
       res.setHeader("Content-Type","application/json")
       let raw="";for await(const part of req)raw+=part.toString()
       const payload=JSON.parse(raw||"{}")
@@ -182,6 +185,7 @@ test("Actual Agent Studio owner-approved five-stage execution uses local Chromiu
     const model=await api("POST","/api/model-connections",{
       name:"Real-tools local test model",provider:"openai",base_url:modelOrigin+"/v1",
       api_key:"local-fixture-not-a-secret",models:["local-real-executor-model"]})
+    await api('POST','/api/model-connections/test',{connection_id:model.item.id})
     assert.ok(model.item?.id,"Saved model connection")
     const connection=await api("POST","/api/market/connect",{
       name:"local_pilot_execution",title:"Controlled real browser/PDF/Excel",

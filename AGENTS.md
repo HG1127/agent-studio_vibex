@@ -64,3 +64,9 @@ the project drive; do not remove unrelated user/system files.
   access control, backups, and long-running Worker validation.
 - Do not force push or rewrite an existing remote branch without authorization.
 - Do not claim a GitHub push succeeded until the remote acknowledges its ref.
+
+## 桌面更新交付方式 — 用户要求 2026-11-03
+
+- 后续桌面版本统一通过应用内“版本更新”交付。以签名更新源发布成功，并验证客户端检查、下载、校验和重启更新为交付完成标准；仅构建 EXE 或提供压缩包不等于更新已交付。
+- EXE 安装包仅用于首次安装、恢复或用户明确要求的离线安装。后端源码 ZIP 是运维材料，不作为员工更新入口；客户端更新与后端服务部署状态必须分别说明。
+- 沿用既有更新源、发布签名密钥和失败回滚机制。缺少发布配置或权限时明确指出缺项，不声称新版本已可在版本中心获取。该交付约定不额外授权业务服务部署、切库或 Git 远端上传。

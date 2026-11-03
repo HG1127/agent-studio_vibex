@@ -30,6 +30,7 @@ let vendorRequests=[]
 let logs=""
 let selectedMktSearchTool="",selectedMktWriteTool="",agentModelRequests=0
 const provider=createServer(async(req,res)=>{
+  if(req.method==='GET'&&req.url==='/v1/models'){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({data:[{id:'market-test-model'}]}));return}
   let body=""
   for await(const chunk of req)body+=String(chunk)
   let payload={}
@@ -275,6 +276,7 @@ try{
     name:"Mock market-capable model",provider:"openai",
     base_url:remote+"/v1",api_key:"test-model-secret",models:["market-test-model"],
   },token))
+  must(await api('POST','/api/model-connections/test',{connection_id:model.item.id},token))
   const modelId=model.item.id
   const specFor=async(tools,name)=>{
     const created=must(await api("POST","/api/agent_specs",{

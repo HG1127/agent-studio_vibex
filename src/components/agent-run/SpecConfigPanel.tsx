@@ -86,8 +86,6 @@ export function SpecConfigPanel({
   onStopConditionChange,
   stopOnComplete,
   onStopOnCompleteChange,
-  requireApproval,
-  onToggleRequireApproval,
   requirePlanReview,
   onTogglePlanReview,
   isLoggedIn,
@@ -452,22 +450,11 @@ export function SpecConfigPanel({
               本次试跑控制 HTTP 写操作审批；市场 MCP 插件始终逐次要求确认，管理员也可强制执行写操作审批。正式默认规则请在方案编辑器保存。
             </p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={requireApproval}
-            aria-label="写操作需我确认开关"
-            disabled={isLive || !isLoggedIn}
-            onClick={onToggleRequireApproval}
-            className={`relative h-6 w-11 shrink-0 rounded-full transition focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60 ${
-              requireApproval ? "bg-primary" : "bg-muted"
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full bg-card shadow transition-all ${
-                requireApproval ? "left-5" : "left-0.5"
-              }`}
-            />
+          <button type="button" role="switch" aria-checked={requirePlanReview}
+            aria-label="阶段方案先由我确认开关"
+            disabled={isLive || !isLoggedIn} onClick={onTogglePlanReview}
+            className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:opacity-50 ${requirePlanReview ? "bg-primary" : "bg-muted"}`}>
+            <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-card shadow ${requirePlanReview ? "left-5" : "left-0.5"}`} />
           </button>
         </div>
         </div>

@@ -1,3 +1,6 @@
+import {BusinessCaseBinding} from '@/components/agent-run/BusinessCaseBinding'
+import {ToolGrantPanel} from '@/components/agent-run/ToolGrantPanel'
+import {ExecutionBudgetStatus} from '@/components/agent-run/ExecutionBudgetPanel'
 import { useState } from "react"
 import { Link } from "react-router-dom"
 import { AlertCircle, ArrowRight, FileCheck2, LogIn, Rocket, SlidersHorizontal, X } from "lucide-react"
@@ -165,8 +168,14 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
                 onUnlink={p.handleUnlinkOptimization}
                 onRetry={p.retryOptimizationRecovery}
               />}
+              {p.activeRun && !p.activeRun.source_access_revoked && <section aria-label="本次运行预算与授权">
+                <ExecutionBudgetStatus key={'budget-'+p.activeRun.id} runId={p.activeRun.id} revision={p.activeRun.updated}/>
+                <ToolGrantPanel key={'grant-'+p.activeRun.id} runId={p.activeRun.id} active={p.isLive}/>
+              </section>}
+              {!p.activeRun && <BusinessCaseBinding/>}
               <RunJourneyGuide guide={guide} specId={p.selectedSpecId} onAction={handleGuideAction}/>
               {shouldShowTaskComposer(Boolean(p.selectedSpec),Boolean(p.activeRun))&&<RunLauncher key={p.selectedSpecId}
+                executionBudget={p.executionBudget} onBudgetChange={p.setExecutionBudget} maxSteps={p.maxSteps}
                 localDeviceId={p.localDeviceId}
                 onLocalDeviceChange={p.setLocalDeviceId}
                 showLocalDevice={needsLocalDevice(p.selectedSpec?.spec.tools,p.localDeviceId)}

@@ -4,6 +4,10 @@
 // Never infer write safety from a tool's name or model suggestion alone.
 // Authoritative connection ownership/enabled validation remains in the engines.
 var BUILTINS = {
+  result_read: true, result_list: true,tool_contract_get:true,
+  business_quality_check:true,business_case_get:true,business_record_query:true,business_record_write:true,
+  business_job_submit:true,business_job_status:true,business_job_cancel:true,business_fact_set_get:true,business_report_render:true,
+  business_material_list:true,business_material_read:true,
   calculate: true, summarize: true, knowledge_search: true, web_fetch: true, web_search: true,
 }
 
@@ -15,9 +19,11 @@ function classify(input) {
   var external = Boolean(o.external) || market
   var method = String(o.method || "POST").toUpperCase()
   var requiresJournal = !builtin && external && (market || method !== "GET")
-  // Market MCP approval is always per call; administrator write policies remain mandatory.
-  var requiresApproval = !Boolean(o.alreadyApproved) &&
-    (market || ((Boolean(o.requireApproval) || Boolean(o.mandatoryApproval)) && requiresJournal))
+  // External writes may have irreversible effects. A run-level optional
+  // approval toggle must NEVER bypass a single-call confirmation for POST,
+  // PUT, DELETE or discovered MCP actions. Read-only HTTP GET stays automatic.
+  // The engine, not an API caller, owns the trusted alreadyApproved flag.
+  var requiresApproval = !Boolean(o.alreadyApproved) && requiresJournal
   return {
     builtin: builtin,
     external: external,

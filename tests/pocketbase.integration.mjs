@@ -70,7 +70,14 @@ try {
   const llmA = await expected("GET", "/api/llm/models", "A", undefined, 200)
   assert.equal(llmA.models.length, 0)
   const llmB = await expected("GET", "/api/llm/models", "B", undefined, 200)
-  assert.equal(llmB.models.length, 1)
+  assert.equal(llmB.models.length, 0,
+    "A saved model without a successful provider test is not executable")
+  const unprobed=await expected("POST","/api/llm/chat","B",{
+    connection_id:conn.item.id,model:"model-x",
+    request_id:"unverified-model-no-outbound",
+    messages:[{role:"user",content:"do not call"}],
+  },400)
+  assert.equal(unprobed.error,"model_connection_required")
   await expected("POST", "/api/llm/chat", "A", { connection_id: conn.item.id, model: "model-x", request_id: "unique-id-smoke", messages: [{ role: "user", content: "do not call" }] }, 400)
   await expected("POST", "/api/agent_runs", "A", { rh_user_id: "B", status: "running" }, 403)
   await expected("POST", "/api/llm/poll", "", { request_id: "fake" }, 401)

@@ -1,5 +1,6 @@
 import { Ban, CheckCircle2, Loader2, Sparkles, XCircle } from "lucide-react"
 import { ResultDocument } from "@/components/agent-run/ResultDocument"
+import {BusinessQualityStatus} from '@/components/agent-run/BusinessQualityStatus'
 import type { RunDetailRow } from "@/pages/RunDetail/useRunDetail"
 
 type RunResultCardProps = {
@@ -10,6 +11,7 @@ type RunResultCardProps = {
 }
 
 export function RunResultCard({ run, isLive, onCopy, copiedFlag }: RunResultCardProps) {
+  if(run.source_access_revoked)return <section role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">来源权限当前不可用，已隐藏这次运行的成果、记忆及配置内容。历史执行状态保留；请恢复授权后重新读取与验收。</section>
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-md">
       <div className="flex min-h-14 shrink-0 items-center gap-3">
@@ -39,7 +41,7 @@ export function RunResultCard({ run, isLive, onCopy, copiedFlag }: RunResultCard
                 ? "已取消"
                 : "运行结果"}
         </h2>
-        {run.status === "succeeded" && run.result && (
+        {run.result && (
           <button
             type="button"
             onClick={onCopy}
@@ -50,6 +52,7 @@ export function RunResultCard({ run, isLive, onCopy, copiedFlag }: RunResultCard
         )}
       </div>
 
+      {typeof run.config?.case_id === 'string' && <BusinessQualityStatus key={run.id} caseId={run.config.case_id} executionState={run.status} />}
       {isLive ? (
         <p className="mt-2 flex items-center gap-2 rounded-xl bg-muted px-4 py-5 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin text-primary" />
@@ -81,6 +84,11 @@ export function RunResultCard({ run, isLive, onCopy, copiedFlag }: RunResultCard
           运行处于「{run.status}」状态，暂无结果。
         </p>
       )}
+      {!isLive&&run.status==="failed"&&run.result&&<section className="mt-3 rounded border p-3">
+        <h3 className="text-sm font-medium">保留的部分交付</h3>
+        <ResultDocument text={run.result} className="mt-2 max-h-[520px] overflow-y-auto"/>
+      </section>}
+      {!isLive&&typeof run.checkpoint?.closing_draft==='string'&&<details className="mt-3 rounded border p-3"><summary className="cursor-pointer text-sm">收尾草稿（未验收）</summary><ResultDocument text={run.checkpoint.closing_draft} className="mt-2"/></details>}
     </div>
   )
 }

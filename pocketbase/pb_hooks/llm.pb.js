@@ -57,18 +57,18 @@ routerAdd("GET", "/api/llm/models", function (e) {
     var h = e.requestInfo().headers || {}
     var uid = String(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || ($os.getenv("AGENT_STUDIO_ALLOW_ANON") === "true" ? "local-anon" : "")).trim()
     if (!uid) return e.json(401, { error: "rh_login_required", message: "请先登录账号" })
+    var modelRepo = require(__hooks + "/modules/model_connections.js")
     var rows = []
     try { rows = $app.findRecordsByFilter("model_connections", "rh_user_id = {:uid}", "-created", 20, 0, { uid: uid }) } catch (_) {}
-    rows = (rows || []).filter(function (r) { try { return r.getBool("enabled") } catch (_e) { return false } })
+    rows = (rows || []).filter(function (r) { return modelRepo.verifiedModelIds(r).length > 0 })
     var conn = null
     for (var ri = 0; ri < rows.length; ri++) {
-      var mList0 = (function (r) { try { var s = r.getString("models"); return s ? JSON.parse(s) : [] } catch (_p) { return [] } })(rows[ri])
+      var mList0 = modelRepo.verifiedModelIds(rows[ri])
       if (Array.isArray(mList0) && mList0.length > 0) { conn = rows[ri]; break }
     }
     var items = []
     if (conn) {
-      var mListRaw = (function (r) { try { var s = r.getString("models"); return s ? JSON.parse(s) : [] } catch (_p) { return [] } })(conn)
-      var mList = Array.isArray(mListRaw) ? mListRaw : []
+      var mList = modelRepo.verifiedModelIds(conn)
       for (var mi = 0; mi < mList.length; mi++) {
         items.push({ model: String(mList[mi]), connection_id: String(conn.id), provider: String(conn.getString("provider") || "openai") })
       }
@@ -101,12 +101,13 @@ routerAdd("POST", "/api/llm/chat", function (e) {
     }
     return out
   }
-  // 解析连接：指定 id（归属+启用校验）→ 默认（第一个启用且 models 非空）
+  // Reuse owner-scoped verified model allowlists; front-end state is not authority.
+  var modelRepo = require(__hooks + "/modules/model_connections.js")
   function resolveConn(uid, wantedId) {
     var rows = []
     try {
       rows = $app.findRecordsByFilter("model_connections", "rh_user_id = {:uid}", "-created", 20, 0, { uid: uid })
-      rows = (rows || []).filter(function (r) { try { return r.getBool("enabled") } catch (_e) { return false } })
+      rows = (rows || []).filter(function (r) { return modelRepo.verifiedModelIds(r).length > 0 })
     } catch (_) {}
     if (wantedId) {
       for (var wi = 0; wi < rows.length; wi++) {
@@ -115,7 +116,7 @@ routerAdd("POST", "/api/llm/chat", function (e) {
       return null
     }
     for (var ri = 0; ri < rows.length; ri++) {
-      var mList = (function (r) { try { var s = r.getString("models"); return s ? JSON.parse(s) : [] } catch (_p) { return [] } })(rows[ri])
+      var mList = modelRepo.verifiedModelIds(rows[ri])
       if (Array.isArray(mList) && mList.length > 0) return rows[ri]
     }
     return null
@@ -335,8 +336,7 @@ routerAdd("POST", "/api/llm/chat", function (e) {
         message: "没有可用模型连接：请先在「模型连接」页添加并启用一个模型连接（使用你自己的模型服务与密钥）",
       })
     }
-    var mList = (function (r) { try { var s = r.getString("models"); return s ? JSON.parse(s) : [] } catch (_p) { return [] } })(conn)
-    if (!Array.isArray(mList)) mList = []
+    var mList = modelRepo.verifiedModelIds(conn)
     var wanted = String(body.model || "").trim()
     // Opt-in strict binding for the workflow model-node debugger. The normal
     // chat endpoint retains its legacy fallback contract; debug never runs a

@@ -98,6 +98,12 @@ routerAdd("GET", "/api/agent-runs/{id}/detail", function (e) {
       })
     }
 
+    var resultAccess=require(__hooks+"/modules/tool_results.js")
+    runOut=resultAccess.projectRun($app,uid,runOut)
+    if(runOut.source_access_revoked){
+      specSnapshot=null
+      for(var blockedIndex=0;blockedIndex<events.length;blockedIndex++)events[blockedIndex].content={message:"来源权限已失效，当前不可读取该运行的派生内容。",source_access_revoked:true}
+    }
     return e.json(200, { ok: true, run: runOut, spec_snapshot: specSnapshot, events: events })
   } catch (err) {
     var msg = String((err && err.message) || err)

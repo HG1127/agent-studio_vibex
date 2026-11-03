@@ -4,6 +4,7 @@ import {deviceConnectionState} from '@/lib/localConnectionSetup'
 import {decodeRhToken} from '@/lib/studioAuth'
 import {useDesktopComputer} from './DesktopComputerContext'
 import {ApplicationTaskLauncher} from './ApplicationTaskLauncher'
+import {applicationFailure} from '../../../local-executor/application-feedback.mjs'
 type App={id:string;name:string;adapter:'desktop'|'codex';control:boolean;allowWrite?:boolean}
 type AppWindow={id:string;title:string}
 type Observation={diagnostic?:string;observation:string;window:AppWindow;controls:{id:number;name:string;type:string;enabled:boolean;password:boolean;actions?:string[];value?:string}[];truncated?:boolean}
@@ -41,7 +42,10 @@ function ApplicationSession({device,statusVerified,onBusyChange}:{device:LocalDe
     if(action.current.startsWith('apps.task_')&&data.id)setTask(value as Task)
     if(action.current==='apps.task_list')setTaskList(data.tasks||[])
     setReceipt(action.current==='apps.act'?'应用已接收操作。请重新观察窗口，核对应用中的实际结果。':action.current==='apps.launch'?'系统已接收启动请求。可见窗口列在下方，尚未验证应用内任务。':next.result)
-   }else if(!['queued','running'].includes(next.status))setError(next.error||'本次操作未成功。请核对实际结果后再操作。')
+   }else if(!['queued','running'].includes(next.status)){
+    const failure=applicationFailure(next);setError(failure.message);setReceipt(failure.receipt);setObservation(null)
+    if(action.current==='apps.launch'||action.current==='apps.windows'){setWindows([]);setWindowId('');setLaunchState('')}
+   }
   }catch(e){if(!controller.signal.aborted&&valid())setError((e as Error).message+'；不会自动重新执行。')}finally{reading=false}}
   const timer=setInterval(()=>void poll(),800);void poll();return()=>{controller.abort();clearInterval(timer)}
  },[job?.id,pending])

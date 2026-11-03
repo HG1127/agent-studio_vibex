@@ -35,6 +35,7 @@ onBootstrap(function (e) {
       addField({ name: 'headers', type: 'json' })
       addField({ name: 'body_template', type: 'text', max: 20000 })
       addField({ name: 'timeout_s', type: 'number' })
+      addField({ name: 'contract', type: 'json', maxSize: 150000 })
       addField({ name: 'enabled', type: 'bool' })
       addField({ name: 'status', type: 'text', max: 20 })
       addField({ name: 'last_latency_ms', type: 'number' })
@@ -60,6 +61,7 @@ onBootstrap(function (e) {
           { name: 'headers', type: 'json' },
           { name: 'body_template', type: 'text', max: 20000 },
           { name: 'timeout_s', type: 'number' },
+          { name: 'contract', type: 'json', maxSize: 150000 },
           { name: 'enabled', type: 'bool' },
           { name: 'status', type: 'text', max: 20 },
           { name: 'last_latency_ms', type: 'number' },

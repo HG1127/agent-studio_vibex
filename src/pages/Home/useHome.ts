@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {confirmInStudio} from "@/lib/studioDialogs"
+import {localApi} from '@/lib/localDevices'
+import {captureRequirements,previewRequirements,type AuthoringPreview,type CapturedRequirements} from '@/lib/authoringRequirements'
 import { callLlmWithFallback, type LlmMessage } from "@/lib/llm"
 import { llmErrorText } from "@/lib/llmErrorText"
 import { getPocketBaseUrl } from "@/lib/pb"
@@ -85,6 +87,9 @@ export function useHome() {
   const [templateKey, setTemplateKey] = useState("")
   const [editingRecordId, setEditingRecordId] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
+  const [creationPreview,setCreationPreview]=useState<AuthoringPreview|null>(null)
+  const captureKey=useRef({text:'',key:''}),reviseKey=useRef({text:'',key:''})
+  const authoringPreview=creationPreview?.text===userInput.trim()?creationPreview:null
   const [isRevising, setIsRevising] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
@@ -376,7 +381,7 @@ export function useHome() {
 
   const runGenerate = useCallback(async () => {
     const requirement = userInput.trim()
-    if (!requirement) return
+    if (!requirement||!authoringPreview) return
     const selectedModel=chooseAgentDesignModel(designModelOptions,designModelKey)
     if (!selectedModel || designModelStatus!=="ready") {
       setErrorMsg(designModelStatus==="loading" ? "正在核验模型连接，请完成后再生成" :
@@ -386,15 +391,19 @@ export function useHome() {
     setIsGenerating(true)
     setErrorMsg("")
     setSavedMsg("")
+    const startedRevision = specRevisionRef.current, startedContext = specContextRef.current
+    try{await localApi<CapturedRequirements>(`/api/authoring/requirements/${encodeURIComponent(authoringPreview.requestId)}`)}
+    catch{setErrorMsg('原始需求未确认保存，请重新预览后再生成。');setIsGenerating(false);return}
+    if(startedContext!==specContextRef.current||startedRevision!==specRevisionRef.current){setIsGenerating(false);return}
     const messages: LlmMessage[] = [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: JSON.stringify({requirement, available_tools: toolCatalogForDesign(connectedTools, connectedMarketTools)}) },
     ]
-    const startedRevision = specRevisionRef.current
     const result = await callLlmWithFallback(selectedModel.modelId, {
       messages, page: "home", max_tokens: agentDesignTokenBudget(requirement),
       connection_id:selectedModel.connectionId,strict_model:true,
     })
+    if(startedContext!==specContextRef.current)return
     setIsGenerating(false)
     if (startedRevision !== specRevisionRef.current) {
       setErrorMsg("生成期间当前方案发生修改，已保留你的编辑。请确认需求后重新生成。")
@@ -421,7 +430,7 @@ export function useHome() {
     }
     const matched = resolveAgentToolRequirements(requirement, parsed.spec, connectedTools, connectedMarketTools)
     invalidateSpecContext()
-    setSpec(prepareGeneratedAgentPermissions(parsed.spec, matched))
+    setSpec(prepareGeneratedAgentPermissions({...parsed.spec,_studio_authoring:{request_id:authoringPreview.requestId},research_capability_requirements:authoringPreview.plan.requirements.map(item=>item.id)}, matched))
     setRequirementForTools(requirement)
     setToolMatchNotice(matched.safeAutoBindings.length
       ? `已自动匹配 ${matched.safeAutoBindings.length} 项无需新授权的工具；其余所需能力请检查下方连接建议。`
@@ -441,7 +450,20 @@ export function useHome() {
     setEditingRecordId("")
     scrollToSpecEditor()
   }, [userInput, markSpecEdited, connectedTools, connectedMarketTools, invalidateSpecContext,
-    designModelOptions,designModelKey,designModelStatus,setLastDesignModelUsed])
+    designModelOptions,designModelKey,designModelStatus,setLastDesignModelUsed,authoringPreview])
+
+  const prepareCreation=useCallback(async()=>{
+    const text=userInput.trim();if(!text||isGenerating)return
+    const context=specContextRef.current
+    if(captureKey.current.text!==text)captureKey.current={text,key:crypto.randomUUID()}
+    setIsGenerating(true);setErrorMsg('')
+    try{
+      const captured=await captureRequirements(text,captureKey.current.key)
+      const preview=await previewRequirements(captured.request_id,{goal:'',task_scope:'',tools:[],task_plan:[]})
+      if(context===specContextRef.current)setCreationPreview({text,requestId:captured.request_id,plan:preview.plan})
+    }catch{if(context===specContextRef.current)setErrorMsg('需求预览未完成，请检查登录和服务连接后重试。')}
+    finally{if(context===specContextRef.current)setIsGenerating(false)}
+  },[userInput,isGenerating])
 
   const handleCreate = useCallback(() => {
     if (!userInput.trim() || isGenerating) return
@@ -449,8 +471,8 @@ export function useHome() {
       setNeedsRhLogin(true)
       return
     }
-    void runGenerate()
-  }, [userInput, isGenerating, rhUserId, runGenerate])
+    if(authoringPreview)void runGenerate();else void prepareCreation()
+  }, [userInput, isGenerating, rhUserId, runGenerate,authoringPreview,prepareCreation])
 
   const runRevise = useCallback(async () => {
     const instruction = reviseInput.trim()
@@ -467,6 +489,15 @@ export function useHome() {
     setRevisionProposal(null)
     const startedRevision = specRevisionRef.current
     const startedContext = specContextRef.current
+    const parent=spec._studio_authoring?.request_id||'',revisionText=parent+'\n'+instruction
+    if(reviseKey.current.text!==revisionText)reviseKey.current={text:revisionText,key:crypto.randomUUID()}
+    let revisionSource=''
+    try{
+      const captured=parent?await captureRequirements(instruction,reviseKey.current.key,parent):await localApi<CapturedRequirements>('/api/authoring/requirements',{requirement:instruction,kind:'legacy_revision',idempotency_key:reviseKey.current.key})
+      revisionSource=captured.request_id
+    }catch{setRevisionError('修订原文未保存，未调用模型；请检查登录和服务连接。');setIsRevising(false);return}
+    if(startedContext!==specContextRef.current)return
+    if(startedRevision!==specRevisionRef.current){setIsRevising(false);setRevisionError('保存需求期间方案已修改，请确认后重新提交修订。');return}
     const messages: LlmMessage[] = [
       { role: "system", content: REVISE_SYSTEM_PROMPT },
       {
@@ -514,6 +545,7 @@ export function useHome() {
       })),spec.roles||[])
     setRevisionProposal({name:parsed.displayName || specName,basis:startedRevision,spec:{
       ...spec,...parsed.spec,tools:[...spec.tools],
+      _studio_authoring:{request_id:revisionSource},research_capability_requirements:spec.research_capability_requirements,
       roles: proposedRoles ?? spec.roles,
       capability_requirements:parsed.spec.capability_requirements ?? spec.capability_requirements,
       knowledge_base_ids:spec.knowledge_base_ids,require_approval:spec.require_approval,
@@ -826,6 +858,7 @@ export function useHome() {
 
   const designGenerationBlockedReason=designModelStatus==='loading'?'正在核验模型连接，请稍候。':designModelStatus!=='ready'?'模型连接暂时无法核验，请刷新模型。':!chooseAgentDesignModel(designModelOptions,designModelKey)?'请先选择当前账号可用的模型连接。':''
   return {
+    authoringPreview,
     templates: TEMPLATE_PRESETS,
     isLoggedIn: Boolean(rhUserId),
     needsRhLogin,

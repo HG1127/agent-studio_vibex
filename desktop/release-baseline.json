@@ -1,10 +1,12 @@
 {
-  "minimumDesktopVersion": "0.1.0-preview.14",
+  "minimumDesktopVersion": "0.1.0-preview.16",
   "branch": "codex/desktop-release",
   "requiredAncestors": [
     "8fcd466667b8a4c896835315a809b4d62b78ec21",
     "df17d1c6654b9df4f2ba83e6aec43caa18121be9",
-    "36a005624b60a0b9de08c70638581f4de319bc02"
+    "36a005624b60a0b9de08c70638581f4de319bc02",
+    "c6237d68a8b3ee2a9b4e54e79d2bcd530f863193",
+    "f85b3cecb20ee7a5c648365851a8430435048fd6"
   ],
   "requiredFiles": [
     "desktop/update-controller.cjs",
@@ -15,7 +17,13 @@
     "desktop/ui/updates.html",
     "desktop/ui/updates.css",
     "desktop/ui/updates.js",
-    "desktop/release-history.json"
+    "desktop/release-history.json",
+    "pocketbase/pb_hooks/modules/research_workflow.js",
+    "worker/report-renderer.mjs",
+    "src/components/agent-run/BusinessCaseBinding.tsx",
+    "src/lib/llmErrorText.ts",
+    "local-executor/application-feedback.mjs",
+    "local-executor/application-feedback.d.mts"
   ],
   "integratedSources": [
     "97fb7c5020cb0751a7690a60f41b758c0c701ef0",
@@ -23,8 +31,13 @@
     "df17d1c6654b9df4f2ba83e6aec43caa18121be9",
     "36a005624b60a0b9de08c70638581f4de319bc02"
   ],
-  "verifiedSourceCommit": "36a005624b60a0b9de08c70638581f4de319bc02",
-  "verifiedDesktopVersion": "0.1.0-preview.14",
-  "verifiedInstallerSha256": "ffddc224f2fa73ac00e55bbf7b8dd98020c6216603b21c5fdb373b68715bfe0f",
-  "verifiedInstallerBytes": 217432946
+  "verifiedSourceCommit": "f85b3cecb20ee7a5c648365851a8430435048fd6",
+  "verifiedDesktopVersion": "0.1.0-preview.16",
+  "verifiedInstallerSha256": "54af29fc11bffc32502fb26cbbd874923b739a71aa1be9b369785a124f66bf8e",
+  "verifiedInstallerBytes": 275796072,
+  "verifiedSourceState": "local-uncommitted-unified-integration",
+  "verifiedSourceManifestSha256": "866ab40d73a52bb0f18b109005ab5badc8799c915495e9dde6adfe1ac887f5b1",
+  "verifiedIntegratedPatches": [
+    "ccbf7cb083f3c0cf10e8653ef7e359fae16ea166"
+  ]
 }

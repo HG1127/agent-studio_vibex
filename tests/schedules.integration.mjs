@@ -32,6 +32,7 @@ let modelPort=process.env.PB_SCHEDULE_MODEL_PORT
 if(modelPort===port && !process.env.PB_SCHEDULE_MODEL_PORT)modelPort=await freePort()
 assert.ok(Number.isInteger(port)&&port>0&&port<65536)
 assert.ok(Number.isInteger(modelPort)&&modelPort>0&&modelPort<65536&&modelPort!==port)
+
 const origin = "http://127.0.0.1:" + port
 const token = "schedule-integration-test-token-32-characters"
 const env = {
@@ -46,6 +47,11 @@ const server = spawnHeadlessPocketBase(pbBin, ["serve", "--http=127.0.0.1:" + po
 server.stdout.on("data", x => { log = (log + x).slice(-12000) })
 server.stderr.on("data", x => { log = (log + x).slice(-12000) })
 const model = createServer(async (req, res) => {
+  if(req.method==="GET" && req.url==="/v1/models"){
+    res.writeHead(200,{"Content-Type":"application/json"})
+    res.end(JSON.stringify({data:[{id:"model-1"}]}))
+    return
+  }
   for await (const _ of req) { /* drain */ }
   modelCalls++
   res.writeHead(200, { "Content-Type": "application/json" })
@@ -234,6 +240,11 @@ try {
     name:"Mock Provider",provider:"openai",base_url:"http://127.0.0.1:"+modelPort+"/v1",
     api_key:"dummy",models:["model-1"],
   },200)
+  const modelProbe=await expected("POST","/api/model-connections/test",{
+    connection_id:conn.item.id,
+  },200)
+  assert.equal(modelProbe.ok,true)
+  assert.equal(modelProbe.verified_saved_connection,true)
   const spec=await expected("POST","/api/agent_specs",{name:"Scheduled Agent",spec:{
     goal:"Return final answer",tools:["calculate"],task_plan:["Answer"],deliverables:["Result"],done_criteria:["Answer is final"],
   }},200)

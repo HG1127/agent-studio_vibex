@@ -354,6 +354,9 @@ routerAdd("PATCH", "/api/tool-connections/{id}", function (e) {
       return parts.join(".")
     }
 
+    // A probe only certifies the exact executable request configuration.
+    // Metadata changes do not invalidate it; endpoint/method/header/body changes do.
+    var executableConfigChanged = false
     if (body.name !== undefined && body.name !== null) {
       var nameVal = String(body.name || "").trim().slice(0, 100)
       if (!nameVal) return e.json(400, { error: "bad_request", message: "工具名称不能为空" })
@@ -389,13 +392,18 @@ routerAdd("PATCH", "/api/tool-connections/{id}", function (e) {
     if (body.url !== undefined && body.url !== null) {
       var urlVal = normUrl(body.url)
       if (!urlVal) return e.json(400, { error: "bad_request", message: "请求 URL 必须以 http:// 或 https:// 开头" })
+      if (urlVal !== normUrl(rec.getString("url"))) executableConfigChanged = true
       rec.set("url", urlVal)
     }
     if (body.method !== undefined && body.method !== null) {
-      rec.set("method", String(body.method || "POST").trim().toUpperCase() === "GET" ? "GET" : "POST")
+      var nextMethod = String(body.method || "POST").trim().toUpperCase() === "GET" ? "GET" : "POST"
+      if (nextMethod !== String(rec.getString("method") || "POST").toUpperCase()) executableConfigChanged = true
+      rec.set("method", nextMethod)
     }
     if (body.body_template !== undefined && body.body_template !== null) {
-      rec.set("body_template", String(body.body_template || "").slice(0, 20000))
+      var nextTemplate = String(body.body_template || "").slice(0, 20000)
+      if (nextTemplate !== String(rec.getString("body_template") || "")) executableConfigChanged = true
+      rec.set("body_template", nextTemplate)
     }
     if (body.timeout_s !== undefined && body.timeout_s !== null && body.timeout_s !== "") {
       var timeoutVal = parseInt(body.timeout_s, 10)
@@ -435,10 +443,17 @@ routerAdd("PATCH", "/api/tool-connections/{id}", function (e) {
         }
         merged.push({ k: nKey, v: obfVal(nVal) })
       }
+      if (JSON.stringify(merged) !== JSON.stringify(oldStored)) executableConfigChanged = true
       rec.set("headers", merged)
     }
     if (body.enabled !== undefined && body.enabled !== null) {
       rec.set("enabled", body.enabled === true)
+    }
+    if (executableConfigChanged) {
+      rec.set("status", "untested")
+      rec.set("last_checked_at", "")
+      rec.set("last_latency_ms", 0)
+      rec.set("last_error", "")
     }
     $app.save(rec)
 
@@ -677,6 +692,14 @@ routerAdd("POST", "/api/tool-connections/test", function (e) {
       inputObj = JSON.parse(inputStr)
     } catch (_) {}
     if (!inputObj || typeof inputObj !== "object") inputObj = {}
+    var testContract=null,testContracts=require(__hooks+"/modules/tool_contracts.js")
+    try{
+      var testContractRaw=connRec?connRec.getString("contract"):""
+      if(testContractRaw&&testContractRaw!=="null"){
+        testContract=JSON.parse(testContractRaw)
+        testContracts.checkInput(testContract,inputStr?JSON.parse(inputStr):{})
+      }
+    }catch(inputContractErr){return e.json(422,{ok:false,error:inputContractErr.code||"invalid_tool_input",message:"输入未通过工具契约，未发送请求"})}
     var applyToolTemplate2 = function (tpl, inputJson) {
       return String(tpl || "").replace(/\{\{\s*([a-zA-Z0-9_一-龥]+)\s*\}\}/g, function (m, key) {
         if (key === "input") return inputJson
@@ -763,6 +786,17 @@ routerAdd("POST", "/api/tool-connections/test", function (e) {
       if (code === 401 || code === 403) httpMsg = "鉴权失败（HTTP " + code + "），请检查请求头里的密钥是否有效"
       persist("error", latencyMs, httpMsg)
       return e.json(200, { ok: false, status_code: code, latency_ms: latencyMs, response_excerpt: excerpt, error: httpMsg })
+    }
+    if(testContract){
+      try{
+        var testEnvelope={}
+        try{testEnvelope.structuredContent=JSON.parse(rawBody)}catch(_){}
+        testContracts.checkOutput(testContract,testEnvelope,rawBody)
+      }catch(outputContractErr){
+        var outputContractCode=String(outputContractErr.code||"tool_output_contract_failed")
+        persist("error",latencyMs,outputContractCode)
+        return e.json(200,{ok:false,status_code:code,latency_ms:latencyMs,response_excerpt:excerpt,error:outputContractCode})
+      }
     }
     persist("ok", latencyMs, "")
     return e.json(200, { ok: true, status_code: code, latency_ms: latencyMs, response_excerpt: excerpt, error: "" })

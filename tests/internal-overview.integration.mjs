@@ -223,6 +223,7 @@ try {
   await requireStatus("GET","/api/agent-runs/recent?spec_id=bad'OR'1=1","A",undefined,400)
 
 
+
   // More than a page of pending tasks: filters and paging must be from SQL,
   // not an in-memory slice of the 20 latest records.
   const pagingDb=new DatabaseSync(path.join(dir,"data.db"),{timeout:5000})

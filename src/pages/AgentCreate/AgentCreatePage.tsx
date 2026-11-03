@@ -336,7 +336,7 @@ export default function AgentCreateRoute() {
               status={p.designModelStatus} onSelect={p.setDesignModelKey}
               onRefresh={()=>void p.refreshDesignModels()} busy={p.isGenerating}/>
             <CreateComposer variant="focus" userInput={p.userInput} onUserInputChange={p.setUserInput}
-              onCreate={p.handleCreate} isGenerating={p.isGenerating} blockedReason={p.designGenerationBlockedReason}/>
+              onCreate={p.handleCreate} authoringPreview={p.authoringPreview} isGenerating={p.isGenerating} blockedReason={p.authoringPreview?p.designGenerationBlockedReason:""}/>
             {p.spec && <div role="status" className="rounded-xl border border-primary/25 bg-primary/5 p-4">
               <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
                 <CheckCircle2 className="h-4 w-4 text-primary"/> 已生成可编辑方案：{p.specName}

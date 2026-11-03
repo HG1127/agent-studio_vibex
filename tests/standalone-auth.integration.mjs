@@ -64,6 +64,7 @@ try{
  for(const route of harnessPaths){
   assert.equal((await get(route,{headerUid:"forged-owner"})).status,401,route)
  }
+
  // Standalone JWT guard must strip forged legacy owner headers on all LLM routes.
  for(const [method,route,body] of [
    ["GET","/api/llm/models",undefined],

@@ -19,9 +19,13 @@ const complexToolCalls = { browser_read: 0, pdf_read: 0, sheet_analyze: 0 }
 let writes = 0, modelCalls = 0, logs = "", pb = null
 let handoffWasReceived = false, complexHandoff = false
 const local = createServer(async (request, response) => {
+    // Catalog verification uses only this deterministic local fixture.
+    if(request.method==='GET'&&request.url?.includes('/models')){response.writeHead(200,{'Content-Type':'application/json'});response.end(JSON.stringify({data:[{id:"roles-fixture"}]}));return}
+
   let raw = ""
   for await (const chunk of request) raw += chunk.toString()
   response.setHeader("Content-Type", "application/json")
+  if(request.url==="/write"&&raw.includes('"probe_only":true')){response.end('{"probe":true}');return}
   if (request.url === "/write") {
     writes++
     response.end(JSON.stringify({ saved: true, count: writes, fixture_only: true }))
@@ -121,8 +125,10 @@ try {
   await startPocketBase()
   const model = await ok("POST", "/api/model-connections", { name: "Role stage fixture", provider: "openai",
     api_key: "isolated-test-only", base_url: localOrigin + "/v1", models: ["roles-fixture"] })
-  await ok("POST", "/api/tool-connections", { name: "role_write", description: "Write to isolated local test endpoint",
+    await ok('POST','/api/model-connections/test',{connection_id:model.item.id})
+  const writer = await ok("POST", "/api/tool-connections", { name: "role_write", description: "Write to isolated local test endpoint",
     method: "POST", url: localOrigin + "/write", headers: [], body_template: "{{input}}" })
+  await ok('POST','/api/tool-connections/test',{connection_id:writer.item.id,input:'{"probe_only":true}',confirm_write:true})
   const roles = [role("researcher", "资料研究", [], ["calculate"]),
     role("executor", "方案执行", ["researcher"], ["role_write"]), role("reviewer", "审核交付", ["executor"], [])]
   const capabilities = [{id:"save",title:"保存计算结果",kind:"integration",access:"write",required:true,
@@ -205,8 +211,11 @@ try {
   assert.equal(detail.events.filter(event => event.event_type === "tool_call" && event.content?.role_id === "reviewer").length, 0)
   // Run a more complex five-stage due-diligence Agent against real PocketBase/SQLite
   // and deterministic local browser/PDF/sheet/email fixtures. No external writes occur.
-  for (const [name, route, method] of [["browser_read", "/read", "GET"], ["pdf_read", "/pdf", "GET"], ["sheet_analyze", "/sheet", "GET"]])
-    await ok("POST", "/api/tool-connections", { name, description: "Local fixture " + name, method, url: localOrigin + route, headers: [], body_template: "" })
+  for (const [name, route, method] of [["browser_read", "/read", "GET"], ["pdf_read", "/pdf", "GET"], ["sheet_analyze", "/sheet", "GET"]]) {
+    const reader=await ok("POST", "/api/tool-connections", { name, description: "Local fixture " + name, method, url: localOrigin + route, headers: [], body_template: "" })
+    await ok('POST','/api/tool-connections/test',{connection_id:reader.item.id,input:'{}'})
+  }
+  for(const key of Object.keys(complexToolCalls))complexToolCalls[key]=0
   const complexRoles = [
     role("dd_researcher", "网页研究", [], ["browser_read"]),
     role("dd_documenter", "文档分析", ["dd_researcher"], ["pdf_read"]),

@@ -5,6 +5,7 @@
 // never cross the ownership boundary.
 var BUILTIN = {
   calculate:true,summarize:true,knowledge_search:true,web_fetch:true,web_search:true,
+  business_record_write:true,business_material_read:true,business_job_submit:true,business_report_render:true,
 }
 function safeText(v,max) {
   return typeof v==="string" ? v.slice(0,max) : ""
@@ -136,7 +137,7 @@ function makeCopy(raw) {
     require_approval:true,
   }
 }
-function fromRecord(record) {
+function fromRecord(record,app,uid) {
   var candidates=[]
   try { candidates.push(record.get("spec")) } catch (_) {}
   try { candidates.push(record.publicExport().spec) } catch (_) {}
@@ -148,7 +149,13 @@ function fromRecord(record) {
         JSON.parse(JSON.stringify(value))
       if(parsed && typeof parsed==="object" && !Array.isArray(parsed) &&
          (typeof parsed.goal==="string" || Array.isArray(parsed.tools))) {
-        return makeCopy(parsed)
+        var copy=makeCopy(parsed)
+        if(parsed._studio_authoring!==undefined||parsed.capability_requirements!==undefined||parsed.research_capability_requirements!==undefined){
+          if(!app||!uid)throw new Error("authoring_context_required")
+          var researchCapabilities=require(__hooks+"/modules/capability_plan.js")
+          researchCapabilities.assignRequirements(copy,researchCapabilities.compile(app,uid,parsed).requirements.map(function(item){return item.id}),parsed)
+        }
+        return copy
       }
     }catch(_){}
   }

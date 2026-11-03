@@ -33,7 +33,10 @@ function callback(file, name, scope) {
   const code = ts.transpileModule(`const handler = ${initializer.getText(source)}`, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
   }).outputText
-  const context = { useCallback: value => value, ...scope }
+  const context = { useCallback: value => value,
+    authoringPreview:{requestId:'fixture_request',plan:{requirements:[]}},
+    reviseKey:{current:{text:'',key:''}},captureRequirements:async()=>({request_id:'fixture_revision'}),
+    localApi:async()=>({request_id:'fixture_revision'}), ...scope }
   return new Function(...Object.keys(context), code + "\nreturn handler")( ...Object.values(context))
 }
 

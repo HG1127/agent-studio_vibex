@@ -84,7 +84,7 @@ var SMITHERY_CONNECT = (function () {
       seen[name]=true
       var schema=t.inputSchema&&typeof t.inputSchema==="object"?t.inputSchema:null
       out.push({name:name,description:String(t.description||"").slice(0,400),
-        args_hint:"",input_schema:schema,
+        args_hint:"",input_schema:schema,output_schema:t.outputSchema===undefined?null:t.outputSchema,
         read_only:t.annotations && t.annotations.readOnlyHint===true,
         destructive:t.annotations && t.annotations.destructiveHint===true})
     }

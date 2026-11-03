@@ -8,6 +8,8 @@ import {chromium,expect} from 'playwright/test'
 const root=process.cwd(),out=await fs.mkdtemp(path.join(root,'.tmp/update-window-'))
 const releases=JSON.parse(await fs.readFile('desktop/release-history.json','utf8'))
 let state={phase:'available',currentVersion:'0.1.0-preview.13',version:'0.1.0-preview.14',notes:releases[0].notes,publishedAt:'2026-11-02T08:30:00Z',checkedAt:'2026-11-02T08:32:00Z',size:217423082,progress:0,releases,feed:'https://company.test/desktop-updates/stable/latest.json',message:'发现新版本 0.1.0-preview.14'}
+const latest=releases[0],previous=releases[1],groupCount=latest.notes.match(/^\[.+\]$/gm).length
+state={...state,currentVersion:previous.version,version:latest.version,notes:latest.notes,message:'发现新版本 '+latest.version}
 const calls=[],errors=[],checks=[];let blockedInstall=false
 const server=http.createServer(async(req,res)=>{try{const name=new URL(req.url,'http://localhost').pathname.slice(1);if(!['updates.html','updates.css','updates.js','icon.png'].includes(name))throw Error('missing');const bytes=await fs.readFile(path.join(root,'desktop/ui',name));res.writeHead(200,{'Content-Type':name.endsWith('.html')?'text/html; charset=utf-8':name.endsWith('.css')?'text/css':name.endsWith('.js')?'text/javascript':'image/png'});res.end(bytes)}catch{res.writeHead(404);res.end()}})
 await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser
@@ -21,10 +23,10 @@ try{
  const screenshot=async name=>{await page.locator('.main').evaluate(e=>e.scrollTop=0);await page.screenshot({path:path.join(out,name+'.png'),fullPage:true})}
  await page.goto('http://127.0.0.1:'+server.address().port+'/updates.html')
  await expect(page.locator('#current')).toHaveText(state.currentVersion);await expect(page.locator('#latest-version')).toHaveText(state.version)
- await expect(page.locator('#release-title')).toHaveText('全新的版本中心');await expect(page.locator('#notes .change-group')).toHaveCount(3)
+ await expect(page.locator('#release-title')).toHaveText(latest.title);await expect(page.locator('#notes .change-group')).toHaveCount(groupCount)
  await expect(page.locator('#download')).toBeVisible();await expect(page.locator('#install')).toBeHidden();assert.deepEqual(calls.map(c=>c.action),['state'])
  await screenshot('overview');checks.push('overview shows distinct installed/latest versions, release title/date, grouped notes and download action without automatically checking/downloading')
- await page.getByRole('button',{name:'版本历史',exact:false}).click();await expect(page.locator('#history-list details')).toHaveCount(3)
+ await page.getByRole('button',{name:'版本历史',exact:false}).click();await expect(page.locator('#history-list details')).toHaveCount(releases.length)
  await expect(page.getByText('当前安装',{exact:true})).toHaveCount(2)
  await page.locator('details').filter({hasText:'0.1.0-preview.12'}).locator('summary').click();await expect(page.getByText('更新签名与文件完整性校验。',{exact:true})).toBeVisible()
  await screenshot('history');checks.push('version history expands real curated release notes and identifies the installed version')
@@ -35,8 +37,8 @@ try{
  checks.push('download, verification-ready and restart actions are separate; only an explicit click invokes installation')
  blockedInstall=true;await page.locator('#install').click();await expect(page.locator('#status')).toContainText('请先完成或取消');await expect(page.locator('#install')).toBeVisible();blockedInstall=false
  checks.push('a pending-computer-operation rejection keeps the verified download available for an explicit later retry')
- await push({phase:'current',currentVersion:'0.1.0-preview.14',version:'0.1.0-preview.14',message:'当前已是最新版本'})
- await expect(page.locator('#headline')).toHaveText('已安装最新版本');await expect(page.locator('#notes')).toContainText('版本历史');await expect(page.locator('#install')).toBeHidden();await screenshot('current')
+ await push({phase:'current',currentVersion:latest.version,version:latest.version,message:'当前已是最新版本'})
+ await expect(page.locator('#headline')).toHaveText('已安装最新版本');await expect(page.locator('#notes')).toContainText(latest.notes.match(/^- (.+)$/m)[1]);await expect(page.locator('#install')).toBeHidden();await screenshot('current')
  await push({phase:'error',message:'更新签名验证失败，未下载或运行'});await expect(page.locator('#status')).toContainText('签名验证失败');await expect(page.locator('#download')).toBeHidden();await expect(page.locator('#install')).toBeHidden()
  checks.push('already-current clients retain notes; integrity failures never show install/download actions')
  await page.getByRole('button',{name:'更新设置',exact:true}).click();const feed=page.getByLabel('更新服务地址');await feed.fill('https://updates.company.test/latest.json')
@@ -48,7 +50,7 @@ try{
  await expect(page.locator('#notes img')).toHaveCount(0);assert.equal(await page.evaluate(()=>window.__xss),undefined)
  for(const width of [1000,780,560]){await page.setViewportSize({width,height:748});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1&&document.querySelector('.main').scrollWidth<=document.querySelector('.main').clientWidth+1),true,'no horizontal overflow at '+width)}
  checks.push('release text is rendered without HTML execution; long notes and small windows have no horizontal overflow')
- await page.setViewportSize({width:780,height:640});await push({phase:'available',currentVersion:'0.1.0-preview.13',releases,notes:releases[0].notes});await screenshot('compact')
+ await page.setViewportSize({width:780,height:640});await push({phase:'available',currentVersion:previous.version,releases,notes:releases[0].notes});await screenshot('compact')
  assert.deepEqual(errors,[])
  await fs.writeFile(path.join(out,'acceptance.json'),JSON.stringify({status:'PASS',checks,uiErrors:errors,realUpdaterAssets:true,bridge:'display-fixture',productionData:false},null,2));console.log('UPDATE_WINDOW_ACCEPTANCE '+out)
 }finally{await browser?.close();server.closeAllConnections();await new Promise(r=>server.close(r))}

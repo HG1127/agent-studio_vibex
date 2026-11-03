@@ -219,6 +219,9 @@ routerAdd("PATCH", "/api/model-connections/{id}", function (e) {
       gemini: "https://generativelanguage.googleapis.com/v1beta",
     }
 
+    // Last probe authorizes one exact provider, endpoint, key and model list.
+    // Never carry old verification across an executable configuration change.
+    var executableConfigChanged = false
     if (body.provider !== undefined && body.provider !== null) {
       var provVal = normProvider(body.provider)
       var curProv = "openai"
@@ -227,6 +230,7 @@ routerAdd("PATCH", "/api/model-connections/{id}", function (e) {
       } catch (_) {}
       if (curProv !== "anthropic" && curProv !== "gemini") curProv = "openai"
       if (provVal !== curProv) {
+        executableConfigChanged = true
         rec.set("provider", provVal)
         rec.set("status", "untested")
         rec.set("models", [])
@@ -245,10 +249,18 @@ routerAdd("PATCH", "/api/model-connections/{id}", function (e) {
     if (body.base_url !== undefined && body.base_url !== null && String(body.base_url).trim() !== "") {
       var baseUrl = normUrl(body.base_url)
       if (!baseUrl) return e.json(400, { error: "bad_request", message: "Base URL 必须以 http:// 或 https:// 开头" })
+      if (baseUrl !== normUrl(rec.getString("base_url"))) {
+        executableConfigChanged = true
+        // A previous endpoint\u0027s model list is not evidence for this URL.
+        // If the form explicitly supplies new model IDs below, keep them as
+        // untested candidates until a fresh probe succeeds.
+        rec.set("models", [])
+      }
       rec.set("base_url", baseUrl)
     }
     if (body.api_key !== undefined && body.api_key !== null && String(body.api_key).trim() !== "") {
       var apiKey = String(body.api_key).trim()
+      executableConfigChanged = true
       rec.set("api_key", obfKey(apiKey))
       rec.set("api_key_tail", apiKey.slice(-4))
       rec.set("status", "untested")
@@ -271,7 +283,17 @@ routerAdd("PATCH", "/api/model-connections/{id}", function (e) {
         }
         return out
       }
-      rec.set("models", normManualModels2(body.models))
+      var nextModels = normManualModels2(body.models)
+      var savedModels = []
+      try { savedModels = JSON.parse(String(rec.getString("models") || "[]")) } catch (_) {}
+      if (!Array.isArray(savedModels) || JSON.stringify(savedModels) !== JSON.stringify(nextModels)) executableConfigChanged = true
+      rec.set("models", nextModels)
+    }
+    if (executableConfigChanged) {
+      rec.set("status", "untested")
+      rec.set("last_checked_at", "")
+      rec.set("last_latency_ms", 0)
+      rec.set("last_error", "")
     }
     $app.save(rec)
 
@@ -431,6 +453,7 @@ routerAdd("POST", "/api/model-connections/test", function (e) {
     var providerVal = "openai"
     var connId = String(body.connection_id || "").trim()
     var bodyProvider = normProvider(body.provider)
+    var testedConfigSnapshot = null
     if (connId) {
       try {
         connRec = $app.findRecordById("model_connections", connId)
@@ -452,6 +475,14 @@ routerAdd("POST", "/api/model-connections/test", function (e) {
         if (!baseUrl) return e.json(400, { error: "bad_request", message: "Base URL 必须以 http:// 或 https:// 开头" })
       }
       apiKey = deobfKey(connRec.getString("api_key"))
+      var storedBase = normUrl(connRec.getString("base_url"))
+      if (!storedBase && OFFICIAL_BASE[recProvider]) storedBase = OFFICIAL_BASE[recProvider]
+      testedConfigSnapshot = {
+        provider:recProvider,base_url:storedBase,
+        key_blob:String(connRec.getString("api_key") || ""),
+        models_blob:String(connRec.getString("models") || ""),
+        enabled:connRec.getBool("enabled") === true,
+      }
     } else {
       providerVal = bodyProvider || "openai"
       baseUrl = normUrl(body.base_url)
@@ -462,18 +493,39 @@ routerAdd("POST", "/api/model-connections/test", function (e) {
     }
 
     var persist = function (statusVal, latencyVal, modelIds, errText) {
-      if (!connRec) return
+      // Testing unsaved form values is only a preview. Do not certify the
+      // stored connection unless the exact endpoint and credentials match.
+      // Re-read before saving to avoid a concurrent PATCH granting stale proof.
+      if (!connRec || !testedConfigSnapshot ||
+          !testedConfigSnapshot.enabled ||
+          providerVal !== testedConfigSnapshot.provider ||
+          baseUrl !== testedConfigSnapshot.base_url) return false
       try {
-        connRec.set("status", String(statusVal))
-        connRec.set("last_latency_ms", Number(latencyVal) || 0)
-        connRec.set("last_checked_at", new Date().toISOString())
-        if (modelIds) connRec.set("models", modelIds)
-        connRec.set("last_error", String(errText || "").slice(0, 1000))
-        $app.save(connRec)
+        var fresh = $app.findRecordById("model_connections", connId)
+        if (!fresh || String(fresh.get("rh_user_id") || "") !== uid ||
+            fresh.getBool("enabled") !== true) return false
+        var currentProvider = normProvider(fresh.getString("provider")) || "openai"
+        var currentBase = normUrl(fresh.getString("base_url"))
+        if (!currentBase && OFFICIAL_BASE[currentProvider])
+          currentBase = OFFICIAL_BASE[currentProvider]
+        if (currentProvider !== testedConfigSnapshot.provider ||
+            currentBase !== testedConfigSnapshot.base_url ||
+            String(fresh.getString("api_key") || "") !== testedConfigSnapshot.key_blob ||
+            String(fresh.getString("models") || "") !== testedConfigSnapshot.models_blob)
+          return false
+        fresh.set("status", String(statusVal))
+        fresh.set("last_latency_ms", Number(latencyVal) || 0)
+        fresh.set("last_checked_at", new Date().toISOString())
+        if (modelIds) fresh.set("models", modelIds)
+        fresh.set("last_error", String(errText || "").slice(0, 1000))
+        $app.save(fresh)
+        return true
       } catch (perr) {
         try {
-          $app.logger().error("model_connections persist error", "err", String((perr && perr.message) || perr))
+          $app.logger().error("model_connections persist error", "err",
+            String((perr && perr.message) || perr))
         } catch (_) {}
+        return false
       }
     }
 
@@ -575,8 +627,9 @@ routerAdd("POST", "/api/model-connections/test", function (e) {
       persist("error", latencyMs, null, fmtMsg)
       return e.json(200, { ok: false, latency_ms: latencyMs, models: [], error: fmtMsg, detail: rawBodyStr })
     }
-    persist("ok", latencyMs, ids, "")
-    return e.json(200, { ok: true, latency_ms: latencyMs, models: ids, count: ids.length })
+    var savedVerified = persist("ok", latencyMs, ids, "")
+    return e.json(200, { ok: true, latency_ms: latencyMs, models: ids,
+      count: ids.length, verified_saved_connection: savedVerified })
   } catch (err) {
     var msg = String((err && err.message) || err)
     try {

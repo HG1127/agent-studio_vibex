@@ -1,4 +1,3 @@
-import { LocalJobObservation } from './LocalJobObservation'
 import { useTimelineFollow } from "@/lib/timelineFollow"
 import {
   AlertCircle,
@@ -18,6 +17,8 @@ import {
 } from "lucide-react"
 import { memoryKindMetaOf } from "@/pages/AgentRun/useAgentRun"
 import type { RunEventRow } from "@/pages/AgentRun/useAgentRun"
+import { LocalJobObservation } from './LocalJobObservation'
+import { ToolResultReader } from './ToolResultReader'
 
 type RunTimelineProps = {
   events: RunEventRow[]
@@ -78,6 +79,7 @@ export function RunTimeline({ events, isLive, hasRun, visible }: RunTimelineProp
       ) : (
         <ol className="flex flex-col gap-3">
           {events.map((event) => {
+            if(event.content.source_access_revoked===true)return <li key={event.id} className="rounded-xl border border-destructive/30 p-3 text-sm text-destructive">来源权限当前不可用，执行记录内容已隐藏。</li>
             const stepLabel = event.step_index > 0 ? `第 ${event.step_index} 步` : "准备"
             const roleName = typeof event.content.role_name === "string" ? event.content.role_name : ""
             const rolePhase = event.content.role_phase
@@ -136,6 +138,7 @@ export function RunTimeline({ events, isLive, hasRun, visible }: RunTimelineProp
                   </p>
                   {event.content.tool === 'local_computer' && typeof event.content.job_id === 'string' &&
                     <LocalJobObservation key={event.content.job_id} jobId={event.content.job_id} />}
+                  {typeof event.content.result_id==='string'&&<ToolResultReader runId={event.run_id} resultId={event.content.result_id}/>}
                 </li>
               )
             }

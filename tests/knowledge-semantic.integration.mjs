@@ -33,6 +33,11 @@ const vectorFor=text=>{
   return [0,0,1,0,0,0,0,0]
 }
 const provider=createServer(async(req,res)=>{
+  if(req.method==="GET" && req.url==="/v1/models"){
+    res.writeHead(200,{"Content-Type":"application/json"})
+    res.end(JSON.stringify({data:[{id:"semantic-test-model"},{id:"semantic-test-model-v2"}]}))
+    return
+  }
   let text=""
   for await(const chunk of req)text+=chunk.toString()
   if(req.url==="/v1/embeddings"){
@@ -142,6 +147,11 @@ try{
     api_key:"semantic-test-key",models:["semantic-test-model"],
   },alice)
   const connectionId=conn.item.id
+  const validated=await expect("POST","/api/model-connections/test",{
+    connection_id:connectionId,
+  },alice)
+  assert.equal(validated.ok,true)
+  assert.equal(validated.verified_saved_connection,true)
   const bad=await post("/api/knowledge-bases/semantic/settings",{
     action:"save",connection_id:connectionId,model_name:"semantic-test-model"},bob)
   assert.equal(bad.status,422,"employees may not re-use each other's model keys")
@@ -171,7 +181,8 @@ try{
     action:"save",connection_id:unapprovedConn.item.id,model_name:"embedding-foo",
   },alice)
   assert.equal(deniedProvider.status,422)
-  assert.equal(deniedProvider.data.error,"embedding_endpoint_unapproved")
+  assert.equal(deniedProvider.data.error,"custom_connection_unverified",
+    "An untested external model must be refused before any embedding request")
   const savedSettings=await expect("GET","/api/knowledge-bases/semantic/settings",undefined,alice)
   assert.equal(savedSettings.connection_id,connectionId,"failed model change must not mutate active settings")
 

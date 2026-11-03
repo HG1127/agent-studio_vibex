@@ -188,7 +188,8 @@ export function HomePage(p: ReturnType<typeof useHome>) {
               <CreateComposer userInput={p.userInput}
                 onUserInputChange={p.setUserInput}
                 onCreate={p.handleCreate}
-                isGenerating={p.isGenerating} blockedReason={p.designGenerationBlockedReason}/>
+                authoringPreview={p.authoringPreview}
+                isGenerating={p.isGenerating} blockedReason={p.authoringPreview?p.designGenerationBlockedReason:""}/>
               {p.lastDesignModelUsed && p.spec && <p role="status" className="text-xs text-muted-foreground">
                 最近一次 Agent 方案由 {p.lastDesignModelUsed} 生成，仍须完成角色与工具核验。
               </p>}

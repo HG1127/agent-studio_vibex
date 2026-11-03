@@ -24,6 +24,9 @@ function plan(context){
  return p
 }
 const local=createServer(async(req,res)=>{
+    // Catalog verification uses only this deterministic local fixture.
+    if(req.method==='GET'&&req.url?.includes('/models')){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({data:[{id:"plan-fixture"}]}));return}
+
  let raw='';for await(const b of req)raw+=b
  res.setHeader('Content-Type','application/json')
  if(req.url==='/save'){writes++;res.end(JSON.stringify({saved:true,value:42,isolated:true}));return}
@@ -76,6 +79,7 @@ try{
  foreign=(await ok('POST','/api/collections/studio_users/auth-with-password',{identity:'plan-other@example.test',password},'')).token
  const upstream='http://127.0.0.1:'+local.address().port
  model=await ok('POST','/api/model-connections',{name:'Deterministic planning fixture',provider:'openai',api_key:'isolated-fixture-not-a-real-key',base_url:upstream+'/v1',models:['plan-fixture']})
+    await ok('POST','/api/model-connections/test',{connection_id:model.item.id})
  connection=await ok('POST','/api/tool-connections',{name:'fixture_write',description:'Save 42 to isolated local test endpoint',method:'POST',url:upstream+'/save',headers:[],body_template:'{{input}}'})
  await ok('POST','/api/tool-connections/test',{connection_id:connection.item.id,input:'{}',confirm_write:true});writes=0
  spec=await ok('POST','/api/agent_specs',{name:'结构化计划验收',spec:{goal:'先计算再保存，仅隔离测试',task_scope:'Only local fixture',tools:['calculate','fixture_write'],roles:[],task_plan:['Calculate','Save'],deliverables:['42 and receipt'],done_criteria:['Must have saved receipt'],capability_requirements:[]}})

@@ -20,11 +20,12 @@ const record = (id, fields) => ({
     return typeof v==="string"?v : JSON.stringify(v ?? "")
   },
 })
+const verified = {status:"ok",last_checked_at:"2026-10-27T09:00:00.000Z"}
 const fixtures = [
-  record("owned1", {rh_user_id:"A",enabled:true, provider:"openai",base_url:"http://127.0.0.1:7352/v1/",api_key:"plain-test-key",models:["mock"]}),
+  record("owned1", {rh_user_id:"A",enabled:true,...verified, provider:"openai",base_url:"http://127.0.0.1:7352/v1/",api_key:"plain-test-key",models:["mock"]}),
   record("owned2", {rh_user_id:"A",enabled:false,provider:"gemini",base_url:"",api_key:"dont-read",models:["skip"]}),
-  record("other1", {rh_user_id:"B",enabled:true,provider:"anthropic",base_url:"",api_key:"other-secret",models:["private"]}),
-  record("owned3", {rh_user_id:"A",enabled:true,provider:"gemini",base_url:"",api_key:"gcm1:encryptedblob",models:["gemini"]}),
+  record("other1", {rh_user_id:"B",enabled:true,...verified,provider:"anthropic",base_url:"",api_key:"other-secret",models:["private"]}),
+  record("owned3", {rh_user_id:"A",enabled:true,...verified,provider:"gemini",base_url:"",api_key:"gcm1:encryptedblob",models:["gemini"]}),
 ]
 const app = {
   findRecordById(_collection, id) {
@@ -83,7 +84,42 @@ test("Disabled default connections are skipped and legacy blank providers remain
     findRecordsByFilter(){return [fixtures[1],fixtures[0]]}
   }
   assert.equal(repository.getDefault(tailored,"A").connection_id,"owned1")
-  const legacy=record("legacy",{rh_user_id:"A",enabled:true,provider:"",base_url:"https://local.test/v1",api_key:"key"})
+  const legacy=record("legacy",{rh_user_id:"A",enabled:true,...verified,models:["custom"],provider:"",base_url:"https://local.test/v1",api_key:"key"})
   const legacyApp={...app,findRecordById(){return legacy}}
   assert.equal(repository.lookup(legacyApp,"A","legacy","custom",noSecrets).provider,"openai")
+})
+test("Server rejects unverified model connections before decrypting API keys",()=>{
+  let decrypted=0
+  for(const state of [
+    {status:"untested"},{status:"error"},{status:""},
+    {last_checked_at:""},{last_checked_at:"bad-date"},
+    {last_checked_at:"0001-01-01T00:00:00Z"},{models:[]},
+  ]){
+    const conn=record("checked",{rh_user_id:"A",enabled:true,...verified,
+      provider:"openai",base_url:"https://model.example.test/v1",
+      api_key:"gcm1:opaque",models:["model-v1"],...state})
+    const scoped={...app,findRecordById(){return conn},findRecordsByFilter(){return [conn]}}
+    const creds={secretKey:"z".repeat(32),decrypt(){decrypted++;return "no"}}
+    assert.equal(repository.lookup(scoped,"A","checked","model-v1",creds).error,
+      "custom_connection_unverified", JSON.stringify(state))
+    assert.equal(repository.getDefault(scoped,"A"),null)
+  }
+  assert.equal(decrypted,0)
+})
+test("Only the exact model ID in current verified owner-scoped list can run",()=>{
+  const conn=record("checked",{rh_user_id:"A",enabled:true,...verified,
+    provider:"openai",base_url:"https://model.example.test/v1",
+    api_key:"synthetic-only",models:["model-new"]})
+  const scoped={...app,findRecordById(){return conn},findRecordsByFilter(){return [conn]}}
+  assert.equal(repository.lookup(scoped,"A","checked","model-removed",noSecrets).error,
+    "model_not_permitted")
+  assert.equal(repository.lookup(scoped,"B","checked","model-new",noSecrets).error,
+    "custom_connection_missing")
+  assert.equal(repository.lookup(scoped,"A","checked","model-new",noSecrets).ok,true)
+})
+test("Default model selector skips untested rows instead of stale first choice",()=>{
+  const stale=record("stale",{rh_user_id:"A",enabled:true,status:"untested",models:["stale-model"]})
+  const scoped={...app,findRecordsByFilter(){return [stale,fixtures[0]]}}
+  assert.deepEqual(JSON.parse(JSON.stringify(repository.getDefault(scoped,"A"))),
+    {connection_id:"owned1",model_id:"mock"})
 })

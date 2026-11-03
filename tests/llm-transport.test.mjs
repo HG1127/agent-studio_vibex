@@ -16,10 +16,14 @@ function backend({providerStatus = 200, failDelivery = true, existing} = {}) {
   }
   if (existing) { const row = new Record(); row.data = {...existing}; jobs.push(row) }
   const conn = {id:'owned-connection',getBool:()=>true,getString:key=>({
-    base_url:'http://provider.invalid/v1',api_key:'fixture-key',provider:'openai',models:'["fixture-model"]',
+    status:'ok',last_checked_at:'2026-11-02T00:00:00.000Z',base_url:'http://provider.invalid/v1',api_key:'fixture-key',provider:'openai',models:'["fixture-model"]',
   })[key] || ''}
   vm.runInNewContext(hookSource, {
     onBootstrap:()=>{}, routerAdd:(method,route,handler)=>routes.set(method+' '+route,handler), Record,
+    __hooks:'/fixture-hooks',require:modulePath=>{
+      if(modulePath!=='/fixture-hooks/modules/model_connections.js')throw Error('unexpected_test_module')
+      const isolated={module:{exports:{}}};vm.runInNewContext(fs.readFileSync(new URL('../pocketbase/pb_hooks/modules/model_connections.js',import.meta.url),'utf8'),isolated);return isolated.module.exports
+    },
     $os:{getenv:()=>''},
     $http:{send:()=>{calls++;return {statusCode:providerStatus,raw:JSON.stringify({choices:[{message:{content:'saved-plan'}}]})}}},
     $app:{findCollectionByNameOrId:()=>({}),findRecordsByFilter:(_c,_f,_s,_l,_o,p)=>p.uid==='employee'?[conn]:[],

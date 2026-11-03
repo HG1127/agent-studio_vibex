@@ -19,6 +19,16 @@ const headers={"Content-Type":"application/json","X-Rh-User-Id":user}
 const calls=[]
 const pause=ms=>new Promise(r=>setTimeout(r,ms))
 const provider=createServer(async (req,res)=>{
+  // A separate local catalog probe proves this exact connection and model.
+  if(req.method==="GET" && req.url?.includes("/models")){
+    const ids=["mock-openai","mock-anthropic","mock-gemini"]
+    res.writeHead(200,{"Content-Type":"application/json"})
+    res.end(JSON.stringify({
+      data:ids.map(id=>({id})),
+      models:ids.map(id=>({name:"models/"+id})),
+    }))
+    return
+  }
   let body=""
   for await (const part of req) body+=part.toString()
   const parsed=JSON.parse(body||"{}")
@@ -33,6 +43,7 @@ const provider=createServer(async (req,res)=>{
     :kind==="gemini"?{candidates:[{content:{parts:[{text:answer}]}}],usageMetadata:{promptTokenCount:13,candidatesTokenCount:21}}
     :{choices:[{message:{role:"assistant",content:debugEmpty?"":answer},
       finish_reason:debugEmpty?"length":"stop"}],usage:{prompt_tokens:13,completion_tokens:21}}
+
   res.writeHead(200,{"Content-Type":"application/json"})
   res.end(JSON.stringify(payload))
 })
@@ -136,12 +147,40 @@ try {
   assert.equal((await api("GET","/api/execution-traces?kind=agent&run_id=invalid")).status,400)
   assert.equal((await api("GET","/api/execution-traces?kind=agent&run_id=abcdefghijklmno",undefined,"")).status,401)
 
+
+  // A successful probe of an UNSAVED URL must not certify the stored model.
+  const untested=await expect("POST","/api/model-connections",{
+    name:"Unsaved URL preview",provider:"openai",
+    base_url:"http://127.0.0.1:"+modelPort+"/v1",
+    api_key:"synthetic-only",models:["mock-openai"],
+  })
+  const preview=await expect("POST","/api/model-connections/test",{
+    connection_id:untested.item.id,
+    base_url:"http://127.0.0.1:"+modelPort+"/different",
+  })
+  assert.equal(preview.ok,true)
+  assert.equal(preview.verified_saved_connection,false,
+    "A preview of an unsaved endpoint must not authorize the saved one")
+  const rows=await expect("GET","/api/model-connections")
+  assert.equal(rows.items.find(x=>x.id===untested.item.id)?.status,"untested")
+  const exact=await expect("POST","/api/model-connections/test",{
+    connection_id:untested.item.id,
+  })
+  assert.equal(exact.ok,true)
+  assert.equal(exact.verified_saved_connection,true)
   for(const kind of ["openai","anthropic","gemini"]) {
     const conn=await expect("POST","/api/model-connections",{
       name:"V7.2 "+kind,provider:kind,
       base_url:"http://127.0.0.1:"+modelPort+"/v1",
       api_key:"mock-secret-"+kind,models:["mock-"+kind],
     })
+    const probe=await expect("POST","/api/model-connections/test",{
+      connection_id:conn.item.id,
+    })
+    assert.equal(probe.ok,true,kind+" local model catalog must be verified")
+    assert.equal(probe.verified_saved_connection,true)
+    assert.ok(probe.models.includes("mock-"+kind))
+
     // Strict employee-scoped model-node debugger must refuse stale model
     // selections BEFORE any outbound provider call or billing.
     const beforeDenied=calls.length
@@ -182,6 +221,7 @@ try {
     assert.equal(calls.length,homeBefore+1)
     assert.equal(calls.at(-1).kind,kind,"design must use the employee-selected provider")
     const beforeDebugInvalid=calls.length
+
     const debugBase={
       connection_id:conn.item.id,model:"mock-"+kind,strict_model:true,
       page:"workflow_node_debug",request_id:"workflow-debug-invalid-"+kind,
@@ -202,6 +242,7 @@ try {
       assert.equal(rejected.data.error,error)
     }
     assert.equal(calls.length,beforeDebugInvalid,
+
       "rejected debug requests must not invoke a provider")
     const debugId="workflow-debug-"+kind
     const debug=await expect("POST","/api/llm/chat",{
@@ -280,6 +321,7 @@ try {
     assert.equal(duplicate.cached,true)
     assert.equal(calls.length,blindBefore+1,"a duplicated request ID must never incur an extra charge")
     assert.doesNotMatch(JSON.stringify(blind),/mock-secret-|api_key|authorization|headers/)
+
 
     await runAgent(conn.item.id,kind)
     await runWorkflow(conn.item.id,kind)

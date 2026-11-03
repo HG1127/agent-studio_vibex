@@ -77,6 +77,10 @@ export function normalizeCapabilityRequirements(value: unknown): AgentCapability
 }
 
 const BUILTINS: Record<string, { title: string; kind: CapabilityKind }> = {
+  business_record_write:{title:'保存调研事实',kind:'text'},
+  business_material_read:{title:'读取原始材料',kind:'knowledge'},
+  business_job_submit:{title:'冻结事实集',kind:'text'},
+  business_report_render:{title:'生成事实报告',kind:'text'},
   web_search: {title: "检索公开资料", kind: "web_search"},
   web_fetch: {title: "读取网页正文", kind: "web_fetch"},
   knowledge_search: {title: "检索授权知识库", kind: "knowledge"},
@@ -327,7 +331,7 @@ export function bindAgentCapability(spec:AgentSpec, needId:string, toolId:string
 /** Catalog metadata only: credentials, URLs and employee records never enter the prompt. */
 export function toolCatalogForDesign(connections: ConnectedToolOption[], market: VerifiedMarketTool[]) {
   return [
-    ...Object.entries(BUILTINS).map(([id, item]) => ({id, description: item.title, readOnly: true, source: "builtin"})),
+    ...Object.entries(BUILTINS).map(([id, item]) => ({id, description: item.title, readOnly: !['business_record_write','business_job_submit','business_report_render'].includes(id), source: "builtin"})),
     ...connections.slice(0, 30).map(item => ({id: item.name, description: item.description.slice(0, 220),
       readOnly: item.method === "GET"&&!toolLooksMutating(item.name,item.description), tested: ["ok", "success", "connected"].includes(item.status || ""), source: "http"})),
     ...market.slice(0, 45).map(item => ({id: item.id, description: item.description.slice(0, 220),

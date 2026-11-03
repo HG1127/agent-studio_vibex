@@ -4,6 +4,7 @@ import { Link } from "react-router-dom"
 import { LocalDeviceSelector } from './LocalDeviceSelector'
 import {TaskDispatchPreview} from './TaskDispatchPreview'
 import type {DispatchCapability} from '@/lib/agentTaskDispatch'
+import {ExecutionBudgetSettings,type ExecutionBudget} from './ExecutionBudgetPanel'
 
 type RunLauncherProps = {
   instruction: string
@@ -20,6 +21,9 @@ type RunLauncherProps = {
   dispatchPlan?:DispatchCapability[]
   structuredPlanning?:boolean
   onStructuredPlanningChange?:(enabled:boolean)=>void
+  executionBudget:ExecutionBudget|null
+  onBudgetChange:(value:ExecutionBudget|null)=>void
+  maxSteps:number
 }
 
 export function RunLauncher({
@@ -37,6 +41,7 @@ export function RunLauncher({
   dispatchPlan=[],
   structuredPlanning=false,
   onStructuredPlanningChange,
+  executionBudget,onBudgetChange,maxSteps,
 }: RunLauncherProps) {
   const [deviceOptionsOpen,setDeviceOptionsOpen]=useState(false)
   return (
@@ -53,6 +58,8 @@ export function RunLauncher({
         )}
       </div>
       <label htmlFor="agent-task-instruction" className="sr-only">本次 Agent 运行任务指令</label>
+
+      <ExecutionBudgetSettings value={executionBudget} onChange={onBudgetChange} maxSteps={maxSteps}/>
       <textarea
         value={instruction}
         id="agent-task-instruction"

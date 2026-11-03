@@ -64,7 +64,7 @@ export function RunSummaryPanel({
       )}
       {activeRun.status === "cancelled" && (
         <p className="mt-3 rounded-xl bg-muted px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
-          已取消 · {activeRun.error || "checkpoint 已保留"}，已执行节点的结果仍可查看
+          {activeRun.research?'研究已取消，阶段产物和正式记录仍可查看':`已取消 · ${activeRun.error || "checkpoint 已保留"}，已执行节点的结果仍可查看`}
         </p>
       )}
       {activeRun.status === "running" && (
@@ -79,7 +79,7 @@ export function RunSummaryPanel({
           有一个写操作调用在等你批准，请在上方审批卡片里选择批准或拒绝…
         </p>
       )}
-      {stats && statsParts.length > 0 && (
+      {activeRun.research?<p className="mt-2 rounded-xl bg-muted px-3 py-2 text-xs text-muted-foreground">研究用量见阶段面板的累计请求计数；供应商费用未统计。</p>:stats && statsParts.length > 0 && (
         <p className="mt-2 rounded-xl bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
           本次消耗：{statsParts.join(" · ")}
         </p>

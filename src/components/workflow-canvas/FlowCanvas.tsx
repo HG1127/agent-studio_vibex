@@ -49,6 +49,7 @@ import { CONDITION_OPS, LOOP_DELIMITERS, NODE_TYPE_META } from "@/pages/Workflow
 export type LoopProgressEntry = { round: number; total: number; active: boolean }
 
 type CanvasRunState = {
+  researchMode?: boolean
   statuses: Record<string, string>
   runningId: string
   loopProgress: Record<string, LoopProgressEntry>
@@ -111,7 +112,7 @@ const HANDLE_CLASS = "!h-2.5 !w-2.5 !border-2 !border-card !bg-primary"
 const WfNodeCard = memo(function WfNodeCard(props: NodeProps) {
   const data = (props.data || {}) as WfNodeData
   const nodeType = String(props.type || "model") as WfNodeType
-  const { statuses, runningId, loopProgress } = useContext(CanvasRunCtx)
+  const { statuses, runningId, loopProgress, researchMode } = useContext(CanvasRunCtx)
   const runState = statuses[props.id] || ""
   const isRunning = runningId === props.id
   const Icon = TYPE_ICONS[nodeType] || Sparkles
@@ -181,8 +182,8 @@ const WfNodeCard = memo(function WfNodeCard(props: NodeProps) {
           <span className="block text-xs text-muted-foreground">{meta.label}</span>
         </span>
       </div>
-      <p className="mt-2 truncate text-xs text-muted-foreground" title={nodeSummary(nodeType, data)}>
-        {nodeSummary(nodeType, data)}
+      <p className="mt-2 truncate text-xs text-muted-foreground" title={researchMode && nodeType === 'agent' ? '研究阶段 · 额度见阶段面板' : nodeSummary(nodeType, data)}>
+        {researchMode && nodeType === 'agent' ? '研究阶段 · 额度见阶段面板' : nodeSummary(nodeType, data)}
       </p>
       {nodeType === "condition" && (
         <div className="mt-2 flex items-center justify-end gap-1.5">
@@ -271,6 +272,7 @@ const WfEdgeCard = memo(function WfEdgeCard(props: EdgeProps) {
 const EDGE_TYPES = { wf: WfEdgeCard }
 
 export type FlowCanvasProps = {
+  researchMode?:boolean
   flowNodes: WfNode[]
   flowEdges: WfEdge[]
   onNodesChange: (changes: NodeChange<WfNode>[]) => void
@@ -410,8 +412,8 @@ function CanvasBody(props: FlowCanvasProps) {
   }, [runningNodeId, followRun, flowNodes, setCenter])
 
   const ctxValue = useMemo(
-    () => ({ statuses: props.nodeStatuses, runningId: props.runningNodeId, loopProgress: props.loopProgress }),
-    [props.nodeStatuses, props.runningNodeId, props.loopProgress],
+    () => ({ statuses: props.nodeStatuses, runningId: props.runningNodeId, loopProgress: props.loopProgress, researchMode: props.researchMode }),
+    [props.nodeStatuses, props.runningNodeId, props.loopProgress, props.researchMode],
   )
 
   const edgeCtxValue = useMemo(() => ({ deleteEdge: deleteEdgeById }), [deleteEdgeById])

@@ -2,6 +2,7 @@ import { Activity, Check, Copy, PartyPopper, TriangleAlert } from "lucide-react"
 import { RunEvaluationCard } from "@/components/agent-run/RunEvaluationCard"
 import { SpecOptimizeCard } from "@/components/agent-run/SpecOptimizeCard"
 import { ResultDocument } from "@/components/agent-run/ResultDocument"
+import {BusinessQualityStatus} from './BusinessQualityStatus'
 import { RunVersionComparisonCard } from "@/components/agent-run/RunVersionComparisonCard"
 import { RunFeedbackBar, type FeedbackDraft } from "@/components/agent-run/RunFeedbackBar"
 import type { AgentRunRow, RunEventRow, RunFeedback, RunEvaluation, SpecOptimizeSuggestion, SavedSpecRow } from "@/pages/AgentRun/useAgentRun"
@@ -76,6 +77,7 @@ export function RunResultPanel({
   onRetestOptimized,
 }: RunResultPanelProps) {
   if (!activeRun) return null
+  if(activeRun.source_access_revoked)return <section role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">来源权限当前不可用，已隐藏这次运行的成果、记忆及配置内容。历史执行状态保留；请恢复授权后重新读取与验收。</section>
   const runState = activeRun.status
   if (runState !== "succeeded" && runState !== "failed" && runState !== "cancelled") {
     return null
@@ -85,6 +87,7 @@ export function RunResultPanel({
 
   return (
     <>
+    {typeof activeRun.config?.case_id === 'string' && <BusinessQualityStatus key={activeRun.id} caseId={activeRun.config.case_id} executionState={runState} />}
     <div
       className={`animate-in fade-in slide-in-from-bottom-4 rounded-2xl border p-5 shadow-md duration-500 ${
         isSuccess ? "border-primary/40 bg-card" : "border-border bg-card"
@@ -123,6 +126,7 @@ export function RunResultPanel({
       {activeRun.result && (
         <ResultDocument text={activeRun.result} className="mt-3 rounded-xl bg-secondary/50 px-4 py-3" />
       )}
+      {typeof activeRun.checkpoint?.closing_draft==='string'&&<details className="mt-3 rounded border p-3"><summary className="cursor-pointer text-sm">预留额度生成的收尾草稿（未验收）</summary><p className="mt-2 text-xs text-muted-foreground">此文本尚未通过业务核验，正式事实和已生成报告仍按原版本保留。</p><ResultDocument text={activeRun.checkpoint.closing_draft} className="mt-2"/></details>}
       {!activeRun.result && (
         <p className="mt-3 text-sm text-muted-foreground">本次运行没有产出可展示的成果文本。</p>
       )}

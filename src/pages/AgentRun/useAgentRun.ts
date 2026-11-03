@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { localApi, type LocalDevice } from "@/lib/localDevices"
+import type {ExecutionBudget} from '@/components/agent-run/ExecutionBudgetPanel'
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import {applicationRunHandoff} from '@/lib/localApplicationTask'
 import { officeRunHandoff } from '@/lib/localOfficeWorkflow'
@@ -23,6 +24,7 @@ export type RunStateKey = "queued" | "running" | "paused" | "awaiting_approval" 
 
 // 字段名与 agent_runs collection 1:1（snake_case，禁止转换层）
 export type AgentRunRow = {
+  source_access_revoked?:boolean
   id: string
   rh_user_id: string
   spec_id: string
@@ -110,6 +112,10 @@ export type BuiltinTool = { id: string; title: string; desc: string }
 
 // 与后端执行引擎真实实现的三个内置工具一一对应（calculate / summarize / knowledge_search）
 export const BUILTIN_TOOLS: BuiltinTool[] = [
+  {id:'business_record_write',title:'保存调研事实',desc:'当前调研任务内的证据和版本记录'},
+  {id:'business_material_read',title:'读取原始材料',desc:'当前调研任务内的原始材料片段'},
+  {id:'business_job_submit',title:'冻结事实集',desc:'异步生成不可变事实集'},
+  {id:'business_report_render',title:'生成事实报告',desc:'根据事实集生成实际文件'},
   { id: "calculate", title: "计算器", desc: "对算术表达式真实求值，支持 + - * / % 与括号" },
   { id: "summarize", title: "文本整理摘要", desc: "调用模型对给定文本做整理、摘要与提炼" },
   { id: "knowledge_search", title: "知识库检索", desc: "在关联知识库中检索片段" },
@@ -283,6 +289,7 @@ export function useAgentRun() {
 
   // 审批门 + 方案记忆（harness 增强批次）
   const [requireApproval, setRequireApproval] = useState(false)
+  const [executionBudget,setExecutionBudget]=useState<ExecutionBudget|null>(null)
   const [requirePlanReview, setRequirePlanReview] = useState(false)
   const [structuredPlanning, setStructuredPlanning] = useState(false)
   const handleStructuredPlanning = useCallback((enabled:boolean)=>{
@@ -797,6 +804,9 @@ export function useAgentRun() {
 
   const doStartRun = useCallback(async () => {
     if (!selectedSpec || !instruction.trim() || startInFlightRef.current) return
+    if(selectedSpec.spec?.tools?.some(tool=>/^business_/.test(tool))&&!searchParams.get('case')){
+      setErrorMsg('请先创建或选择调研任务，再运行需要材料或正式事实的助手。');return
+    }
     // Synchronous guard: keyboard shortcut + mouse click before React rerender
     // must not create two paid Agent runs from the same user intent.
     startInFlightRef.current = true
@@ -811,6 +821,9 @@ export function useAgentRun() {
         instruction: instruction.trim(),
         model: parsedCustom ? parsedCustom.modelId : model,
         config: {
+          case_id:searchParams.get('case')||undefined,
+          question_id:searchParams.get('question')||undefined,
+          execution_budget:executionBudget||undefined,
           local_device_id: localDeviceId,
           max_steps: maxSteps,
           max_model_calls: maxModelCalls,
@@ -885,6 +898,7 @@ export function useAgentRun() {
     stopOnComplete,
     requireApproval,
     fetchRunRecord,    requirePlanReview,
+    searchParams,executionBudget,
     structuredPlanning,
 
     loadRunHistory,
@@ -1504,6 +1518,7 @@ export function useAgentRun() {
     : `按服务商实际用量计费 · ${maxSteps} 步 / ${maxModelCalls} 次调用${maxRuntimeMinutes ? ` / ${maxRuntimeMinutes} 分钟` : ""}`
 
   return {
+    executionBudget,setExecutionBudget,
     isLoggedIn: Boolean(rhUserId),
     needsRhLogin,
     onLoginClick: redirectToRhLogin,

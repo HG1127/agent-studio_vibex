@@ -190,6 +190,11 @@ try {
   // linked knowledge base; the mock refuses to fabricate its evidence.
   let modelCalls = 0, sawCitationInModelContext = false
   modelServer = createServer(async (request, response) => {
+    if(request.method==="GET" && request.url==="/v1/models"){
+      response.writeHead(200,{"Content-Type":"application/json"})
+      response.end(JSON.stringify({data:[{id:"kb-test-model"}]}))
+      return
+    }
     let data = ""
     for await (const chunk of request) data += chunk.toString()
     modelCalls++
@@ -213,6 +218,11 @@ try {
     base_url: "http://127.0.0.1:" + modelPort + "/v1",
     api_key: "mock-test-key", models: ["kb-test-model"],
   })
+  const modelProbe = await expectStatus("POST", "/api/model-connections/test", {
+    connection_id: conn.item.id,
+  })
+  assert.equal(modelProbe.ok, true)
+  assert.equal(modelProbe.verified_saved_connection, true)
   const spec = await expectStatus("POST", "/api/agent_specs", {
     name: "知识库 Agent", spec: {
       goal: "从指定知识库中找到有依据的产品介绍",

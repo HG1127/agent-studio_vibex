@@ -154,6 +154,11 @@ try {
   // Agent path: a local deterministic OpenAI-compatible service verifies real BYOK + model-driven completion.
   let modelCalls = 0
   fakeProvider = createServer(async (request, response) => {
+    if(request.method==="GET" && request.url==="/v1/models"){
+      response.writeHead(200,{"Content-Type":"application/json"})
+      response.end(JSON.stringify({data:[{id:"mock-model"}]}))
+      return
+    }
     let body = ""
     for await (const chunk of request) body += chunk.toString()
     modelCalls++
@@ -174,6 +179,13 @@ try {
     api_key: "test-only", models: ["mock-model"],
   }, userHeaders)
   assert.equal(connection.status, 200, JSON.stringify(connection))
+  const modelProbe=await req("POST","/api/model-connections/test",{
+    connection_id:connection.data.item.id,
+  },userHeaders)
+  assert.equal(modelProbe.status,200,JSON.stringify(modelProbe))
+  assert.equal(modelProbe.data.ok,true)
+  assert.equal(modelProbe.data.verified_saved_connection,true)
+
   const spec = await req("POST", "/api/agent_specs", {
     name: "Background Agent smoke",
     spec: { goal: "Complete a small task", task_scope: "No browsing", deliverables: ["Answer"], tools: [], task_plan: ["Answer"], done_criteria: ["Clear final result"] },
