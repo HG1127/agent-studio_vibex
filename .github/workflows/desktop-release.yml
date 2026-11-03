@@ -72,6 +72,9 @@ jobs:
           node desktop/build.mjs
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node desktop/audit.mjs
+      - name: Packaged connector cold-starts a real Electron application
+        shell: pwsh
+        run: node desktop/tests/packaged-smoke.mjs ".tmp/desktop-output/win-unpacked/Agent Studio.exe" --application-cold-start
       - name: Publish immutable installer, then signed latest manifest
         shell: pwsh
         env:

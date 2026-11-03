@@ -8,7 +8,7 @@ export async function createElectronApplicationFixture(base,electronDirectory){
  for(const entry of await fs.readdir(electronDirectory,{withFileTypes:true})){
   if(entry.name==='resources')continue
   const source=path.join(electronDirectory,entry.name),target=path.join(directory,entry.name==='electron.exe'?'ApplicationElectronFixture.exe':entry.name)
-  if(entry.isFile())await fs.link(source,target)
+  if(entry.isFile())await fs.link(source,target).catch(error=>{if(error.code==='EXDEV')return fs.copyFile(source,target);throw error})
   else if(entry.isDirectory())await fs.symlink(source,target,'junction')
  }
  const app=path.join(directory,'resources','app'),receipt=path.join(directory,'fixture-receipt.json')

@@ -7,7 +7,7 @@ import {EventEmitter} from 'node:events'
 import {inspectApplication,registerApplications,validateApplicationControl,applicationEnvironment,discoverApplications} from '../local-executor/applications.mjs'
 import {resolveWindowTarget,shortcutApplicationPath} from '../local-executor/application-target.mjs'
 async function fixture(t,options={}){
- const base=await fs.mkdtemp(path.join(os.tmpdir(),'studio-cold-')),exe=path.join(base,'Example.exe');await fs.writeFile(exe,'MZ-fixture')
+ const base=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'studio-cold-'))),exe=path.join(base,'Example.exe');await fs.writeFile(exe,'MZ-fixture')
  if(options.electron)await fs.writeFile(path.join(base,'LICENSE.electron.txt'),'fixture')
  let target
  if(options.wrapper){target=path.join(base,'.qoder-versions','1.2.3','Example.exe');await fs.mkdir(path.dirname(target),{recursive:true});await fs.writeFile(target,'MZ-versioned');await fs.writeFile(path.join(base,'.qoder-versions','1.2.3.qoder-update-ready.json'),'')}
@@ -65,7 +65,7 @@ test('GUI applications launched from an Electron connector cannot inherit Node r
 })
 
 test('Qoder shortcut discovery uses its editor install directory, never the per-user helper',async t=>{
- const base=await fs.mkdtemp(path.join(os.tmpdir(),'studio-qoder-')),helper=path.join(base,'Qoder Launcher.exe'),editor=path.join(base,'Qoder.exe')
+ const base=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'studio-qoder-'))),helper=path.join(base,'Qoder Launcher.exe'),editor=path.join(base,'Qoder.exe')
  t.after(()=>fs.rm(base,{recursive:true,force:true}));await fs.writeFile(helper,'MZ-helper');await fs.writeFile(editor,'MZ-editor')
  assert.equal(shortcutApplicationPath(helper),null)
  assert.equal(shortcutApplicationPath(helper,path.join(base,'.qoder-versions','0.4.4')),editor)
@@ -76,3 +76,5 @@ test('Qoder shortcut discovery uses its editor install directory, never the per-
  const r=registerApplications({config:{applications:{format:'agent-studio-applications-v1',enabled:true,images:false,grants:[grant]}},add:(n,d,s,fn)=>tools.set(n,fn),native:async()=>[],launch:()=>{launched++;throw Error('must not redirect an old grant')}})
  try{await assert.rejects(tools.get('apps.launch')({app:grant.id}),/application_launcher_needs_review/);assert.equal(launched,0)}finally{await r.close()}
 })
+
+test('a downloaded pending ASAR is never mistaken for the active Qoder window owner',async t=>{const f=await fixture(t,{wrapper:true});await fs.writeFile(path.join(path.dirname(path.dirname(f.target)),'1.2.3.qoder-update-ready.json'),JSON.stringify({payloadLayout:'pending-asar-v1'}));assert.equal(await resolveWindowTarget(f.exe),null);const current=await inspectApplication(f.exe,{control:true});assert.equal(current.windowPath,undefined);assert.equal(current.windowSha256,undefined)})

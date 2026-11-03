@@ -22,6 +22,10 @@ export async function resolveWindowTarget(launcher){
  const ready=new Set(entries.filter(e=>e.isFile()&&e.name.endsWith('.qoder-update-ready.json')).map(e=>e.name.slice(0,-24)))
  const versions=entries.filter(e=>e.isDirectory()&&!e.isSymbolicLink()&&/^\d+\.\d+\.\d+$/.test(e.name)&&ready.has(e.name)).sort((a,b)=>b.name.localeCompare(a.name,'en',{numeric:true})).slice(0,5)
  for(const version of versions){
+  // Downloaded pending ASAR payloads are not active installations. Their ready
+  // marker must not redirect window verification away from the running editor.
+  let metadata;try{const file=path.join(directory,version.name+'.qoder-update-ready.json');if((await fs.stat(file)).size<=4096)metadata=JSON.parse(await fs.readFile(file,'utf8'))}catch{}
+  if(metadata?.payloadLayout==='pending-asar-v1')continue
   const target=path.join(directory,version.name,path.basename(launcher))
   try{if(!allowedWindowTarget(launcher,target)||await fs.realpath(target)!==target)throw Error('application_path_denied');if((await fs.lstat(target)).isFile())return target}catch(e){if(e.code!=='ENOENT')throw e}
  }

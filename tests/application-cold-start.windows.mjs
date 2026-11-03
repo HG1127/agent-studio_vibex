@@ -20,6 +20,6 @@ try{
  await call('act',{observation:observation.observation,element:button.id,action:'click'})
  assert.equal(await fs.readFile(fixture.receipt,'utf8'),'COLD_START_TASK_VERIFIED\n1');assert.equal(confirmed,2)
  const qoder=await inspectApplication('D:\\Qoder\\Qoder.exe',{name:'Qoder',control:true}).catch(e=>{if(e.code==='ENOENT')return null;throw e})
- if(qoder){assert.match(qoder.windowPath,/\.qoder-versions/);assert.equal(qoder.windowSha256.length,64);assert.equal(qoder.accessibility,'electron')}
+ if(qoder){if(qoder.windowPath){assert.match(qoder.windowPath,/\.qoder-versions/);assert.equal(qoder.windowSha256.length,64)}assert.equal(qoder.accessibility,'electron')}
  console.log('COLD_START_NATIVE_PASS '+JSON.stringify({initiallyClosed:true,windowReady:true,warmReuse:true,textReadBack:true,realClickReceipt:true,confirmations:confirmed,qoderPinnedTarget:qoder?.windowPath||null,paidModelCalls:false,fixture:fixture.run}))
 }finally{await runtime?.close();await fixture.close()}
