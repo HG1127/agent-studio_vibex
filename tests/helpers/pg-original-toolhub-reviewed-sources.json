@@ -1325,7 +1325,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-genuine-source-pins.mjs",
-      "sha256": "1f5cf1111a971529cfcfc51695e1b046f85e1ad62b5d03d4a38993540da94cd9"
+      "sha256": "ded4bec5cf220b06f19d2137b768d6da6e201a882d548cd4b38a77da8f78c997"
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-original-home-guard.mjs",

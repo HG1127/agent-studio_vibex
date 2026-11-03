@@ -406,7 +406,7 @@ export const optimizationRetestFrozenSources=Object.freeze({
   "services/pg-api/tests/helpers/agent-collaboration-fixture.mjs": "14faf6d33ec1309b5c364f3b8cb29f7119dda8c29eddb7241bf4cb3d8db1d039",
   "services/pg-api/tests/helpers/agent-memory-fixture.mjs": "ae4e0feef5b1884480ace9db69ab6266b4654b27be2f6e4b4d16bf5aaa1bc6a5",
   "services/pg-api/tests/helpers/agent-review-ledger-fixture.mjs": "bb0506a0f2aef11f4033ee7ea919102e06930d5fee2b3af037e236f04cf0f688",
-  "services/pg-api/tests/helpers/approval-delegation-genuine-fixture.mjs": "61377aaf4eb6c2bfdcf79356947eb3d1d5fbb130e46d1337a4a22678ea53b4c1",
+  "services/pg-api/tests/helpers/approval-delegation-genuine-fixture.mjs": "6d8061699b858efca91ed59e8ae589884426b4ab0a55d2446f9ef37e6b1e9b0f",
   "services/pg-api/tests/helpers/approval-delegation-genuine-guard.mjs": "c48521998f2d70a8e8e282c4f27539c8f718b58fd10cfbaa3c6f1006547e9c67",
   "services/pg-api/tests/helpers/bound-model-loopback-tls.mjs": "d3932a15340329b3e3550b2a58f25ac0f7c045aedc85d01a8b560d1931ce6b4c",
   "services/pg-api/tests/helpers/native-pg18-embedded.mjs": "6d29c92a24cbc4815f869d1b11fd9c3872873ceb61b1e0002e16a42b1a3a29a5",
@@ -779,7 +779,7 @@ export const optimizationRetestFrozenSources=Object.freeze({
   "services/pg-api/tests/helpers/monitor074-definition-fixture.mjs": "28799c066ca5df32fcc16384baa57cb6033c86b4047ff801f1e444049874bf99",
   "services/pg-api/tests/helpers/monitor074-original-pb-semantics-reference.cjs": "a40efb70300d9259e3560250aba04a856f756e88a35e6a6cd24b4e13fc6af2e7",
   "services/pg-api/tests/helpers/native-monitor074-ci-guard.mjs": "f04a8fb69412f70f37668057110b7581652f6bc8f6113d91428bc6f900df7fb7",
-  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "b38846147fed60d9f8f41198b73356723cda96e40ea8864c7127d0d6f5f25e3f",
+  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "3577fc59dbf8554e493d60d417ad9aabfe765d4e69d3328059e8b24e94d3aa0e",
   "services/pg-api/tests/helpers/native-monitor074-row-lock-genuine.mjs": "525b12d40e0574656b1c7c9bca4c55bfa296b81eb17475cbe963237eb086090d",
   "services/pg-api/tests/helpers/ordinary077-catalog-data.mjs": "c1fdde5c290ddc4a6f577d0028aecf47264cf21b0d108cf1a54f5784e2bb3b5f",
   "services/pg-api/tests/native-monitor-author-pure.test.mjs": "041de254cc584d30b58a8188c83faffd928a2356e7717e5393fdc716ee2cf6c7",
@@ -1279,6 +1279,9 @@ export const optimizationRetestFrozenSources=Object.freeze({
   "tests/staff084-predecessor-namespace-contract.test.mjs": "61bd7c7d9d6e6ad1b0461ecf1fecca11553ee0610075619f65fcc14ad75b50d8",
   "tests/quality089-verified-ledger-rpc-pure.test.mjs": "df1d84698fd24f56327f4a0225aefc9bb7f82b91ab818b742ec4cb0e303ca121",
   "tests/original-role-sidecar-read-privilege-pure.test.mjs": "532d67899c787030572cd70b59963a84ab0ac16df678b424e44cb702ffae8679"
+,
+  "tests/native-preflight-toolhub-activity-closure-pure.test.mjs": "075de75b2c69b1cc29dea217c1826dd1c5d83f8ea32330bce6f003d8fd9a89e6",
+  "services/pg-api/tests/native-original-directory-pair-source-pure.test.mjs": "9608a9f574d636de0f1ad90ea9362daa4c158b12bffc94652f9823880ad54c9a"
 })
 export async function optimizationRetestGenuineFixture(env=process.env){
  const target=requireOptimizationRetestGenuineCi(env)

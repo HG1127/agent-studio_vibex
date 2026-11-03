@@ -123,7 +123,7 @@ export const nativeMonitor074ReviewedSources=Object.freeze({
   "local-executor/runtime.mjs": "e9e797cd8b4250a2b9515207761c56b35bbe7993613d6d0937c971f54196bf38",
   "ops/build-pg18-complete069-companion-review-bundle.mjs": "97fcc5cf25e85fe5f578088a16c2259ffc7c66743d68cf8fdc2ade0923feb4ff",
   "ops/build-pg18-complete069-review-bundle.mjs": "1618244b8792e9e1dc583daefcc99c5ffc5fb0a71bd107810a2cffc69e5397f0",
-  "ops/build-pg18-native-api-preflight-bundle.mjs": "8882fd73406af9efd01634dae1071ce83534917d569c9209241bd4fbc9236fdd",
+  "ops/build-pg18-native-api-preflight-bundle.mjs": "0518d564f8259da80343520f4ba643a0abea9168b238de8d5218abd491509894",
   "ops/original-run-interaction-page-actions.json": "ae1d9069a0b51c050237dba5ee6c4884ba1698375f1eb8c1924c578f17ea21bc",
   "ops/original-schedule-worker-hosted-scope.json": "d4fc617fe9fcca30f8e6b83d004d8dc5c5a192d8465f39d69ecc21714c00f2b9",
   "ops/original-scheduled-tasks-page-actions.json": "bce5a75aa49b3b1767605beacd9695fc605f127e12e3b6a9e79404b97ecfa01d",
@@ -2029,4 +2029,7 @@ export const nativeMonitor074ReviewedSources=Object.freeze({
   "tests/staff084-predecessor-namespace-contract.test.mjs": "61bd7c7d9d6e6ad1b0461ecf1fecca11553ee0610075619f65fcc14ad75b50d8",
   "tests/quality089-verified-ledger-rpc-pure.test.mjs": "df1d84698fd24f56327f4a0225aefc9bb7f82b91ab818b742ec4cb0e303ca121",
   "tests/original-role-sidecar-read-privilege-pure.test.mjs": "532d67899c787030572cd70b59963a84ab0ac16df678b424e44cb702ffae8679"
+,
+  "tests/native-preflight-toolhub-activity-closure-pure.test.mjs": "075de75b2c69b1cc29dea217c1826dd1c5d83f8ea32330bce6f003d8fd9a89e6",
+  "services/pg-api/tests/native-original-directory-pair-source-pure.test.mjs": "9608a9f574d636de0f1ad90ea9362daa4c158b12bffc94652f9823880ad54c9a"
 })

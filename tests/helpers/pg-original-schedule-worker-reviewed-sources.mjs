@@ -95,7 +95,7 @@ export const scheduleWorkerReviewedSources=Object.freeze({
   "db/postgres/migrations/pg_v9_078_original_schedule_contract.sql": "4e4c5292e2b1c37f142b6b6a6c982acfc5463930523138118b2f9102f5f95e4d",
   "db/postgres/telemetry/001_worker_heartbeats.sql": "5ed1080d9f7b651ea2ae7fceca09db7f61c679f107e196df13ae201a8f99505f",
   "index.html": "4e2bb491344c01fa3364c23eeeaab56e3acbe1961795235a02e63278b23ef921",
-  "ops/build-pg18-native-api-preflight-bundle.mjs": "8882fd73406af9efd01634dae1071ce83534917d569c9209241bd4fbc9236fdd",
+  "ops/build-pg18-native-api-preflight-bundle.mjs": "0518d564f8259da80343520f4ba643a0abea9168b238de8d5218abd491509894",
   "ops/original-schedule-worker-hosted-scope.json": "d4fc617fe9fcca30f8e6b83d004d8dc5c5a192d8465f39d69ecc21714c00f2b9",
   "ops/original-schedules078-hosted-scope.json": "460095fcc51013505860a418e341186f2868517ec1b98c3a7bc63eaf64db6f66",
   "ops/pg18-original-schedule-worker-hosted-entry.mjs": "69c4bdb62c89282affefe60932a14b08a96c2c114c6fb177fc3a7b11467fc976",
@@ -918,7 +918,7 @@ export const scheduleWorkerReviewedSources=Object.freeze({
   "tests/helpers/pg-original-schedules078-browser-policy.mjs": "3af59b86d53a51ccc0dd4b53c8b0ea495cc647eab913b2d6ec30f4e1cb764e25",
   "tests/helpers/pg-original-schedules078-required-sources.mjs": "c05da8c5c7c8ca414ca6a6f9d69fedccc5c40123a18d04b78952818dd4c564e9",
   "tests/helpers/pg-original-schedules078-reviewed-check.mjs": "f43621683f1e5dab596652ff40bb6ea665dc81fe5ac592a57fadcdb04d3b0d06",
-  "tests/helpers/pg-original-schedules078-reviewed-sources.mjs": "b9dca9ece7fb4d71248ab6f6b461f050d22c3764979b2ca3283ff08a503407a1",
+  "tests/helpers/pg-original-schedules078-reviewed-sources.mjs": "5470261cab0cfaeb92c0ea7017f876279b4df968cebc93639cbcf551d6391160",
   "tests/helpers/pg-original-schedules078-tls.mjs": "9514db0d94c66526706a016ab81507609b98036635e9cae12f777d759403a3b1",
   "tests/original-schedule-worker-hosted-policy.test.mjs": "eed55ca7986622e10d2dff92f8a0e3cb6ffd6fc5515b3a9e34ffe65a2f1bf509",
   "tests/original-schedule-worker-hosted-source.test.mjs": "5c91d78414aa7d09bbea3a51452526cfd1aaed26bad408141b8bbed8eb8ec457",
@@ -999,7 +999,7 @@ export const scheduleWorkerReviewedSources=Object.freeze({
   "services/pg-api/tests/helpers/monitor074-definition-fixture.mjs": "28799c066ca5df32fcc16384baa57cb6033c86b4047ff801f1e444049874bf99",
   "services/pg-api/tests/helpers/monitor074-original-pb-semantics-reference.cjs": "a40efb70300d9259e3560250aba04a856f756e88a35e6a6cd24b4e13fc6af2e7",
   "services/pg-api/tests/helpers/native-monitor074-ci-guard.mjs": "f04a8fb69412f70f37668057110b7581652f6bc8f6113d91428bc6f900df7fb7",
-  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "b38846147fed60d9f8f41198b73356723cda96e40ea8864c7127d0d6f5f25e3f",
+  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "3577fc59dbf8554e493d60d417ad9aabfe765d4e69d3328059e8b24e94d3aa0e",
   "services/pg-api/tests/helpers/native-monitor074-row-lock-genuine.mjs": "525b12d40e0574656b1c7c9bca4c55bfa296b81eb17475cbe963237eb086090d",
   "services/pg-api/tests/helpers/ordinary077-catalog-data.mjs": "c1fdde5c290ddc4a6f577d0028aecf47264cf21b0d108cf1a54f5784e2bb3b5f",
   "services/pg-api/tests/native-monitor-author-pure.test.mjs": "041de254cc584d30b58a8188c83faffd928a2356e7717e5393fdc716ee2cf6c7",
@@ -1532,4 +1532,7 @@ export const scheduleWorkerReviewedSources=Object.freeze({
   "tests/staff084-predecessor-namespace-contract.test.mjs": "61bd7c7d9d6e6ad1b0461ecf1fecca11553ee0610075619f65fcc14ad75b50d8",
   "tests/quality089-verified-ledger-rpc-pure.test.mjs": "df1d84698fd24f56327f4a0225aefc9bb7f82b91ab818b742ec4cb0e303ca121",
   "tests/original-role-sidecar-read-privilege-pure.test.mjs": "532d67899c787030572cd70b59963a84ab0ac16df678b424e44cb702ffae8679"
+,
+  "tests/native-preflight-toolhub-activity-closure-pure.test.mjs": "075de75b2c69b1cc29dea217c1826dd1c5d83f8ea32330bce6f003d8fd9a89e6",
+  "services/pg-api/tests/native-original-directory-pair-source-pure.test.mjs": "9608a9f574d636de0f1ad90ea9362daa4c158b12bffc94652f9823880ad54c9a"
 })

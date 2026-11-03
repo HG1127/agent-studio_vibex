@@ -239,7 +239,7 @@ export const originalInternalShareReviewedSources=Object.freeze({
   "services/pg-api/src/workflow-v2-worker.ts": "e541917e70bb1f2dde4a8027ac432012f514b946f88d1cfe022217e6c920427e",
   "services/pg-api/tests/agent-internal-share-genuine-pg18.test.mjs": "25d01a459706d0c004fb1237198cc3f864e6eee953fae29ba4f8d75f78e38182",
   "services/pg-api/tests/helpers/agent-assessment-fixture.mjs": "41f747c751a181ef02ddc2060bd86cc15e744420cc7c9688bfa6fb3b8e80266a",
-  "services/pg-api/tests/helpers/agent-internal-share-genuine-fixture.mjs": "bbc5dfcb69b890a395fe3be531f9c8473fd5b8eb3b3c68b71b35d4d6dab4a860",
+  "services/pg-api/tests/helpers/agent-internal-share-genuine-fixture.mjs": "1758fe7834e8046ce3b620a6bc8c6e5a4bd883e52e4c0d694f886a9f7778d284",
   "services/pg-api/tests/helpers/agent-internal-share-genuine-guard.mjs": "c9c02dbe8bcd26622b2042f1cae7a61acc7b22b31991d5a9176e2a593ce942a1",
   "services/pg-api/tests/helpers/original-internal-share-expected-employee-case.mjs": "4e55f5632f058f257034d57ba7134e35eeb3a83f1482fda081ab2b60abb54649",
   "shared/agent-caller-contract.ts": "147f48678600d933f0a50899c5c6f7f74d1d07e967a54a6aec0003d879ecc8ff",
@@ -938,7 +938,7 @@ export const originalInternalShareReviewedSources=Object.freeze({
   "services/pg-api/tests/helpers/monitor074-definition-fixture.mjs": "28799c066ca5df32fcc16384baa57cb6033c86b4047ff801f1e444049874bf99",
   "services/pg-api/tests/helpers/monitor074-original-pb-semantics-reference.cjs": "a40efb70300d9259e3560250aba04a856f756e88a35e6a6cd24b4e13fc6af2e7",
   "services/pg-api/tests/helpers/native-monitor074-ci-guard.mjs": "f04a8fb69412f70f37668057110b7581652f6bc8f6113d91428bc6f900df7fb7",
-  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "b38846147fed60d9f8f41198b73356723cda96e40ea8864c7127d0d6f5f25e3f",
+  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "3577fc59dbf8554e493d60d417ad9aabfe765d4e69d3328059e8b24e94d3aa0e",
   "services/pg-api/tests/helpers/native-monitor074-row-lock-genuine.mjs": "525b12d40e0574656b1c7c9bca4c55bfa296b81eb17475cbe963237eb086090d",
   "services/pg-api/tests/helpers/ordinary077-catalog-data.mjs": "c1fdde5c290ddc4a6f577d0028aecf47264cf21b0d108cf1a54f5784e2bb3b5f",
   "services/pg-api/tests/native-monitor-author-pure.test.mjs": "041de254cc584d30b58a8188c83faffd928a2356e7717e5393fdc716ee2cf6c7",
@@ -1471,4 +1471,7 @@ export const originalInternalShareReviewedSources=Object.freeze({
   "tests/staff084-predecessor-namespace-contract.test.mjs": "61bd7c7d9d6e6ad1b0461ecf1fecca11553ee0610075619f65fcc14ad75b50d8",
   "tests/quality089-verified-ledger-rpc-pure.test.mjs": "df1d84698fd24f56327f4a0225aefc9bb7f82b91ab818b742ec4cb0e303ca121",
   "tests/original-role-sidecar-read-privilege-pure.test.mjs": "532d67899c787030572cd70b59963a84ab0ac16df678b424e44cb702ffae8679"
+,
+  "tests/native-preflight-toolhub-activity-closure-pure.test.mjs": "075de75b2c69b1cc29dea217c1826dd1c5d83f8ea32330bce6f003d8fd9a89e6",
+  "services/pg-api/tests/native-original-directory-pair-source-pure.test.mjs": "9608a9f574d636de0f1ad90ea9362daa4c158b12bffc94652f9823880ad54c9a"
 })

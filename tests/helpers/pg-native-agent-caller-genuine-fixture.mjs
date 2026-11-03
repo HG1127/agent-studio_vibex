@@ -398,7 +398,7 @@ export const agentCallerBrowserFrozenSources=Object.freeze({
   "services/pg-api/tests/agent-caller-owner-session.test.mjs": "cac6ad4a226dd8bb502c85403e1dd2645fda16f4c71c8b5d1c3ac3b1735be6b1",
   "services/pg-api/tests/agent-caller-presentation.test.mjs": "850024c62727a60c8ea4000a22caa0d272dd9283b05a055bc42d2b7a5dff6e6c",
   "services/pg-api/tests/helpers/agent-assessment-fixture.mjs": "41f747c751a181ef02ddc2060bd86cc15e744420cc7c9688bfa6fb3b8e80266a",
-  "services/pg-api/tests/helpers/agent-caller-genuine-fixture.mjs": "b84de99264b718775807242d264157d12473b588529fc88bf481efee47fc2264",
+  "services/pg-api/tests/helpers/agent-caller-genuine-fixture.mjs": "5a458f853e4b0f227a86874b622bbdf20f645eec15c3fabc29962b7cab2c9283",
   "services/pg-api/tests/helpers/agent-caller-genuine-guard.mjs": "e165765978d53a4ab5da154df1fd6edffba07036e1fe8af6457a0d8943738cef",
   "services/pg-api/tests/helpers/agent-collaboration-fixture.mjs": "14faf6d33ec1309b5c364f3b8cb29f7119dda8c29eddb7241bf4cb3d8db1d039",
   "services/pg-api/tests/helpers/agent-memory-fixture.mjs": "ae4e0feef5b1884480ace9db69ab6266b4654b27be2f6e4b4d16bf5aaa1bc6a5",
@@ -769,7 +769,7 @@ export const agentCallerBrowserFrozenSources=Object.freeze({
   "services/pg-api/tests/helpers/monitor074-definition-fixture.mjs": "28799c066ca5df32fcc16384baa57cb6033c86b4047ff801f1e444049874bf99",
   "services/pg-api/tests/helpers/monitor074-original-pb-semantics-reference.cjs": "a40efb70300d9259e3560250aba04a856f756e88a35e6a6cd24b4e13fc6af2e7",
   "services/pg-api/tests/helpers/native-monitor074-ci-guard.mjs": "f04a8fb69412f70f37668057110b7581652f6bc8f6113d91428bc6f900df7fb7",
-  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "b38846147fed60d9f8f41198b73356723cda96e40ea8864c7127d0d6f5f25e3f",
+  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "3577fc59dbf8554e493d60d417ad9aabfe765d4e69d3328059e8b24e94d3aa0e",
   "services/pg-api/tests/helpers/native-monitor074-row-lock-genuine.mjs": "525b12d40e0574656b1c7c9bca4c55bfa296b81eb17475cbe963237eb086090d",
   "services/pg-api/tests/helpers/ordinary077-catalog-data.mjs": "c1fdde5c290ddc4a6f577d0028aecf47264cf21b0d108cf1a54f5784e2bb3b5f",
   "services/pg-api/tests/native-monitor-author-pure.test.mjs": "041de254cc584d30b58a8188c83faffd928a2356e7717e5393fdc716ee2cf6c7",
@@ -1270,6 +1270,9 @@ export const agentCallerBrowserFrozenSources=Object.freeze({
   "tests/staff084-predecessor-namespace-contract.test.mjs": "61bd7c7d9d6e6ad1b0461ecf1fecca11553ee0610075619f65fcc14ad75b50d8",
   "tests/quality089-verified-ledger-rpc-pure.test.mjs": "df1d84698fd24f56327f4a0225aefc9bb7f82b91ab818b742ec4cb0e303ca121",
   "tests/original-role-sidecar-read-privilege-pure.test.mjs": "532d67899c787030572cd70b59963a84ab0ac16df678b424e44cb702ffae8679"
+,
+  "tests/native-preflight-toolhub-activity-closure-pure.test.mjs": "075de75b2c69b1cc29dea217c1826dd1c5d83f8ea32330bce6f003d8fd9a89e6",
+  "services/pg-api/tests/native-original-directory-pair-source-pure.test.mjs": "9608a9f574d636de0f1ad90ea9362daa4c158b12bffc94652f9823880ad54c9a"
 })
 export async function startPgNativeAgentCallerGenuineBrowserFixture(env=process.env){
  requireAgentCallerGenuineCi(env);if(env.GITHUB_JOB!==agentCallerGenuineBrowserJob||env.AGENT_STUDIO_F11_F12_GENUINE_SUITE!=='browser')throw Error('agent_caller_browser_job_required')

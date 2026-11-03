@@ -94,7 +94,7 @@ export const originalSchedules078ReviewedSources=Object.freeze({
   "db/postgres/migrations/pg_v9_078_original_schedule_contract.sql": "4e4c5292e2b1c37f142b6b6a6c982acfc5463930523138118b2f9102f5f95e4d",
   "db/postgres/telemetry/001_worker_heartbeats.sql": "5ed1080d9f7b651ea2ae7fceca09db7f61c679f107e196df13ae201a8f99505f",
   "index.html": "4e2bb491344c01fa3364c23eeeaab56e3acbe1961795235a02e63278b23ef921",
-  "ops/build-pg18-native-api-preflight-bundle.mjs": "8882fd73406af9efd01634dae1071ce83534917d569c9209241bd4fbc9236fdd",
+  "ops/build-pg18-native-api-preflight-bundle.mjs": "0518d564f8259da80343520f4ba643a0abea9168b238de8d5218abd491509894",
   "ops/original-schedules078-hosted-scope.json": "460095fcc51013505860a418e341186f2868517ec1b98c3a7bc63eaf64db6f66",
   "ops/pg18-original-schedules078-hosted-entry.mjs": "c6b2e2251f698186efc6c752f1fb86eac44f67285549fbb0dd2eef2cb902f042",
   "ops/verify-pg-pilot-prod.mjs": "933093ab7973b10536385024650a1519c40adb56956371648fcb753423c0e9ec",
@@ -976,7 +976,7 @@ export const originalSchedules078ReviewedSources=Object.freeze({
   "services/pg-api/tests/helpers/monitor074-definition-fixture.mjs": "28799c066ca5df32fcc16384baa57cb6033c86b4047ff801f1e444049874bf99",
   "services/pg-api/tests/helpers/monitor074-original-pb-semantics-reference.cjs": "a40efb70300d9259e3560250aba04a856f756e88a35e6a6cd24b4e13fc6af2e7",
   "services/pg-api/tests/helpers/native-monitor074-ci-guard.mjs": "f04a8fb69412f70f37668057110b7581652f6bc8f6113d91428bc6f900df7fb7",
-  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "b38846147fed60d9f8f41198b73356723cda96e40ea8864c7127d0d6f5f25e3f",
+  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "3577fc59dbf8554e493d60d417ad9aabfe765d4e69d3328059e8b24e94d3aa0e",
   "services/pg-api/tests/helpers/native-monitor074-row-lock-genuine.mjs": "525b12d40e0574656b1c7c9bca4c55bfa296b81eb17475cbe963237eb086090d",
   "services/pg-api/tests/helpers/ordinary077-catalog-data.mjs": "c1fdde5c290ddc4a6f577d0028aecf47264cf21b0d108cf1a54f5784e2bb3b5f",
   "services/pg-api/tests/native-monitor-author-pure.test.mjs": "041de254cc584d30b58a8188c83faffd928a2356e7717e5393fdc716ee2cf6c7",
@@ -1509,4 +1509,7 @@ export const originalSchedules078ReviewedSources=Object.freeze({
   "tests/staff084-predecessor-namespace-contract.test.mjs": "61bd7c7d9d6e6ad1b0461ecf1fecca11553ee0610075619f65fcc14ad75b50d8",
   "tests/quality089-verified-ledger-rpc-pure.test.mjs": "df1d84698fd24f56327f4a0225aefc9bb7f82b91ab818b742ec4cb0e303ca121",
   "tests/original-role-sidecar-read-privilege-pure.test.mjs": "532d67899c787030572cd70b59963a84ab0ac16df678b424e44cb702ffae8679"
+,
+  "tests/native-preflight-toolhub-activity-closure-pure.test.mjs": "075de75b2c69b1cc29dea217c1826dd1c5d83f8ea32330bce6f003d8fd9a89e6",
+  "services/pg-api/tests/native-original-directory-pair-source-pure.test.mjs": "9608a9f574d636de0f1ad90ea9362daa4c158b12bffc94652f9823880ad54c9a"
 })
