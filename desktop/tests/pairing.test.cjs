@@ -15,9 +15,10 @@ test('native bridge rejects settings, popup, subframe, foreign-origin and destro
 test('bundled service accepts an immediate private pairing handoff and still leaves consent pending',async()=>{
  const {fork}=require('node:child_process'),http=require('node:http')
  const home=await fs.mkdtemp(path.join(os.tmpdir(),'agentstudio-desktop-ipc-'))
+ const webRoot=await fs.mkdtemp(path.join(os.tmpdir(),'agentstudio-pairing-web-'));await fs.writeFile(path.join(webRoot,'index.html'),'<html><head></head><body>isolated pairing fixture</body></html>')
  const site=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');if(req.headers.authorization!=='isolated-employee-session-token'){res.writeHead(401);res.end('{}');return}res.end(JSON.stringify(req.url.endsWith('/api/studio/me')?{user:{id:'fixture-owner',active:true}}:{items:[{id:'c'.repeat(24),revoked:false,paired:false}]}))})
  await new Promise(r=>site.listen(0,'127.0.0.1',r));const serverOrigin='http://127.0.0.1:'+site.address().port
- const child=fork(path.join(__dirname,'../services.mjs'),[JSON.stringify({profileHome:home,webRoot:path.join(__dirname,'../../dist'),serverOrigin})],{silent:true,windowsHide:true})
+ const child=fork(path.join(__dirname,'../services.mjs'),[JSON.stringify({profileHome:home,webRoot,serverOrigin})],{silent:true,windowsHide:true})
  child.stdout.resume();child.stderr.resume()
  let ready
  try{
@@ -40,7 +41,7 @@ test('bundled service accepts an immediate private pairing handoff and still lea
   assert.equal(snapshot.review.name,'Immediate IPC fixture');assert.deepEqual(await fs.readdir(home),[])
  }finally{
   await new Promise(resolve=>{const timeout=setTimeout(()=>{child.kill();resolve()},8000);child.once('exit',()=>{clearTimeout(timeout);resolve()});child.send({type:'stop'})})
-  site.closeAllConnections();await new Promise(r=>site.close(r));await fs.rm(home,{recursive:true,force:true})
+  site.closeAllConnections();await new Promise(r=>site.close(r));await fs.rm(home,{recursive:true,force:true});const actualWeb=await fs.realpath(webRoot);assert.equal(path.dirname(actualWeb).toLowerCase(),(await fs.realpath(os.tmpdir())).toLowerCase());assert.match(path.basename(actualWeb),/^agentstudio-pairing-web-/);await fs.rm(actualWeb,{recursive:true,force:true})
  }
 })
 test('direct pairing prepares existing native consent UI without downloading files or binding a device',async()=>{

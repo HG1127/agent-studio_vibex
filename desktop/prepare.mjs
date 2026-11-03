@@ -2,7 +2,9 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {buildConnector} from '../ops/build-connector.mjs'
+import {buildDesktopUpdateGuard} from '../ops/build-desktop-update-guard.mjs'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..')
+await buildDesktopUpdateGuard()
 const result=await buildConnector()
 const target=path.join(root,'.tmp','desktop-connector')
 try {

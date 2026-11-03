@@ -2,6 +2,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto')
 const {createUpdater,verifyManifest,compare,safeUrl,validateReleaseHistory,mergeReleaseHistory,fitReleaseHistory}=require('../update-core.cjs')
 const {performUpdate,managedPath}=require('../update-helper.cjs')
+const {copyManagedFiles}=require('../update-helper.cjs')
 test('completed update cleanup is confined to verified inactive successful transactions',async t=>{
  const {cleanupCompletedUpdates}=require('../update-helper.cjs'),root=await directory(t),base=path.join(root,'temp/desktop-updates'),cache=path.join(root,'temp/desktop-update-cache');await fs.mkdir(base,{recursive:true});await fs.mkdir(cache)
  const ids=[crypto.randomUUID(),crypto.randomUUID(),crypto.randomUUID()]
@@ -84,18 +85,35 @@ async function helperFixture(t){
 }
 test('transaction applies verified files, waits for new process health and preserves user data',async t=>{
  const f=await helperFixture(t)
- await performUpdate(f.job,{waitForExit:async()=>{},runInstaller:async(_file,args)=>{assert.equal(args.at(-1),'/D='+f.root);await fs.writeFile(path.join(f.root,'Agent Studio.exe'),'NEW');await f.writeInventory('0.1.0-preview.11')},startApp:async(_root,args)=>{assert.ok(args.includes('--desktop-updated='+f.id));await fs.writeFile(path.join(f.dir,'health.json'),JSON.stringify({version:'0.1.0-preview.11',id:f.id,pid:98765}));return 98765}})
+ await performUpdate(f.job,{ensureStopped:async()=>{},waitForExit:async()=>{},runInstaller:async(_file,args)=>{assert.equal(args.at(-1),'/D='+f.root);await fs.writeFile(path.join(f.root,'Agent Studio.exe'),'NEW');await f.writeInventory('0.1.0-preview.11')},startApp:async(_root,args)=>{assert.ok(args.includes('--desktop-updated='+f.id));await fs.writeFile(path.join(f.dir,'health.json'),JSON.stringify({version:'0.1.0-preview.11',id:f.id,pid:98765}));return 98765}})
  assert.equal(JSON.parse(await fs.readFile(path.join(f.dir,'result.json'),'utf8')).phase,'succeeded');assert.equal(await fs.readFile(path.join(f.root,'account-private.json'),'utf8'),'PRESERVE_USER_DATA');await assert.rejects(fs.access(path.join(f.dir,'backup')))
 })
 
 test('verification failure before install reopens the unchanged client without running the installer',async t=>{
  const f=await helperFixture(t);await fs.writeFile(f.job.installer,'TAMPERED');let launched=false
- await performUpdate(f.job,{waitForExit:async()=>{},runInstaller:async()=>assert.fail('must not install'),startApp:async(_root,args)=>{assert.ok(args.includes('--desktop-update-failed='+f.id));launched=true;return 98765}})
+ await performUpdate(f.job,{ensureStopped:async()=>{},waitForExit:async()=>{},runInstaller:async()=>assert.fail('must not install'),startApp:async(_root,args)=>{assert.ok(args.includes('--desktop-update-failed='+f.id));launched=true;return 98765}})
  const result=JSON.parse(await fs.readFile(path.join(f.dir,'result.json'),'utf8'));assert.equal(result.phase,'failed');assert.equal(result.unchanged,true);assert.ok(launched)
  assert.equal(await fs.readFile(path.join(f.root,'Agent Studio.exe'),'utf8'),'OLD');assert.equal(await fs.readFile(path.join(f.root,'account-private.json'),'utf8'),'PRESERVE_USER_DATA')
 })
 for(const mode of ['installer-failed','wrong-version','unhealthy'])test('transaction recovers old files after '+mode,async t=>{
  const f=await helperFixture(t);let launches=0,stopped=false
- await performUpdate(f.job,{waitForExit:async()=>{},healthTimeout:1,runInstaller:async()=>{await fs.writeFile(path.join(f.root,'Agent Studio.exe'),'NEW');if(mode==='installer-failed')throw Error('failed');await f.writeInventory(mode==='wrong-version'?'0.1.0-preview.12':'0.1.0-preview.11')},stopApp:async()=>{stopped=true},startApp:async()=>{launches++;return 98765}})
+ await performUpdate(f.job,{ensureStopped:async()=>{},waitForExit:async()=>{},healthTimeout:1,runInstaller:async()=>{await fs.writeFile(path.join(f.root,'Agent Studio.exe'),'NEW');if(mode==='installer-failed')throw Error('failed');await f.writeInventory(mode==='wrong-version'?'0.1.0-preview.12':'0.1.0-preview.11')},stopApp:async()=>{stopped=true},startApp:async()=>{launches++;return 98765}})
  assert.equal((JSON.parse(await fs.readFile(path.join(f.dir,'result.json'),'utf8'))).phase,'rolled_back');assert.equal(await fs.readFile(path.join(f.root,'Agent Studio.exe'),'utf8'),'OLD');assert.equal(await fs.readFile(path.join(f.root,'account-private.json'),'utf8'),'PRESERVE_USER_DATA');assert.ok(stopped);assert.ok(launches>=1)
+})
+
+test('temporary file sharing violations retry a bounded copy without losing the source',async t=>{
+ const root=await directory(t),backup=path.join(root,'backup');await fs.mkdir(backup);await fs.writeFile(path.join(root,'file'),'ORIGINAL');let attempts=0
+ await copyManagedFiles(root,backup,['file'],{wait:async()=>{},copyFile:async(from,to)=>{if(++attempts<3)throw Object.assign(Error('busy'),{code:'EBUSY'});await fs.copyFile(from,to)}})
+ assert.equal(attempts,3);assert.equal(await fs.readFile(path.join(backup,'file'),'utf8'),'ORIGINAL')
+})
+test('a blocked restore keeps the new entry assets, complete backup and startup barrier',async t=>{
+ const f=await helperFixture(t),web=path.join(f.root,'resources/web');await fs.mkdir(web,{recursive:true});await fs.writeFile(path.join(web,'index.html'),'<script src="old.js"></script>');await fs.writeFile(path.join(web,'old.js'),'OLD_JS')
+ const inventory=async(version,names)=>{const files=[];for(const name of names){const b=await fs.readFile(path.join(f.root,name));files.push({path:name,bytes:b.length,sha256:hash(b)})}await fs.writeFile(path.join(f.root,'.studio-files.json'),JSON.stringify({version,files}))}
+ await inventory('0.1.0-preview.10',['Agent Studio.exe','resources/web/index.html','resources/web/old.js']);let copies=0,launched=false
+ await performUpdate(f.job,{waitForExit:async()=>{},ensureStopped:async()=>{},stopApp:async()=>{},copyFiles:async(...args)=>{if(++copies===2)throw Object.assign(Error('locked'),{code:'EBUSY'});await copyManagedFiles(...args)},runInstaller:async()=>{
+  await fs.writeFile(path.join(f.root,'Agent Studio.exe'),'NEW');await fs.writeFile(path.join(web,'index.html'),'<script src="new.js"></script>');await fs.writeFile(path.join(web,'new.js'),'NEW_JS');await inventory('0.1.0-preview.11',['Agent Studio.exe','resources/web/index.html','resources/web/new.js']);throw Error('installer_failed')
+ },startApp:async()=>{launched=true;return 98765}})
+ const result=JSON.parse(await fs.readFile(path.join(f.dir,'result.json'),'utf8'));assert.equal(result.phase,'recovery_required');assert.equal(result.backupPreserved,true);assert.equal(launched,false)
+ assert.equal(await fs.readFile(path.join(web,'new.js'),'utf8'),'NEW_JS');assert.match(await fs.readFile(path.join(web,'index.html'),'utf8'),/new.js/)
+ assert.equal(await fs.readFile(path.join(f.dir,'backup/resources/web/old.js'),'utf8'),'OLD_JS');assert.equal(await fs.readFile(path.join(f.root,'.studio-update-in-progress'),'utf8'),f.id)
 })

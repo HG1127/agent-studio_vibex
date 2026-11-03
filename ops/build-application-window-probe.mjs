@@ -3,7 +3,7 @@ import path from 'node:path'
 import {execFile} from 'node:child_process'
 import {promisify} from 'node:util'
 import {createHash} from 'node:crypto'
-import {APPLICATION_WINDOW_EXECUTABLE_CODE} from '../local-executor/application-native.mjs'
+import {APPLICATION_WINDOW_EXECUTABLE_CODE,APPLICATION_OBSERVER_EXECUTABLE_CODE} from '../local-executor/application-native.mjs'
 const run=promisify(execFile),sha=b=>createHash('sha256').update(b).digest('hex')
 export async function buildApplicationWindowProbe(packageRoot){
  if(process.platform!=='win32'||process.arch!=='x64')throw Error('build_on_windows_x64_required')
@@ -14,5 +14,10 @@ export async function buildApplicationWindowProbe(packageRoot){
  await run(compiler,['/nologo','/codepage:65001','/target:exe','/platform:x64','/optimize+','/reference:System.Web.Extensions.dll','/out:'+binary,source],{windowsHide:true,shell:false,timeout:120000,maxBuffer:1024*1024})
  const metadata={format:'agent-studio-window-probe-v1',policySha256:sha(APPLICATION_WINDOW_EXECUTABLE_CODE),sha256:sha(await fs.readFile(binary)),platform:'win32-x64'}
  await fs.writeFile(path.join(directory,'application-window-probe.json'),JSON.stringify(metadata,null,2))
+ const observerSource=path.join(directory,'application-observer.cs'),observerBinary=path.join(directory,'application-observer.exe')
+ await fs.writeFile(observerSource,APPLICATION_OBSERVER_EXECUTABLE_CODE)
+ const framework=path.dirname(compiler),references=['UIAutomationClient.dll','UIAutomationTypes.dll','WindowsBase.dll'].map(name=>'/reference:'+path.join(framework,'WPF',name))
+ await run(compiler,['/nologo','/codepage:65001','/target:exe','/platform:x64','/optimize+','/reference:System.Drawing.dll','/reference:System.Web.Extensions.dll',...references,'/out:'+observerBinary,observerSource],{windowsHide:true,shell:false,timeout:120000,maxBuffer:1024*1024})
+ await fs.writeFile(path.join(directory,'application-observer.json'),JSON.stringify({format:'agent-studio-observer-v1',policySha256:sha(APPLICATION_OBSERVER_EXECUTABLE_CODE),sha256:sha(await fs.readFile(observerBinary)),platform:'win32-x64'},null,2))
  return metadata
 }

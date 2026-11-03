@@ -48,7 +48,7 @@ try {
   if(process.argv.includes('--application-cold-start')){
     electronFixture=await createElectronApplicationFixture(dir,path.join(root,'desktop/node_modules/electron/dist'))
     applicationGrant=await inspectApplication(electronFixture.exe,{name:'Electron cold start fixture'})
-    const config=JSON.parse(await fs.readFile(prepared.configFile,'utf8'));config.applications={format:'agent-studio-applications-v1',enabled:true,images:false,grants:[applicationGrant]}
+    const config=JSON.parse(await fs.readFile(prepared.configFile,'utf8'));config.applications={format:'agent-studio-applications-v1',enabled:true,images:process.argv.includes('--application-observe'),grants:[applicationGrant]}
     await fs.writeFile(prepared.configFile,JSON.stringify(config,null,2))
   }
   await fs.writeFile(path.join(prepared.workspace,'desktop-fixture.txt'),'BUNDLED_DESKTOP_FILE_OK')
@@ -97,7 +97,7 @@ try {
   let completed
   for(let i=0;i<100;i++){completed=await request('GET','/__pb/api/local-jobs/'+queued.data.id,null,{Authorization:login.data.token});if(['succeeded','failed'].includes(completed.data.status))break;await sleep(200)}
   assert.equal(completed.data.status,'succeeded');assert.ok(completed.data.result.includes('BUNDLED_DESKTOP_FILE_OK'))
-  let electronColdStart=false
+  let electronColdStart=false,electronObservation=false,fixtureWindow
   if(applicationGrant){
     for(const tool of ['apps.windows','apps.launch','apps.launch']){
       const queued=await request('POST',jobRoute,{tool,arguments:{app:applicationGrant.id},confirm:true,request_id:randomBytes(16).toString('hex')},{Authorization:login.data.token});assert.equal(queued.status,201)
@@ -105,11 +105,18 @@ try {
       assert.equal(result.data.status,'succeeded',tool+': '+result.data.result)
       const value=JSON.parse(result.data.result)
       if(tool==='apps.windows')assert.deepEqual(value.windows,[],'fixture must begin with no window')
-      else {assert.equal(value.status,'ready');assert.ok(value.windows.length);assert.equal(value.windows[0].minimized,false,'launch must return a shown window');assert.equal(value.alreadyRunning,electronColdStart);electronColdStart=true}
+      else {assert.equal(value.status,'ready');assert.ok(value.windows.length);assert.equal(value.windows[0].minimized,false,'launch must return a shown window');assert.equal(value.alreadyRunning,electronColdStart);electronColdStart=true;fixtureWindow=value.windows[0].id}
     }
     let receipt
     for(let i=0;i<100&&!receipt;i++){try{receipt=JSON.parse(await fs.readFile(electronFixture.receipt,'utf8'))}catch(error){if(error.code!=='ENOENT')throw error}if(!receipt)await sleep(50)}
     assert.ok(receipt,'Electron fixture did not report browser readiness');assert.equal(receipt.type,'browser');assert.equal(receipt.nodeMode,null);assert.equal(receipt.visible,true)
+    if(process.argv.includes('--application-observe')){
+      const queued=await request('POST',jobRoute,{tool:'apps.observe',arguments:{app:applicationGrant.id,window:fixtureWindow},confirm:true,request_id:randomBytes(16).toString('hex')},{Authorization:login.data.token});assert.equal(queued.status,201)
+      let observed;for(let i=0;i<240;i++){observed=await request('GET','/__pb/api/local-jobs/'+queued.data.id,null,{Authorization:login.data.token});if(['succeeded','failed','expired','unknown'].includes(observed.data.status))break;await sleep(250)}
+      assert.equal(observed.data.status,'succeeded','packaged observation: '+observed.data.result)
+      const view=JSON.parse(observed.data.result);assert.match(view.observation,/^[a-f0-9]{32}$/);assert.ok(view.controls.some(c=>/Edit|Document/.test(c.type||'')));assert.ok(view.controls.every(c=>!c.rect||c.rect.every(Number.isFinite)))
+      assert.ok(observed.data.images?.length||view.imageDiagnostic,'authorized image must return or explain a safe controls-only observation');electronObservation=true
+    }
   }
   let nativeFileApplications=false
   if(process.argv.includes('--native-file-actions')){
@@ -134,7 +141,7 @@ try {
   assert.equal(await fs.readFile(prepared.configFile,'utf8'),originalConfig,'cancelled in-app review changed local permissions')
   const manager=await fetch(report.managerOrigin+'/api/state');assert.equal(manager.status,403)
   const code=await (await fetch(report.origin+'/__desktop/runtime.js')).text();assert.ok(code.includes(server));assert.ok(!code.includes(login.data.token))
-  console.log('PACKAGED_DESKTOP_SMOKE '+JSON.stringify({...report,testHome:dir,backend:'isolated-standalone-pocketbase',verifiedEmployeeJwt:true,forgedIdentityDenied:true,bundledNode:true,developerPathRemoved:true,realFileJob:true,nativeFileApplications,electronColdStart,unapprovedJobDenied:true,inAppPermissionReview:true,cancelledReviewUnchanged:true,productionData:false}))
+  console.log('PACKAGED_DESKTOP_SMOKE '+JSON.stringify({...report,testHome:dir,backend:'isolated-standalone-pocketbase',verifiedEmployeeJwt:true,forgedIdentityDenied:true,bundledNode:true,developerPathRemoved:true,realFileJob:true,nativeFileApplications,electronColdStart,electronObservation,unapprovedJobDenied:true,inAppPermissionReview:true,cancelledReviewUnchanged:true,productionData:false}))
   if(process.argv.includes('--keep-open')){
     await fs.writeFile(path.join(root,'.tmp','desktop-active-smoke.json'),JSON.stringify({directory:dir,report,finish:path.join(dir,'finish')},null,2))
     for(let i=0;i<1800;i++){try{await fs.access(path.join(dir,'finish'));break}catch{}await sleep(1000)}

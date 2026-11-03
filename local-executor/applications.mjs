@@ -9,6 +9,7 @@ import {mcpResult} from './result.mjs'
 import {createCodexTasks} from './codex-tasks.mjs'
 import {setTimeout as delay} from 'node:timers/promises'
 import {allowedWindowTarget,resolveWindowTarget,shortcutApplicationPath,isQoderHelper} from './application-target.mjs'
+import {APPLICATION_FAILURE_MESSAGES} from './application-feedback.mjs'
 
 // Electron's fork() injects ELECTRON_RUN_AS_NODE even when the desktop parent
 // supplies a clean environment. Never let connector runtime controls turn a
@@ -49,7 +50,7 @@ export async function inspectApplication(file,{name,adapter='desktop',control=fa
  if(typeof file!=='string'||!/^[a-z]:\\.*\.exe$/i.test(file)||/[\x00-\x1f\x7f"<>|?*]/.test(file))throw Error('application_path_denied')
  const resolved=await fs.realpath(file),st=await fs.lstat(resolved)
  if(!st.isFile()||st.isSymbolicLink()||st.size<2||st.size>512*1024*1024)throw Error('application_path_denied')
- const digest=createHash('sha256');if(fingerprint)for await(const bytes of createReadStream(resolved))digest.update(bytes)
+ const digest=createHash('sha256');if(fingerprint)for await(const bytes of createReadStream(resolved,{highWaterMark:1024*1024}))digest.update(bytes)
  const electron=adapter==='desktop'&&await fs.access(path.join(path.dirname(resolved),'LICENSE.electron.txt')).then(()=>true,()=>false)
  const grant={...(electron?{accessibility:'electron'}:{}),id:applicationId(resolved),name:String(name||path.win32.basename(resolved,'.exe')).slice(0,100),path:resolved,sha256:fingerprint?digest.digest('hex'):'0'.repeat(64),adapter,control,allowWrite}
  if(adapter==='desktop'&&resolveTarget){const target=await resolveWindowTarget(resolved);if(target){const identity=await inspectApplication(target,{name,adapter,control,allowWrite},{fingerprint,resolveTarget:false});grant.windowPath=target;grant.windowSha256=identity.sha256||'0'.repeat(64)}}
@@ -100,12 +101,19 @@ export function registerApplications({add,config,native=applicationNative,launch
   })
   addTool('apps.windows','列出已授权应用的可见窗口。只返回该应用的窗口，不枚举其他应用的数据。',{app:appSchema(desktop)},async(args,signal)=>{exact(args,['app']);const g=await checked(args.app);return JSON.stringify({application:g.name,windows:(await windows(g,signal)).map(({path,...w})=>w)})})
   addTool('apps.observe','观察已授权应用的指定窗口，返回控件编号和一次性观察凭据；已授权截图时仅截取此窗口。输入前必须重新观察，凭据30秒有效。',{app:appSchema(desktop),window:str},async(args,signal)=>{
-   exact(args,['app','window']);const g=await checked(args.app);if(typeof args.window!=='string'||!/^\d{1,20}$/.test(args.window))throw Error('application_window_changed');if(!windowCache.get(g.id)?.has(args.window)&&!(await windows(g,signal)).some(w=>w.id===args.window))throw Error('application_window_changed')
+   exact(args,['app','window']);const g=await checked(args.app);if(typeof args.window!=='string'||!/^\d{1,20}$/.test(args.window))throw Error('application_window_changed')
+   observations.delete(g.id)
+   const changed=async list=>JSON.stringify({application:g.name,status:list.length?'window_changed':'waiting_window',requestedWindow:args.window,windows:list.map(({path,...w})=>w),actionable:false,retryAction:false,message:'原窗口已关闭或重建。请使用刷新后的窗口编号重新观察；未重新启动、点击或输入。'})
+   if(!windowCache.get(g.id)?.has(args.window)){const list=await windows(g,signal);if(!list.some(w=>w.id===args.window))return changed(list)}
    // The native observer revalidates the window's current executable identity.
    // A known handle saves a redundant helper spawn, never an authorization check.
-   observations.delete(g.id);const view=await native({action:'observe',path:g.windowPath||g.path,window:args.window,images:permission.images},{signal})
+   let view
+   try{view=await native({action:'observe',path:g.windowPath||g.path,window:args.window,images:permission.images},{signal})}
+   catch(error){if(error.message==='application_window_changed')return changed(await windows(g,signal));throw error}
    const token=randomBytes(16).toString('hex'),controls=(view.controls||[]).sort((a,b)=>Number(/Edit|Document/.test(b.type||''))-Number(/Edit|Document/.test(a.type||''))).slice(0,250)
-   const output={application:g.name,window:{id:view.window.id,title:redactApplicationText(view.window.title),width:view.window.width,height:view.window.height},observation:token,expiresInSeconds:30,truncated:false,diagnostic:g.accessibility==='electron'&&!(view.controls||[]).some(c=>/Edit|Document|Text|List|DataGrid/.test(c.type||''))?'应用窗口已找到，但正文控件尚不可访问。请先保存应用内工作并关闭应用，再从本软件启动以启用控件支持；不要把窗口就绪当作任务完成。':undefined,controls:controls.map(c=>({id:c.id,name:redactApplicationText(c.name).slice(0,200),type:c.type,password:c.password,enabled:c.enabled,rect:c.rect,actions:c.actions,value:c.password?undefined:c.value===undefined?undefined:redactApplicationText(c.value)}))}
+   const output={application:g.name,window:{id:view.window.id,title:redactApplicationText(view.window.title),width:view.window.width,height:view.window.height},observation:token,expiresInSeconds:30,truncated:view.controlsTruncated===true||(view.controls||[]).length>250,diagnostic:g.accessibility==='electron'&&!(view.controls||[]).some(c=>/Edit|Document|Text|List|DataGrid/.test(c.type||''))?'应用窗口已找到，但正文控件尚不可访问。请先保存应用内工作并关闭应用，再从本软件启动以启用控件支持；不要把窗口就绪当作任务完成。':undefined,controls:controls.map(c=>({id:c.id,name:redactApplicationText(c.name).slice(0,200),type:c.type,password:c.password,enabled:c.enabled,rect:c.rect,actions:c.actions,value:c.password?undefined:c.value===undefined?undefined:redactApplicationText(c.value)}))}
+   if(view.image&&view.imageWidth>0&&view.imageHeight>0)output.imageSize={width:view.imageWidth,height:view.imageHeight,scaled:view.imageWidth!==view.window.width||view.imageHeight!==view.window.height};
+   if(view.imageError){output.imageDiagnostic={code:Object.hasOwn(APPLICATION_FAILURE_MESSAGES,view.imageError)?view.imageError:'application_capture_failed',message:APPLICATION_FAILURE_MESSAGES[view.imageError]||APPLICATION_FAILURE_MESSAGES.application_capture_failed};output.imageDiagnostic.controlsOnly=true}
    while(JSON.stringify(output).length>10500){output.controls.pop();output.truncated=true}
    observations.set(g.id,{token,created:clock(),window:args.window,view:{...view,controls:controls.filter(c=>output.controls.some(shown=>shown.id===c.id))}})
    const text=JSON.stringify(output)

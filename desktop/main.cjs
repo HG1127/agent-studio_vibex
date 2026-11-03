@@ -8,6 +8,7 @@ const {serverOrigin,ownUrl,webUrl,childEnvironment,readSettings,saveSettings,ren
 const {randomUUID}=require('node:crypto')
 const info = require('./build-info.json')
 const {installUpdates}=require('./update-controller.cjs')
+const {blockedUpdate,waitForWorkbench}=require('./startup-health.cjs')
 const option = name => process.argv.find(x=>x.startsWith(name+'='))?.slice(name.length+1)
 const testHome = option('--desktop-test-home')
 if(testHome)app.setPath('userData',path.resolve(testHome))
@@ -25,8 +26,10 @@ const pairingRequests=new Map()
 function reveal(window){if(!window||window.isDestroyed())return;if(window.isMinimized())window.restore();window.show();window.focus()}
 const settingsUrl=pathToFileURL(path.join(__dirname,'ui','settings.html')).href
 const webPreferences={nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true,partition:'persist:agent-studio'}
-const lock=app.requestSingleInstanceLock()
-if(!lock)void app.whenReady().then(()=>dialog.showMessageBox({type:'info',title:'Agent Studio 已在运行',message:'新版 '+info.version+' 尚未启动，已有旧工作台正在运行。',detail:'如果刚换了新版 EXE，请先从旧版菜单选择“退出并停止本机连接”，再打开新版。关闭工作台窗口会保留托盘进程。'})).finally(()=>app.quit())
+const updateBlocked=runtimeRoot&&blockedUpdate(runtimeRoot,{updated:option('--desktop-updated'),failed:option('--desktop-update-failed'),version:info.version})
+const lock=!updateBlocked&&app.requestSingleInstanceLock()
+if(updateBlocked)void app.whenReady().then(()=>dialog.showMessageBox({type:'info',title:'程序正在更新或恢复',message:'安装文件尚未确认完整，暂时不打开工作台。',detail:'更新完成后会自动打开。请勿重复启动；如果更新已停止，请使用最新版安装程序修复，原账号与授权会保留。'})).finally(()=>app.exit(0))
+else if(!lock)void app.whenReady().then(()=>dialog.showMessageBox({type:'info',title:'Agent Studio 已在运行',message:'新版 '+info.version+' 尚未启动，已有旧工作台正在运行。',detail:'如果刚换了新版 EXE，请先从旧版菜单选择“退出并停止本机连接”，再打开新版。关闭工作台窗口会保留托盘进程。'})).finally(()=>app.quit())
 else {
 app.on('second-instance',()=>{void app.whenReady().then(()=>{if(main&&!main.isDestroyed())reveal(main);else showSettings()})})
 app.on('window-all-closed',()=>{})
@@ -50,7 +53,7 @@ app.whenReady().then(async()=>{
   Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'Agent Studio',submenu:actions},{label:'查看',submenu:[{role:'reload'},{role:'forceReload'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'},{role:'togglefullscreen'}]},{label:'编辑',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},{label:'帮助',submenu:[{label:'版本信息',click:()=>dialog.showMessageBox({type:'info',title:'Agent Studio',message:'Agent Studio '+info.version,detail:'网页源码：'+info.sourceCommit+'\n服务器：'+settings.server+'\nWindows x64 预览版，尚未代码签名。\n退出会停止本机连接；账号、模型和团队数据由服务器管理。'})}]}]))
   const testServer=option('--desktop-test-server')
   if(testServer){if(!testHome||!/^http:\/\/127\.0\.0\.1:\d+$/.test(testServer))throw Error('isolated_test_configuration_required');settings={server:serverOrigin(testServer),port:0};await showStudio()}
-  else if(settings.port){try{await showStudio()}catch{/* Keep settings available for a recoverable startup failure. */}}
+  else if(settings.port){try{await showStudio()}catch(error){if(option('--desktop-updated'))throw error;/* Keep settings available for a recoverable startup failure. */}}
   else showSettings()
   const updated=option('--desktop-updated')
   if(runtimeRoot&&/^[a-f0-9-]{36}$/.test(updated||'')){
@@ -58,6 +61,12 @@ app.whenReady().then(async()=>{
     const job=JSON.parse(await fs.readFile(path.join(directory,'job.json'),'utf8'))
     if(job.id!==updated||path.resolve(job.root)!==runtimeRoot)throw Error('invalid_update_health_scope')
     await fs.writeFile(path.join(directory,'health.json'),JSON.stringify({id:updated,version:info.version,pid:process.pid}))
+    // Older clients do not know the new startup barrier. Once their new UI has
+    // rendered, finish that legacy handoff without relying on their helper.
+    if(!require('node:fs').existsSync(path.join(directory,'update-guard.json'))){
+      const barrier=path.join(runtimeRoot,'.studio-update-in-progress')
+      try{if((await fs.readFile(barrier,'utf8')).trim()===updated)await fs.unlink(barrier)}catch(error){if(error.code!=='ENOENT')throw error}
+    }
   }
   const failedUpdate=option('--desktop-update-failed')
   if(runtimeRoot)setTimeout(()=>void require('./update-helper.cjs').cleanupCompletedUpdates(runtimeRoot),65000).unref()
@@ -179,6 +188,7 @@ async function showStudio() {
     let fixture
     if(report&&testHome){try{fixture=JSON.parse(await fs.readFile(path.join(testHome,'smoke-auth.json'),'utf8'))}catch(error){if(error.code!=='ENOENT')throw error}}
     await main.loadURL(local.origin+(fixture?'/login':''))
+    await waitForWorkbench(main.webContents)
     reveal(main)
     main.webContents.setZoomFactor(0.9)
     if(report&&testHome){
@@ -232,7 +242,7 @@ async function showStudio() {
       const fixtureDiagnostic=fixture&&!mainComputerSelector?await main.webContents.executeJavaScript("Promise.all([Promise.resolve({url:location.pathname,text:document.body.innerText.slice(0,1800)}),window.studioDesktop.computer('state').then(s=>({ownerVerified:!!s.owner,profileCount:s.profiles.length,selectedId:s.selectedId}),e=>({error:String(e.message)}))])"):undefined
       await fs.writeFile(path.resolve(report),JSON.stringify({started:true,sourceCommit:info.sourceCommit,version:info.version,origin:local.origin,managerOrigin:local.managerOrigin,title:main.webContents.getTitle(),nativePairingAvailable,nativeManagerOpened,embeddedManager,managementInline,mainComputerSelector,singleWindow,nativeConnected,nativeStatusVisible,nativeSettingsEntries,fixtureDiagnostic,tempDirectory:app.getPath('temp'),runtimeRoot:runtimeRoot||null,resourcesDirectory:process.resourcesPath,nodeIntegration:false,contextIsolation:true,sandbox:true},null,2))
     }
-  } catch(error){await stopServices();if(testHome)throw error;await dialog.showMessageBox({type:'error',title:'工作台暂未打开',message:String(error.message).slice(0,500)});showSettings();throw error}
+  } catch(error){if(main&&!main.isDestroyed())main.destroy();main=null;await stopServices();if(testHome)throw error;await dialog.showMessageBox({type:'error',title:'工作台暂未打开',message:String(error.message).slice(0,500)});await showSettings();throw error}
 }
 async function showConnection(intent={}) {
   await showStudio()

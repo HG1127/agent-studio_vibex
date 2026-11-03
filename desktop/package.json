@@ -32,7 +32,8 @@
       "release-history.json",
       "ui/**",
       "build-info.json",
-      "!node_modules/**/*"
+      "!node_modules/**/*",
+      "startup-health.cjs"
     ],
     "extraResources": [
       {
@@ -58,6 +59,10 @@
       {
         "from": "computer.mjs",
         "to": "connector/app/desktop/computer.mjs"
+      },
+      {
+        "from": "../.tmp/desktop-update-guard",
+        "to": "update-guard"
       }
     ],
     "win": {

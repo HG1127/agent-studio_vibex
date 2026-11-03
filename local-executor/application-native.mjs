@@ -9,7 +9,7 @@ using System;using System.Collections.Generic;using System.Diagnostics;using Sys
 public static class StudioApplications {
  public class Win {public string id,title,path;public int pid,x,y,width,height;public bool minimized;}
  public class Control {public int id;public string name,type,runtime;public bool password,enabled;public double[] rect;public List<string> actions;public string value;}
- public class View {public Win window;public uint input;public List<Control> controls;public string image;}
+ public class View {public Win window;public uint input;public List<Control> controls;public string image,imageError;public int imageWidth,imageHeight;public bool controlsTruncated;}
  [StructLayout(LayoutKind.Sequential)]public struct Rect{public int left,top,right,bottom;}
  [StructLayout(LayoutKind.Sequential)]public struct LastInput{public uint size,time;}
  [StructLayout(LayoutKind.Sequential)]struct Input{public uint type;public InputData data;}
@@ -44,25 +44,53 @@ public static class StudioApplications {
  static string Executable(uint pid){var process=OpenProcess(0x1000,false,pid);if(process==IntPtr.Zero)throw new Exception("application_window_changed");try{uint size=32768;var name=new System.Text.StringBuilder((int)size);if(!QueryFullProcessImageName(process,0,name,ref size))throw new Exception("application_window_changed");return name.ToString();}finally{CloseHandle(process);}}
  static Win Get(IntPtr h,string expected){uint pid;GetWindowThreadProcessId(h,out pid);string exe=Executable(pid);if(expected!=null&&!String.Equals(Path.GetFullPath(exe),Path.GetFullPath(expected),StringComparison.OrdinalIgnoreCase))throw new Exception("application_window_changed");var b=new System.Text.StringBuilder(512);GetWindowText(h,b,512);var title=b.ToString();if(System.Text.RegularExpressions.Regex.IsMatch(title,@"Agent Studio|ChatGPT|Codex|Windows Terminal|Windows PowerShell|命令提示符|Windows Security|Windows 安全|用户帐户控制|User Account Control|Credential|密码管理|password manager",System.Text.RegularExpressions.RegexOptions.IgnoreCase))throw new Exception("application_sensitive_window");Rect r;if(!GetWindowRect(h,out r))throw new Exception("application_window_changed");return new Win{id=h.ToInt64().ToString(),title=title,path=exe,pid=(int)pid,x=r.left,y=r.top,width=r.right-r.left,height=r.bottom-r.top,minimized=IsIconic(h)};}
  public static Win Reveal(string id,string expected){var h=new IntPtr(long.Parse(id));Get(h,expected);if(IsIconic(h))ShowWindow(h,9);SetForegroundWindow(h);return Get(h,expected);}
- static AutomationElementCollection Elements(IntPtr h){return AutomationElement.FromHandle(h).FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.IsControlElementProperty,true));}
- static string Runtime(AutomationElement e){return String.Join(".",e.GetRuntimeId());}
- static bool Sensitive(AutomationElement e){var c=e.Current;return c.IsPassword||System.Text.RegularExpressions.Regex.IsMatch((c.ClassName??"")+" "+(c.AutomationId??"")+" "+(c.Name??""),@"password|credential|xterm|terminal|powershell|命令提示|终端",System.Text.RegularExpressions.RegexOptions.IgnoreCase);}
- static List<Control> Controls(IntPtr h){
-  var output=new List<Control>();var all=Elements(h);
-  for(int i=0;i<Math.Min(all.Count,500);i++){try{
-   var element=all[i];var e=element.Current;if(e.IsOffscreen)continue;var r=e.BoundingRectangle;bool sensitive=Sensitive(element);var actions=new List<string>();string text="";object pattern;
-   if(!sensitive&&e.IsEnabled){
-    if(r.Width>0&&r.Height>0)actions.Add("click");
-    if(element.TryGetCurrentPattern(ValuePattern.Pattern,out pattern)){var v=(ValuePattern)pattern;text=v.Current.Value??"";if(!v.Current.IsReadOnly)actions.Add("type");}
-    else if(element.TryGetCurrentPattern(TextPattern.Pattern,out pattern))text=((TextPattern)pattern).DocumentRange.GetText(1001);
-    if(e.IsKeyboardFocusable){actions.Add("key");if((e.ControlType==ControlType.Edit||e.ControlType==ControlType.Document)&&!actions.Contains("type"))actions.Add("type");}
-   }
-   if(text.Length>1000)text=text.Substring(0,1000)+"…[truncated]";
-   output.Add(new Control{id=i,name=sensitive?"[protected]":(e.Name??""),type=e.ControlType.ProgrammaticName,runtime=Runtime(element),password=sensitive,enabled=e.IsEnabled,rect=new double[]{r.X,r.Y,r.Width,r.Height},actions=actions,value=sensitive?null:text});
-  }catch{}}
+ static List<AutomationElement> Elements(IntPtr h){bool truncated;return Elements(h,out truncated);}
+ static List<AutomationElement> Elements(IntPtr h,out bool truncated){
+  var output=new List<AutomationElement>();var pending=new Stack<AutomationElement>();var walker=TreeWalker.ControlViewWalker;var clock=Stopwatch.StartNew();
+  truncated=false;try{var element=walker.GetFirstChild(AutomationElement.FromHandle(h));
+   while(element!=null&&output.Count<500&&clock.ElapsedMilliseconds<12000){
+    output.Add(element);var child=walker.GetFirstChild(element);
+    if(child!=null){var sibling=walker.GetNextSibling(element);if(sibling!=null)pending.Push(sibling);element=child;}
+    else{element=walker.GetNextSibling(element);if(element==null&&pending.Count>0)element=pending.Pop();}
+   }truncated=element!=null||pending.Count>0;
+  }catch(ElementNotAvailableException){throw new Exception("application_window_changed");}
   return output;
  }
- public static View Observe(string id,string exe,bool image){SetProcessDPIAware();var h=new IntPtr(Int64.Parse(id));var w=Get(h,exe);if(IsIconic(h))ShowWindow(h,9);System.Threading.Thread.Sleep(150);w=Get(h,exe);try{Process.GetProcessById(w.pid).WaitForInputIdle(5000);}catch{}var result=new View{window=w,input=InputEpoch(),controls=Controls(h)};if(image){if(w.width>1920||w.height>1080||w.width<40||w.height<40)throw new Exception("application_window_size_denied");using(var bitmap=new Bitmap(w.width,w.height)){using(var g=Graphics.FromImage(bitmap)){var dc=g.GetHdc();bool ok;try{ok=PrintWindow(h,dc,2);}finally{g.ReleaseHdc(dc);}if(!ok)throw new Exception("application_capture_failed");}using(var stream=new MemoryStream()){bitmap.Save(stream,ImageFormat.Png);if(stream.Length>1048576)throw new Exception("application_capture_too_large");result.image=Convert.ToBase64String(stream.ToArray());}}}return result;}
+ static string Runtime(AutomationElement e){return String.Join(".",e.GetRuntimeId());}
+ public static double[] SafeControlBounds(double x,double y,double width,double height){if(Double.IsNaN(x)||Double.IsNaN(y)||Double.IsNaN(width)||Double.IsNaN(height)||Double.IsInfinity(x)||Double.IsInfinity(y)||Double.IsInfinity(width)||Double.IsInfinity(height)||width<=0||height<=0)return new double[]{0,0,0,0};return new double[]{x,y,width,height};}
+ static bool Sensitive(AutomationElement e){var c=e.Current;return c.IsPassword||System.Text.RegularExpressions.Regex.IsMatch((c.ClassName??"")+" "+(c.AutomationId??"")+" "+(c.Name??""),@"password|credential|xterm|terminal|powershell|命令提示|终端",System.Text.RegularExpressions.RegexOptions.IgnoreCase);}
+ static List<Control> Controls(IntPtr h,out bool truncated){
+  var output=new List<Control>();var all=Elements(h,out truncated);var clock=Stopwatch.StartNew();int i=0;
+  for(;i<Math.Min(all.Count,500)&&clock.ElapsedMilliseconds<10000;i++){try{
+   var element=all[i];var e=element.Current;if(e.IsOffscreen)continue;var r=e.BoundingRectangle;var bounds=SafeControlBounds(r.X,r.Y,r.Width,r.Height);bool spatial=bounds[2]>0&&bounds[3]>0;bool sensitive=Sensitive(element);var actions=new List<string>();string text="";object pattern;
+   if(!sensitive&&e.IsEnabled){
+    if(spatial)actions.Add("click");
+    if(element.TryGetCurrentPattern(ValuePattern.Pattern,out pattern)){var v=(ValuePattern)pattern;text=v.Current.Value??"";if(spatial&&!v.Current.IsReadOnly)actions.Add("type");}
+    else if(element.TryGetCurrentPattern(TextPattern.Pattern,out pattern))text=((TextPattern)pattern).DocumentRange.GetText(1001);
+    if(spatial&&e.IsKeyboardFocusable){actions.Add("key");if((e.ControlType==ControlType.Edit||e.ControlType==ControlType.Document)&&!actions.Contains("type"))actions.Add("type");}
+   }
+   if(text.Length>1000)text=text.Substring(0,1000)+"…[truncated]";
+   string name=e.Name??"";if(name.Length>1000)name=name.Substring(0,1000);output.Add(new Control{id=i,name=sensitive?"[protected]":name,type=e.ControlType.ProgrammaticName,runtime=Runtime(element),password=sensitive,enabled=e.IsEnabled,rect=bounds,actions=actions,value=sensitive?null:text});
+  }catch{}}
+  if(i<all.Count)truncated=true;return output;
+ }
+ static void Capture(View result,IntPtr h,Win w){
+  if(w.width<40||w.height<40||w.width>8192||w.height>8192||(long)w.width*w.height>16777216){result.imageError="application_window_size_denied";return;}
+  var captured=new View();var thread=new System.Threading.Thread(delegate(){
+   try{using(var bitmap=new Bitmap(w.width,w.height)){
+    using(var g=Graphics.FromImage(bitmap)){var dc=g.GetHdc();bool ok;try{ok=PrintWindow(h,dc,2);}finally{g.ReleaseHdc(dc);}if(!ok)throw new Exception("application_capture_failed");}
+    foreach(int limit in new int[]{1600,1200,900,640}){double ratio=Math.Min(1.0,Math.Min((double)limit/w.width,(limit*9.0/16.0)/w.height));
+    using(var scaled=new Bitmap(Math.Max(1,(int)(w.width*ratio)),Math.Max(1,(int)(w.height*ratio)))){
+     using(var graphics=Graphics.FromImage(scaled)){graphics.DrawImage(bitmap,0,0,scaled.Width,scaled.Height);}
+     using(var stream=new MemoryStream()){scaled.Save(stream,ImageFormat.Png);if(stream.Length<=1048576){captured.image=Convert.ToBase64String(stream.ToArray());captured.imageWidth=scaled.Width;captured.imageHeight=scaled.Height;break;}}
+    }
+    }if(captured.image==null)throw new Exception("application_capture_too_large");
+   }}catch(Exception error){captured.imageError=error.Message.StartsWith("application_capture_")?error.Message:"application_capture_failed";}
+  });thread.IsBackground=true;thread.SetApartmentState(System.Threading.ApartmentState.STA);thread.Start();
+  if(!thread.Join(2500)){result.imageError="application_capture_timeout";return;}
+  result.image=captured.image;result.imageError=captured.imageError;result.imageWidth=captured.imageWidth;result.imageHeight=captured.imageHeight;
+ }
+ public static View Observe(string id,string exe,bool image){SetProcessDPIAware();var h=new IntPtr(Int64.Parse(id));var w=Get(h,exe);if(IsIconic(h))ShowWindow(h,9);System.Threading.Thread.Sleep(150);w=Get(h,exe);try{Process.GetProcessById(w.pid).WaitForInputIdle(3000);}catch{}bool truncated;var controls=Controls(h,out truncated);var result=new View{window=w,input=InputEpoch(),controls=controls,controlsTruncated=truncated};if(image)Capture(result,h,w);return result;}
  static void Key(ushort key,bool up){var i=new Input();i.type=1;i.data.keyboard.key=key;i.data.keyboard.flags=up?2u:0u;if(SendInput(1,new[]{i},Marshal.SizeOf(typeof(Input)))!=1)throw new Exception("application_input_failed");}
  static void Text(string text){foreach(char c in text){if(c<' '||c==127)throw new Exception("application_control_character_denied");var i=new Input();i.type=1;i.data.keyboard.scan=c;i.data.keyboard.flags=4;if(SendInput(1,new[]{i},Marshal.SizeOf(typeof(Input)))!=1)throw new Exception("application_input_failed");i.data.keyboard.flags=6;SendInput(1,new[]{i},Marshal.SizeOf(typeof(Input)));}}
  static void MouseInput(uint flags){var i=new Input();i.type=0;i.data.mouse.flags=flags;if(SendInput(1,new[]{i},Marshal.SizeOf(typeof(Input)))!=1)throw new Exception("application_input_failed");}
@@ -108,8 +136,31 @@ public static class StudioWindowProbe {
   }
  }
 }`
+// The observation executable has no input/action endpoint. It shares the exact
+// authorization and control-reading policy, without runtime PowerShell compile.
+export const APPLICATION_OBSERVER_EXECUTABLE_CODE=APPLICATION_NATIVE_CODE.split(' static void Key(')[0]+'\n}\n'+String.raw`
+public static class StudioObserver {
+ [STAThread]public static int Main(){
+  Console.OutputEncoding=new System.Text.UTF8Encoding(false);
+  var json=new System.Web.Script.Serialization.JavaScriptSerializer();json.MaxJsonLength=4194304;
+  try{
+   string encoded=Environment.GetEnvironmentVariable("STUDIO_APPLICATION_INPUT");
+   if(encoded==null||encoded.Length>8192)throw new Exception("application_action_denied");
+   var input=json.Deserialize<Dictionary<string,object>>(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(encoded)));
+   foreach(string key in input.Keys)if(key!="action"&&key!="path"&&key!="window"&&key!="images")throw new Exception("application_action_denied");
+   if(!input.ContainsKey("action")||!Object.Equals(input["action"],"observe")||!input.ContainsKey("path")||!(input["path"] is string)||!input.ContainsKey("window")||!(input["window"] is string))throw new Exception("application_action_denied");
+   string expected=(string)input["path"],window=(string)input["window"];long handle;
+   if(expected.Length>2000||!System.Text.RegularExpressions.Regex.IsMatch(expected,@"^[a-zA-Z]:\\")||System.Text.RegularExpressions.Regex.IsMatch(expected,@"[\x00-\x1f\x7f]"))throw new Exception("application_path_denied");
+   if(!System.Text.RegularExpressions.Regex.IsMatch(window,@"^\d{1,19}$")||!Int64.TryParse(window,out handle)||handle<=0)throw new Exception("application_window_changed");
+   object images;input.TryGetValue("images",out images);if(images!=null&&!(images is bool))throw new Exception("application_action_denied");
+   var result=StudioApplications.Observe(window,expected,Object.Equals(images,true));
+   Console.Write(json.Serialize(new {ok=true,value=result}));return 0;
+  }catch(Exception error){string code=System.Text.RegularExpressions.Regex.IsMatch(error.Message,@"^application_[a-z_]+$")?error.Message:"application_native_unavailable";Console.Write(json.Serialize(new {ok=false,error=code}));return 1;}
+ }
+}`
 const moduleDirectory=path.dirname(fileURLToPath(import.meta.url))
 const bundledWindowProbe=path.basename(path.dirname(moduleDirectory))==='app'?path.resolve(moduleDirectory,'../../native/application-window-probe.exe'):null
+const bundledObserver=path.basename(path.dirname(moduleDirectory))==='app'?path.resolve(moduleDirectory,'../../native/application-observer.exe'):null
 
 const wrapper=String.raw`$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 try{
@@ -143,13 +194,13 @@ try{
  [Console]::Write((@{ok=$true;value=$result}|ConvertTo-Json -Depth 8 -Compress))
 }catch{$errorCode=[string]$_.Exception.Message;$match=[regex]::Match($errorCode,'application_[a-z_]+');if($match.Success){$errorCode=$match.Value}else{$errorCode='application_native_unavailable'};[Console]::Write((@{ok=$false;error=$errorCode}|ConvertTo-Json -Compress));exit 1}`
 
-export function applicationNative(input,{execute=execFile,signal,platform=process.platform,timeout=input.action==='observe'?35000:20000,windowProbe=bundledWindowProbe}={}){
+export function applicationNative(input,{execute=execFile,signal,platform=process.platform,timeout=input.action==='observe'?35000:20000,windowProbe=bundledWindowProbe,observer=bundledObserver}={}){
  if(platform!=='win32')return Promise.reject(Error('application_windows_required'))
  signal?.throwIfAborted()
- const compiled=input.action==='windows'&&windowProbe
- const command=compiled?windowProbe:path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe')
+ const compiled=input.action==='windows'?windowProbe:input.action==='observe'?observer:null
+ const command=compiled||path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe')
  const args=compiled?[]:['-NoLogo','-NoProfile','-NonInteractive','-STA','-EncodedCommand',Buffer.from(wrapper,'utf16le').toString('base64')]
- return new Promise((resolve,reject)=>execute(command,args,{windowsHide:true,shell:false,encoding:'utf8',maxBuffer:2*1024*1024,timeout,signal,env:{...process.env,...(!compiled?{STUDIO_APPLICATION_CODE:Buffer.from(input.action==='windows'?APPLICATION_WINDOW_CODE:APPLICATION_NATIVE_CODE).toString('base64')}:{}),STUDIO_APPLICATION_INPUT:Buffer.from(JSON.stringify(input)).toString('base64')}},(error,out)=>{
+ return new Promise((resolve,reject)=>execute(command,args,{windowsHide:true,shell:false,encoding:'utf8',maxBuffer:4*1024*1024,timeout,signal,env:{...process.env,...(!compiled?{STUDIO_APPLICATION_CODE:Buffer.from(input.action==='windows'?APPLICATION_WINDOW_CODE:APPLICATION_NATIVE_CODE).toString('base64')}:{}),STUDIO_APPLICATION_INPUT:Buffer.from(JSON.stringify(input)).toString('base64')}},(error,out)=>{
   if(signal?.aborted)return reject(signal.reason)
   let v;try{v=JSON.parse(String(out).trim())}catch{return reject(Error(error?.killed?'application_native_timeout':'application_native_unavailable'))}
   if(v.ok!==true)return reject(Error(/^application_[a-z_]+$/.test(v.error)?v.error:'application_native_unavailable'))

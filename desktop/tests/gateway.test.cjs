@@ -2,12 +2,19 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const {serverOrigin,childEnvironment,readSettings,saveSettings}=require('../policy.cjs')
 test('cancelled renderer requests do not stop the desktop proxy',async()=>{
  const {createGateway}=await import('../gateway.mjs')
+ const webRoot=await fs.mkdtemp(path.join(os.tmpdir(),'studio-gateway-cancel-'));await fs.writeFile(path.join(webRoot,'index.html'),'<html><head></head><body>fixture</body></html>')
  const upstream=http.createServer((req,res)=>{if(req.url.endsWith('/slow'))setTimeout(()=>{if(!res.destroyed)res.end('late')},100);else res.end('alive')})
- await new Promise(r=>upstream.listen(0,'127.0.0.1',r));const gateway=await createGateway({serverOrigin:'http://127.0.0.1:'+upstream.address().port,webRoot:__dirname})
+ await new Promise(r=>upstream.listen(0,'127.0.0.1',r));const gateway=await createGateway({serverOrigin:'http://127.0.0.1:'+upstream.address().port,webRoot})
  try{
   const controller=new AbortController(),pending=fetch(gateway.origin+'/__pb/slow',{signal:controller.signal});controller.abort();await assert.rejects(pending)
   await new Promise(r=>setTimeout(r,150));assert.equal(await(await fetch(gateway.origin+'/__pb/health')).text(),'alive')
- }finally{await gateway.close();upstream.closeAllConnections();await new Promise(r=>upstream.close(r))}
+ }finally{await gateway.close();upstream.closeAllConnections();await new Promise(r=>upstream.close(r));const actual=await fs.realpath(webRoot);assert.equal(path.dirname(actual).toLowerCase(),(await fs.realpath(os.tmpdir())).toLowerCase());assert.match(path.basename(actual),/^studio-gateway-cancel-/);await fs.rm(actual,{recursive:true,force:true})}
+})
+test('a missing module entry prevents startup rather than serving an empty application',async t=>{
+ const {verifyWebEntrypoints}=await import('../gateway.mjs'),root=await fs.mkdtemp(path.join(os.tmpdir(),'studio-entry-'))
+ t.after(async()=>{const real=await fs.realpath(root);assert.equal(path.dirname(real).toLowerCase(),(await fs.realpath(os.tmpdir())).toLowerCase());assert.match(path.basename(real),/^studio-entry-/);await fs.rm(real,{recursive:true,force:true})})
+ await fs.writeFile(path.join(root,'index.html'),'<script type="module" src="/assets/main.js"></script>');await assert.rejects(verifyWebEntrypoints(root),/资源缺失/)
+ await fs.mkdir(path.join(root,'assets'));await fs.writeFile(path.join(root,'assets/main.js'),'READY');await verifyWebEntrypoints(root)
 })
 test('copy and fullscreen work only for owned main frames; sensitive permissions stay denied',()=>{
   const {rendererPermission}=require('../policy.cjs'),origins=['http://127.0.0.1:24567']

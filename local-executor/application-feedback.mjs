@@ -22,6 +22,11 @@ export const APPLICATION_FAILURE_MESSAGES=Object.freeze({
  application_task_busy:'已有任务运行或任务数达到上限，请先停止或恢复连接。',
  application_task_not_found:'未找到此连接启动的任务。连接重启后不会自动重交旧任务。',
  application_capture_failed:'当前应用不支持窗口截图，可关闭截图授权后使用控件观察。',
+ application_capture_timeout:'窗口截图暂未返回，本次保留已经读取的控件，不重复操作应用。请恢复窗口后重新观察。',
+ application_capture_too_large:'窗口截图超出大小限制，本次仅返回已经读取的控件。请缩小窗口后重新观察。',
+ application_window_size_denied:'当前窗口尺寸不适合截图，本次仅返回已经读取的控件。请恢复正常大小后重新观察。',
+ application_desktop_unavailable:'Windows 桌面当前不可访问。请保持电脑解锁并检查桌面会话，再重新观察。',
+ application_sensitive_window:'此窗口涉及终端、凭证或受保护界面，已停止读取；未执行操作。',
  application_windows_required:'此能力需要 Windows 桌面系统。',
 })
 

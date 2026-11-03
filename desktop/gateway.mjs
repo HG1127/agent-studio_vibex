@@ -6,11 +6,21 @@ import {pipeline} from 'node:stream'
 
 const MIME = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.ico':'image/x-icon','.woff2':'font/woff2','.pdf':'application/pdf'}
 const hop = new Set(['connection','keep-alive','proxy-authenticate','proxy-authorization','te','trailer','transfer-encoding','upgrade','host','origin','referer','forwarded','x-forwarded-host','x-forwarded-proto','x-forwarded-for'])
+export async function verifyWebEntrypoints(webRoot){
+ const root=path.resolve(webRoot),html=await fs.readFile(path.join(root,'index.html'),'utf8')
+ const assets=[...html.matchAll(/(?:src|href)=["'](\/assets\/[^"']+)["']/g)].map(match=>match[1])
+ for(const asset of assets){
+  let file
+  try{const relative=decodeURIComponent(new URL(asset,'http://127.0.0.1').pathname).replace(/^\/+/, '');if(/[\\\0:]/.test(relative))throw Error();file=path.resolve(root,relative);if(!file.startsWith(root+path.sep)||(await fs.stat(file)).isFile()!==true)throw Error()}
+  catch{throw Error('工作台安装文件不完整，页面资源缺失。请修复安装；原账号与授权会保留。')}
+ }
+}
 export async function createGateway({webRoot, serverOrigin, port=0}) {
   const upstream = new URL(serverOrigin)
   if (upstream.username || upstream.password || upstream.pathname !== '/' || upstream.search || upstream.hash ||
       !(upstream.protocol === 'https:' || upstream.protocol === 'http:' && ['127.0.0.1','localhost','[::1]'].includes(upstream.hostname))) throw Error('invalid_server_origin')
   webRoot = path.resolve(webRoot)
+  await verifyWebEntrypoints(webRoot)
   let origin = ''
   const sockets = new Set()
   const server = http.createServer(async (req, res) => {

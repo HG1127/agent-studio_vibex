@@ -35,6 +35,7 @@ function installUpdates({app,BrowserWindow,Menu,ipcMain,net,dialog,info,runtimeR
    guard(event)
     const id=randomUUID(),directory=path.join(runtimeRoot,'temp/desktop-updates',id);await fs.mkdir(directory,{recursive:true})
     for(const name of ['update-helper.cjs','update-core.cjs'])await fs.writeFile(path.join(directory,name),await fs.readFile(path.join(__dirname,name)))
+    for(const name of ['update-guard.exe','update-guard.json'])await fs.copyFile(path.join(process.resourcesPath,'update-guard',name),path.join(directory,name))
     await fs.copyFile(path.join(process.resourcesPath,'connector/runtime/node.exe'),path.join(directory,'node.exe'))
     const args=testHome?process.argv.filter(a=>/^--desktop-test-(home|server)=/.test(a)):[]
     await fs.writeFile(path.join(directory,'job.json'),JSON.stringify({root:runtimeRoot,directory,id,parentPid:process.pid,args,installer:ready.installer,envelope:ready.envelope,publicKey:trust.publicKey}),{mode:0o600})

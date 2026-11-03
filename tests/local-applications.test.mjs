@@ -88,6 +88,21 @@ test('large control trees remain valid bounded JSON and never permit hidden cont
  const f=await fixture(t);f.setView({window:{id:'123',title:'Fixture',width:800,height:600},input:42,controls:Array.from({length:250},(_,id)=>({id,name:'控件'.repeat(100),enabled:true,password:false,runtime:'1.'+id}))})
  const v=await f.call('observe',{window:'123'});assert.ok(JSON.stringify(v).length<=10500);assert.equal(v.truncated,true);await assert.rejects(f.call('act',{observation:v.observation,element:249,action:'click'}),/invalid_application_arguments/)
 })
+test('an unavailable image preserves readable controls and a specific observation diagnostic',async t=>{
+ const f=await fixture(t);f.setView({window:{id:'123',title:'Fixture',width:2200,height:1200},controls:[{id:0,name:'Editor',type:'ControlType.Edit',runtime:'42',enabled:true,password:false,actions:['type']}],imageError:'application_capture_timeout'})
+ const view=await f.call('observe',{window:'123'});assert.equal(view.controls[0].name,'Editor');assert.equal(view.imageDiagnostic.code,'application_capture_timeout');assert.equal(view.imageDiagnostic.controlsOnly,true);assert.match(view.observation,/^[a-f0-9]{32}$/);assert.equal(f.calls.some(c=>c.action==='act'),false)
+})
+test('a recreated window returns a fresh read-only window list and invalidates old input evidence',async t=>{
+ const f=await fixture(t),tools=new Map();let changed=false,acted=false
+ const runtime=registerApplications({config:f.config,add:(name,_description,_schema,fn)=>tools.set(name,fn),native:async input=>{
+  if(input.action==='windows')return [{id:changed?'456':'123',path:f.exe,title:'Fixture'}]
+  if(input.action==='observe'){if(changed)throw Error('application_window_changed');return {window:{id:'123',title:'Fixture'},controls:[{id:0,name:'Editor',type:'ControlType.Edit',runtime:'1',enabled:true,password:false,actions:['type']}]}}
+  acted=true;return {accepted:true}
+ }});t.after(()=>runtime.close())
+ const first=JSON.parse(await tools.get('apps.observe')({app:f.grant.id,window:'123'}));changed=true
+ const next=JSON.parse(await tools.get('apps.observe')({app:f.grant.id,window:'123'}));assert.equal(next.status,'window_changed');assert.equal(next.windows[0].id,'456');assert.equal(next.observation,undefined);assert.equal(next.actionable,false)
+ await assert.rejects(tools.get('apps.act')({app:f.grant.id,observation:first.observation,element:0,action:'type',text:'MUST_NOT_WRITE'}),/observation_expired/);assert.equal(acted,false)
+})
 test('thirty bulk grants fit server schema and catalog limits without leaking executable paths',async t=>{
  const f=await fixture(t),grants=Array.from({length:30},(_,i)=>{const p='D:\\fixture-apps\\'+i+'.exe';return {...f.grant,id:applicationId(p),path:p,name:'应用名称'.repeat(20)+i}})
  const runtime=await createRuntime({...f.config,applications:{...f.config.applications,grants}},{applicationsAdapter:{native:async()=>[]}})

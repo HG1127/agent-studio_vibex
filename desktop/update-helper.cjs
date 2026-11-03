@@ -1,9 +1,25 @@
 'use strict'
 // Electron virtualizes .asar as a directory. Installation manifests describe
 // actual disk files; the main-process preflight must inspect original-fs.
-const diskFs=require(process.versions.electron?'original-fs':'node:fs'),fs=diskFs.promises,path=require('node:path'),{spawn}=require('node:child_process'),{createHash}=require('node:crypto')
+const diskFs=require(process.versions.electron?'original-fs':'node:fs'),fs=diskFs.promises,path=require('node:path'),{spawn,execFile}=require('node:child_process'),{createHash}=require('node:crypto')
 const {verifyManifest,hashFile}=require('./update-core.cjs')
 const sleep=ms=>new Promise(r=>setTimeout(r,ms))
+const barrierName='.studio-update-in-progress'
+async function ensureInstallationStopped(root){
+ const packaged=path.join(__dirname,'update-guard.exe'),development=path.join(__dirname,'../.tmp/desktop-update-guard/update-guard.exe')
+ const binary=diskFs.existsSync(packaged)?packaged:development
+ const metadata=JSON.parse(await fs.readFile(path.join(path.dirname(binary),'update-guard.json'),'utf8'))
+ if(metadata.format!=='agent-studio-update-guard-v1'||await hashFile(binary)!==metadata.sha256)throw Error('更新保护组件校验失败，请修复安装')
+ try{
+  const output=await new Promise((resolve,reject)=>execFile(binary,['--stop',root],{windowsHide:true,shell:false,timeout:30000,maxBuffer:16000},(error,stdout)=>error?reject(error):resolve(stdout)))
+  const result=JSON.parse(output);if(result.ok!==true||result.filesUnlocked!==true)throw Error('guard_failed')
+ }catch{throw Error('程序文件仍被占用，已停止更新。请退出应用后重试。')}
+}
+async function releaseBarrier(root,id){
+ const file=path.join(root,barrierName)
+ if((await fs.readFile(file,'utf8')).trim()!==id)throw Error('更新状态已变化，停止替换文件')
+ await fs.unlink(file)
+}
 function managedPath(root,value){
  if(typeof value!=='string'||value.length>1000)throw Error('invalid_managed_file')
  const parts=value.replaceAll('\\','/').split('/');if(parts.some(p=>!p||p==='.'||p==='..'||/[:\x00-\x1f]/.test(p)||/[. ]$/.test(p))||['temp','web-cache'].includes(parts[0]))throw Error('invalid_managed_file')
@@ -25,7 +41,7 @@ async function inventory(root){
  const names=new Set(),directories=new Set();for(const row of record.files){const file=managedPath(root,row.path),key=file.toLowerCase();if(names.has(key)||!/^[a-f0-9]{64}$/.test(row.sha256)||!Number.isSafeInteger(row.bytes)||row.bytes<0)throw Error('invalid_install_inventory');names.add(key);await regular(root,file,directories)}
  return record
 }
-async function copy(root,backup,names){
+async function copy(root,backup,names,{copyFile=fs.copyFile,wait=sleep}={}){
  const directories=new Set(),created=new Map();let cursor=0,failure
  // Bound disk work, reuse directory creation, and drain in-flight copies
  // before returning an error so recovery cannot race an unfinished backup.
@@ -36,7 +52,11 @@ async function copy(root,backup,names){
     const source=managedPath(root,name);await regular(root,source,directories)
     const target=managedPath(backup,name),parent=path.dirname(target)
     if(!created.has(parent))created.set(parent,fs.mkdir(parent,{recursive:true}))
-    await created.get(parent);await fs.copyFile(source,target)
+    await created.get(parent)
+    for(let attempt=0;;attempt++){
+     try{await copyFile(source,target);break}
+     catch(error){if(!['EBUSY','EPERM','EACCES'].includes(error.code)||attempt>=7)throw error;await wait(Math.min(200*(2**attempt),2000))}
+    }
    }catch(error){failure||=error}
   }
  }));if(failure)throw failure
@@ -65,48 +85,71 @@ async function execute(file,args){
 }
 function launch(root,args){const child=spawn(path.join(root,'Agent Studio.exe'),args,{cwd:root,detached:true,windowsHide:true,stdio:'ignore'});return new Promise((resolve,reject)=>{child.once('error',reject);child.once('spawn',()=>{child.unref();resolve(child.pid)})})}
 async function stop(pid){if(!pid)return;if(process.platform==='win32')await execute(path.join(process.env.SystemRoot,'System32/taskkill.exe'),['/PID',String(pid),'/T','/F']).catch(()=>{});else try{process.kill(pid)}catch{}await waitExit(pid,10000)}
-async function performUpdate(job,{runInstaller=execute,startApp=launch,waitForExit=waitExit,stopApp=stop,healthTimeout=60000}={}){
+async function performUpdate(job,{runInstaller=execute,startApp=launch,waitForExit=waitExit,stopApp=stop,ensureStopped=ensureInstallationStopped,copyFiles=copy,healthTimeout=60000}={}){
  const root=path.resolve(job.root),directory=path.resolve(job.directory),expected=path.join(root,'temp','desktop-updates',job.id)
  if(!/^[a-f0-9-]{36}$/.test(job.id)||directory!==expected||!Number.isSafeInteger(job.parentPid)||job.parentPid<1||job.parentPid===process.pid||!Array.isArray(job.args)||job.args.some(a=>typeof a!=='string'||!/^--desktop-test-(home|server)=/.test(a))||job.args.length>2)throw Error('invalid_update_job')
  const manifest=verifyManifest(job.envelope,job.publicKey)
  const report=async data=>{await fs.writeFile(path.join(directory,'result.json'),JSON.stringify({...data,helperPid:process.pid},null,2))}
  await waitForExit(job.parentPid)
- let old,names;const backup=path.join(directory,'backup')
+ let old,names,barrierOwned=false;const backup=path.join(directory,'backup')
  try{
   if((await fs.stat(job.installer)).size!==manifest.size||await hashFile(job.installer)!==manifest.sha256)throw Error('更新包校验失败')
   old=await inventory(root);await verifyInstalled(root,old)
+  if(!old.files.some(row=>managedPath(root,row.path).toLowerCase()===path.join(root,'Agent Studio.exe').toLowerCase()))throw Error('invalid_install_inventory')
+  await fs.writeFile(path.join(root,barrierName),job.id,{flag:'wx'});barrierOwned=true
+  await ensureStopped(root)
   names=[...old.files.map(row=>row.path),'.studio-files.json','.studio-verify.cjs','.studio-install-complete']
-  await fs.mkdir(backup,{recursive:false});await report({phase:'backup',version:manifest.version});await copy(root,backup,names)
+  await fs.mkdir(backup,{recursive:false});await report({phase:'backup',version:manifest.version});await copyFiles(root,backup,names)
  }catch(error){
   // No program file has been changed yet. Reopen the existing client instead
   // of leaving it closed after a failed verification or backup.
+  if(barrierOwned)await releaseBarrier(root,job.id)
   const result={phase:'failed',version:old?.version,error:error.message,unchanged:true};await report(result)
   const pid=await startApp(root,[...job.args,'--desktop-update-failed='+job.id]);await report({...result,pid});return
  }
  let newPid
  try{
   await report({phase:'installing',version:manifest.version})
+  await ensureStopped(root)
   // FileFunc GetOptions treats '-' as an option delimiter unless the UUID
   // value is quoted; preserve its hyphens as well as NSIS's literal /D tail.
   await runInstaller(job.installer,['/S','--desktop-update','--desktop-update-id="'+job.id+'"','/D='+root])
   const next=await inventory(root);if(next.version!==manifest.version)throw Error('安装后的版本与签名清单不一致');await verifyInstalled(root,next)
   const keep=new Set(next.files.map(row=>managedPath(root,row.path).toLowerCase()))
   for(const row of old.files)if(!keep.has(managedPath(root,row.path).toLowerCase()))await fs.unlink(managedPath(root,row.path))
+  await report({phase:'starting',version:manifest.version})
   newPid=await startApp(root,[...job.args,'--desktop-updated='+job.id]);await report({phase:'starting',version:manifest.version,pid:newPid})
   const end=Date.now()+healthTimeout;let healthy=false
   while(Date.now()<end){try{const health=JSON.parse(await fs.readFile(path.join(directory,'health.json'),'utf8'));if(health.version===manifest.version&&health.id===job.id&&health.pid===newPid){healthy=true;break}}catch{}await sleep(200)}
   if(!healthy)throw Error('新版未确认启动，正在恢复旧版本')
+  await releaseBarrier(root,job.id)
   await report({phase:'succeeded',version:manifest.version,pid:newPid,previousVersion:old.version})
  }catch(error){
-  await stopApp(newPid)
+  await report({phase:'restoring',version:old.version,error:error.message})
+  try{
+  await stopApp(newPid);await ensureStopped(root)
   // Remove only newly installed managed files; user caches and credentials are
   // never in the managed inventory and never enter this operation.
   let current;try{current=await inventory(root)}catch{}
   const original=new Set(old.files.map(row=>managedPath(root,row.path).toLowerCase()))
+  // Restore and verify the complete original before deleting new-only assets.
+  // A failed copy must never delete the entry script still used by index.html.
+  const executable=path.join(root,'Agent Studio.exe'),held=path.join(directory,'interrupted-program.exe')
+  try{await fs.rename(executable,held)}catch(moveError){if(moveError.code!=='ENOENT')throw moveError}
+  const program=row=>managedPath(root,row.path).toLowerCase()===executable.toLowerCase()
+  await copyFiles(backup,root,names.filter(name=>managedPath(root,name).toLowerCase()!==executable.toLowerCase()))
+  await copyFiles(backup,directory,['Agent Studio.exe'])
+  await verifyInstalled(directory,{files:old.files.filter(program)})
+  await verifyInstalled(root,{files:old.files.filter(row=>!program(row))})
+  await fs.rename(path.join(directory,'Agent Studio.exe'),executable)
+  await verifyInstalled(root,old)
   for(const row of current?.files||[])if(!original.has(managedPath(root,row.path).toLowerCase()))await fs.unlink(managedPath(root,row.path)).catch(()=>{})
-  await copy(backup,root,names);await verifyInstalled(root,old)
+  await releaseBarrier(root,job.id)
   await report({phase:'rolled_back',version:old.version,error:error.message})
   const pid=await startApp(root,[...job.args,'--desktop-update-failed='+job.id]);await report({phase:'rolled_back',version:old.version,pid,error:error.message});return
+  }catch(recoveryError){
+   await report({phase:'recovery_required',version:old.version,error:error.message,recoveryError:recoveryError.message,backupPreserved:true});return
+  }
  }
  // Keep only transaction receipts after successful verification. The exact
  // backup directory was created by this helper under its verified job root.
@@ -128,5 +171,5 @@ async function cleanupCompletedUpdates(root,{now=Date.now(),isRunning=pid=>{try{
   }catch{}
  }
 }
-module.exports={performUpdate,inventory,managedPath,verifyInstalled,waitExit,cleanupCompletedUpdates}
+module.exports={performUpdate,inventory,managedPath,verifyInstalled,waitExit,cleanupCompletedUpdates,copyManagedFiles:copy,ensureInstallationStopped}
 if(require.main===module){const jobFile=path.join(__dirname,'job.json');fs.readFile(jobFile,'utf8').then(JSON.parse).then(job=>performUpdate(job)).catch(async error=>{await fs.writeFile(path.join(__dirname,'result.json'),JSON.stringify({phase:'failed',error:error.message})).catch(()=>{});process.exitCode=1})}
