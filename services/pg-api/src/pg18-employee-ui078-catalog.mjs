@@ -76,14 +76,73 @@ export function employeeUi078LiteralLedger(sql){
 }
 /** Closed source inventory, resolved against actual pg_catalog OIDs later.
  * No SQL is executed here. Unexpected syntax refuses capture. */
+/** Derive exact inventory events from source SQL, in declaration order.
+ * The lexer masks comments and quoted values/bodies before finding DDL. This
+ * supports the pinned unquoted identities; other identity syntax is refused. */
 export function employeeUi078FunctionSignatures(sql){
- const out=[]
- for(const m of sql.matchAll(/\b(CREATE(?:\s+OR\s+REPLACE)?|DROP)\s+FUNCTION\s+(?:IF\s+EXISTS\s+)?(agentstudio(?:_auth)?\.[a-z_][a-z_0-9]*)\s*\(([^;]*?)\)\s*(?=RETURNS\b|CASCADE\b|RESTRICT\b|;)/gi)){
-  const chunks=[];let start=0,depth=0,quote=false
-  for(let i=0;i<m[3].length;i++){const c=m[3][i];if(c==="'"){if(quote&&m[3][i+1]==="'"){i++;continue}quote=!quote}if(quote)continue;if(c==='('||c==='[')depth++;else if(c===')'||c===']')depth--;else if(c===','&&depth===0){chunks.push(m[3].slice(start,i));start=i+1}if(depth<0)fail()}
-  if(quote||depth!==0)fail();if(m[3].trim())chunks.push(m[3].slice(start))
-  const args=chunks.map(raw=>{let s=raw.replace(/\s+DEFAULT\s+[\s\S]*$/i,'').trim().replace(/\s+/g,' ');if(/^IN\s+/i.test(s))s=s.replace(/^IN\s+/i,'');if(/^(?:OUT|INOUT|VARIADIC)\s/i.test(s))fail();const parts=s.split(' ');if(parts.length>1&&!/^(?:double precision|timestamp(?: with(?:out)? time zone)?|time(?: with(?:out)? time zone)?|character varying)(?:\[\])?$/i.test(s))s=parts.slice(1).join(' ');s=s.toLowerCase().replace(/^int4(?=\[|$)|^int(?=\[|$)/,'integer').replace(/^int8(?=\[|$)/,'bigint').replace(/^bool(?=\[|$)/,'boolean').replace(/^timestamptz(?=\[|$)/,'timestamp with time zone');if(!/^[a-z_][a-z_0-9. ]*(?:\[\])?$/.test(s))fail();return s})
-  out.push({action:m[1].toUpperCase().startsWith('DROP')?'drop':'create',signature:m[2].toLowerCase()+'('+args.join(',')+')'})
+ if(typeof sql!=='string'||sql.includes('\0'))fail()
+ const chars=sql.split(''),blank=(a,b)=>{for(let i=a;i<b;i++)if(chars[i]!=='\n'&&chars[i]!=='\r')chars[i]=' '}
+ for(let i=0;i<sql.length;){
+  const start=i
+  if(sql.startsWith('--',i)){i=sql.indexOf('\n',i+2);if(i<0)i=sql.length;blank(start,i);continue}
+  if(sql.startsWith('/*',i)){let depth=1;i+=2;while(i<sql.length&&depth){if(sql.startsWith('/*',i)){depth++;i+=2}else if(sql.startsWith('*/',i)){depth--;i+=2}else i++}if(depth)fail();blank(start,i);continue}
+  if(sql[i]==="'"||sql[i]==='"'){
+   const quote=sql[i++],escape=quote==="'"&&start>0&&/[eE]/.test(sql[start-1])&&(start<2||!/[a-z_0-9$]/i.test(sql[start-2]));let closed=false
+   while(i<sql.length){if(escape&&sql[i]==='\\'){i+=2;continue}if(sql[i]===quote){if(sql[i+1]===quote){i+=2;continue}i++;closed=true;break}i++}
+   if(!closed)fail();if(quote==="'")blank(start,i);continue
+  }
+  const dollar=sql[i]==='$'&&sql.slice(i).match(/^\$(?:[a-z_][a-z_0-9]*)?\$/i)
+  if(dollar){const end=sql.indexOf(dollar[0],i+dollar[0].length);if(end<0)fail();i=end+dollar[0].length;blank(start,i);continue}
+  i++
+ }
+ const masked=chars.join(''),out=[],identifier='(?:[a-z_][a-z_0-9$]*|"(?:[^"]|"")*")'
+ const head=new RegExp('^\\s+(?:(IF\\s+EXISTS)\\s+)?('+identifier+')\\s*\\.\\s*('+identifier+')\\s*\\(','i')
+ for(const m of masked.matchAll(/\b(CREATE(?:\s+OR\s+REPLACE)?|DROP|ALTER)\s+FUNCTION\b/gi)){
+  const at=m.index+m[0].length,h=masked.slice(at).match(head)
+  if(!h)fail()
+  if(!/^(?:agentstudio|agentstudio_auth)$/i.test(h[2])){if(/^"(?:agentstudio|agentstudio_auth)"$/i.test(h[2]))fail();continue}
+  if(h[1]&&!/^DROP$/i.test(m[1])||!/^agentstudio(?:_auth)?$/i.test(h[2])||!/^([a-z_][a-z_0-9]*)$/i.test(h[3])||h[3].length>63)fail()
+  const open=at+h[0].length-1,chunks=[],stack=[];let start=open+1,close=-1
+  for(let i=start;i<masked.length;i++){
+   const c=masked[i]
+   if(c==='"'){for(i++;i<masked.length;i++)if(masked[i]==='"'){if(masked[i+1]==='"'){i++;continue}break}continue}
+   if(c==='('||c==='[')stack.push(c)
+   else if(c===')'&&stack.length===0){if(masked.slice(start,i).trim())chunks.push([start,i]);else if(chunks.length)fail();close=i;break}
+   else if(c===')'||c===']'){if(stack.pop()!==(c===')'?'(':'['))fail()}
+   else if(c===','&&stack.length===0){chunks.push([start,i]);start=i+1}
+   else if(c===';')fail()
+  }
+  if(close<0||stack.length!==0)fail()
+  const args=chunks.map(([a,b])=>{
+   const part=masked.slice(a,b),boundary=part.search(/\bDEFAULT\b|=/i)
+   if(boundary>=0&&!sql.slice(a+boundary,b).replace(/^(?:DEFAULT\b|=)/i,'').trim())fail()
+   let s=(boundary<0?part:part.slice(0,boundary)).trim().replace(/\s+/g,' ')
+   if(/^IN\s+/i.test(s))s=s.replace(/^IN\s+/i,'')
+   if(/^(?:OUT|INOUT|VARIADIC)\b/i.test(s)||s.includes('"'))fail()
+   const multi=/^(?:double precision|timestamp(?: with(?:out)? time zone)?|time(?: with(?:out)? time zone)?|character(?: varying)?)(?:\[\])?$/i
+   if(s.includes(' ')&&!multi.test(s))s=s.slice(s.indexOf(' ')+1)
+   s=s.toLowerCase();const array=s.endsWith('[]')?'[]':'',type=array?s.slice(0,-2):s
+   const aliases={int:'integer',int4:'integer',int8:'bigint',int2:'smallint',bool:'boolean',float4:'real',float8:'double precision',varchar:'character varying',char:'character',timestamptz:'timestamp with time zone',timestamp:'timestamp without time zone',timetz:'time with time zone',time:'time without time zone'}
+   s=(aliases[type]??type)+array
+   if(!/^[a-z_][a-z_0-9]*(?:\.[a-z_][a-z_0-9]*)?(?:\[\])?$/.test(s)&&!multi.test(s))fail()
+   return s
+  })
+  const signature=h[2].toLowerCase()+'.'+h[3].toLowerCase()+'('+args.join(',')+')',end=masked.indexOf(';',close+1)
+  if(end<0)fail();const tail=masked.slice(close+1,end).trim()
+  if(/^ALTER$/i.test(m[1])){
+   const rename=tail.match(/^RENAME\s+TO\s+([a-z_][a-z_0-9]*)$/i)
+   if(rename&&rename[1].length<=63)out.push({action:'rename',signature,renamed_signature:h[2].toLowerCase()+'.'+rename[1].toLowerCase()+'('+args.join(',')+')'})
+   else if(!/^OWNER\s+TO\s+[a-z_][a-z_0-9]*$/i.test(tail))fail()
+  }else if(/^DROP$/i.test(m[1])){if(tail&&!/^(?:CASCADE|RESTRICT)$/i.test(tail))fail();out.push({action:'drop',signature})}
+  else{if(!/^RETURNS\b/i.test(tail))fail();out.push({action:'create',signature})}
  }
  return out
+}
+export function employeeUi078ApplyFunctionSignatures(functions,sql){
+ if(!(functions instanceof Set))fail()
+ for(const f of employeeUi078FunctionSignatures(sql)){
+  if(f.action==='create')functions.add(f.signature)
+  else if(f.action==='drop')functions.delete(f.signature)
+  else{if(!functions.has(f.signature)||functions.has(f.renamed_signature))fail();functions.delete(f.signature);functions.add(f.renamed_signature)}
+ }
 }

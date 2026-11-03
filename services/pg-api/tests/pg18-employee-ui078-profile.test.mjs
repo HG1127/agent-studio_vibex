@@ -9,7 +9,8 @@ import {createHash} from 'node:crypto'
 import {EventEmitter} from 'node:events'
 import ts from 'typescript'
 import {modelConfigReceiptGlobalInventory075Sql,verifyModelConfigReceiptGlobalInventory075} from '../src/model-config-receipt-profile075-audit.ts'
-import {employeeUi078Canonical as canonical,employeeUi078CatalogDigest as digest,employeeUi078LiteralLedger as literals,employeeUi078FunctionSignatures as signatures,employeeUi078CatalogSql,employeeUi078LedgerRpcSql,employeeUi078LedgerRpcAuditSql,employeeUi078FunctionOidsSql} from '../src/pg18-employee-ui078-catalog.mjs'
+import {employeeUi078Canonical as canonical,employeeUi078CatalogDigest as digest,employeeUi078LiteralLedger as literals,employeeUi078FunctionSignatures as signatures,employeeUi078ApplyFunctionSignatures as applySignatures,employeeUi078CatalogSql,employeeUi078LedgerRpcSql,employeeUi078LedgerRpcAuditSql,employeeUi078FunctionOidsSql} from '../src/pg18-employee-ui078-catalog.mjs'
+import {completeProfileSqlPins} from '../src/pg18-complete-profile-source.mjs'
 import {employeeUi078SqlPins,employeeUi078SqlBody,assertEmployeeUi078Snapshot,employeeUi078Profile,employeeUi078Receipt} from '../src/pg18-employee-ui078-source.mjs'
 import {parseEmployeeUi078Arguments,acceptedEmployeeUi078Commit} from '../src/baota-pg18-employee-ui078-init.mjs'
 const read=f=>fs.readFileSync(new URL(f,import.meta.url),'utf8'),audit=read('../src/pg18-employee-ui078-audit.ts'),core=read('../src/pg18-employee-ui078-profile.ts'),native=read('../src/native-employee-ui078-profile.ts'),source=read('../src/pg18-employee-ui078-source.mjs'),cli=read('../src/baota-pg18-employee-ui078-init.mjs'),sha=v=>createHash('sha256').update(v).digest('hex'),hex='a'.repeat(64),target={system_identifier:'123',database_oid:'456'},plain=v=>JSON.parse(JSON.stringify(v))
@@ -61,7 +62,7 @@ function catalogMemory(options={}){
  if(options.edit)options.edit(data)
  const diagnostics=[],calls=[],db={async query(sql,params){calls.push({sql,params});if(sql===modelConfigReceiptGlobalInventory075Sql)return {rows:data.global075};if(sql===employeeUi078CatalogSql)return {rows:data.catalog};if(sql.includes('WITH ORDINALITY AS wanted'))return {rows:data.resolved};if(sql.includes("c.relkind IN('r','p','v','m','f','S')"))return {rows:data.tables};if(sql.includes('SELECT p.oid::text AS oid,n.nspname'))return {rows:data.functions};if(sql.includes(' AS absent'))return {rows:data.shadows};if(sql.includes("starts_with(rolname,'agentstudio_')"))return {rows:data.roles};assert.fail('Unexpected model SQL')},release(){assert.fail('catalog callback does not own the connection')}}
  let guards=0;const call=execute(audit,['employeeUi078FunctionInventoryDiagnostic','inspectEmployeeUi078ActualCatalog'],{Object,Set,positive,isProxy:types.isProxy,process:{stderr:{write(line){diagnostics.push(line)}}},verifyModelConfigReceiptGlobalInventory075,employeeUi078CatalogSql,employeeUi078FunctionOidsSql,employeeUi078CatalogDigest:digest,serviceLogins:{api:{login:'agentstudio_stage_login'}},assertEmployeeUi078Snapshot(s,hash){assert.equal(s,snapshot);assert.equal(hash,hex);guards++},fail(code){throw Error(code)}},'inspectEmployeeUi078ActualCatalog')
- return {run:()=>call(db,snapshot,true),calls,data,guards:()=>guards,diagnostics}
+ return {run:()=>call(db,snapshot,true),snapshot,calls,data,guards:()=>guards,diagnostics}
 }
 test('actual catalog callback resolves all source signatures to the whole real OID set and rereads each time',async()=>{const c=catalogMemory(),first=await c.run();assert.equal(c.calls.length,7);assert.equal(c.guards(),2);assert.deepEqual(plain(c.calls.find(v=>v.sql.includes('WITH ORDINALITY')).params),[['agentstudio.f()','agentstudio.g()']]);c.data.catalog[0].catalog.functions[0].acl.push('foreign');assert.notEqual(await c.run(),first);assert.equal(c.calls.length,14);assert.equal(c.guards(),4)})
 for(const [name,edit]of [
@@ -138,4 +139,89 @@ test('diagnostic sink failure preserves the original whole-inventory refusal',as
 })
 test('exact complete function set remains silent and continues the unchanged original075 and full catalog audits',async()=>{
  const c=catalogMemory();assert.equal((await c.run()).length,64);assert.equal(c.diagnostics.length,0);assert(c.calls.some(v=>v.sql===modelConfigReceiptGlobalInventory075Sql));assert(c.calls.some(v=>v.sql===employeeUi078CatalogSql))
+})
+
+// Exact source derivation includes retained pre-replacement function identities.
+test('source inventory derives all five actual renames from the original53 and seven extension SQL files',()=>{
+ const functions=new Set(),events=[],baseFunctions=new Set()
+ assert.equal(completeProfileSqlPins.length,53);assert.equal(employeeUi078SqlPins.length,7)
+ for(const [i,pin]of [...completeProfileSqlPins,...employeeUi078SqlPins].entries()){
+  const text=read('../../../'+pin.path);assert.equal(sha(text),pin.sha256,pin.path)
+  const rows=signatures(text);events.push(...rows.map(row=>({...row,path:pin.path})))
+  applySignatures(functions,text);if(i===52)for(const signature of functions)baseFunctions.add(signature)
+ }
+ const renamed=events.filter(row=>row.action==='rename')
+ assert.deepEqual(renamed.map(row=>[row.path,row.signature,row.renamed_signature]),[
+  ['db/postgres/migrations/pg_v9_035_knowledge_embedding_state.sql','agentstudio.knowledge_content_import(uuid,uuid,text,text,text)','agentstudio.knowledge_content_import_without_embedding_fence(uuid,uuid,text,text,text)'],
+  ['db/postgres/migrations/pg_v9_035_knowledge_embedding_state.sql','agentstudio.knowledge_content_delete(uuid,uuid,uuid,text)','agentstudio.knowledge_content_delete_without_embedding_fence(uuid,uuid,uuid,text)'],
+  ['db/postgres/migrations/pg_v9_040_approved_semantic_tools.sql','agentstudio.knowledge_query_execution_submit(uuid,uuid[],text,text,integer,uuid,bigint,bigint,text,jsonb)','agentstudio.knowledge_query_execution_submit_before_semantic(uuid,uuid[],text,text,integer,uuid,bigint,bigint,text,jsonb)'],
+  ['db/postgres/migrations/pg_v9_041_keyword_observations.sql','agentstudio.knowledge_query_execution_observations_current(uuid,uuid,text)','agentstudio.knowledge_query_execution_observations_before_keyword(uuid,uuid,text)'],
+  ['db/postgres/migrations/pg_v9_043_workflow_sample_lineage.sql','agentstudio.knowledge_query_execution_observations_current(uuid,uuid,text)','agentstudio.knowledge_query_execution_observations_before_lineage(uuid,uuid,text)'],
+ ])
+ assert.equal(baseFunctions.size,394);assert.equal(functions.size,426)
+ for(const row of renamed){assert(baseFunctions.has(row.signature));assert(baseFunctions.has(row.renamed_signature));assert(functions.has(row.signature));assert(functions.has(row.renamed_signature))}
+ assert.match(source,/employeeUi078ApplyFunctionSignatures\(functions,text\)/)
+ assert.doesNotMatch(source,/functions\.delete\(f\.signature\)|without_embedding_fence|before_semantic|before_keyword|before_lineage/)
+})
+test('source inventory renames only its exact overload and retains declaration order across replacement chains and drops',()=>{
+ const functions=new Set();applySignatures(functions,'CREATE FUNCTION agentstudio.f(p uuid) RETURNS bool AS $$x$$; CREATE FUNCTION agentstudio.f(p text) RETURNS bool AS $$x$$; ALTER FUNCTION agentstudio.f(uuid) RENAME TO old_f; CREATE OR REPLACE FUNCTION agentstudio.f(p uuid) RETURNS bool AS $$x$$; ALTER FUNCTION agentstudio.old_f(uuid) RENAME TO older_f; DROP FUNCTION agentstudio.older_f(uuid);')
+ assert.deepEqual([...functions].sort(),['agentstudio.f(text)','agentstudio.f(uuid)'])
+ applySignatures(functions,'ALTER FUNCTION agentstudio.f(text) RENAME TO text_f; DROP FUNCTION IF EXISTS agentstudio.f(uuid) RESTRICT;')
+ assert.deepEqual([...functions],['agentstudio.text_f(text)'])
+ assert.deepEqual(signatures('CREATE FUNCTION agentstudio.empty( ) RETURNS bool AS $$x$$;'),[{action:'create',signature:'agentstudio.empty()'}])
+})
+test('source inventory preserves quoted commas semicolons nested defaults and ignores DDL inside bodies comments or values',()=>{
+ const text="/* outer /* CREATE FUNCTION agentstudio.fake() RETURNS bool; */ end */ -- ALTER FUNCTION agentstudio.ghost() RENAME TO absent;\nCREATE FUNCTION agentstudio.f(p text DEFAULT 'a,b;(''x'')',p_values text[] DEFAULT ARRAY['a,b',')'],p_payload jsonb DEFAULT jsonb_build_object('x', '(,;)')) RETURNS bool AS $body$ BEGIN RAISE NOTICE 'DROP FUNCTION agentstudio.fake();'; RETURN true; END $body$; ALTER /* guarded */ FUNCTION agentstudio.f(text,text[],jsonb) RENAME TO retained; SELECT 'CREATE FUNCTION agentstudio.fake() RETURNS bool;';"
+ assert.deepEqual(signatures(text),[{action:'create',signature:'agentstudio.f(text,text[],jsonb)'},{action:'rename',signature:'agentstudio.f(text,text[],jsonb)',renamed_signature:'agentstudio.retained(text,text[],jsonb)'}])
+ assert.equal(signatures("CREATE FUNCTION agentstudio.types(p int4,p_at timestamptz,p_name varchar,p_time timestamp,p_wide double precision,p_times timestamp with time zone[]) RETURNS bool AS $$x$$;")[0].signature,'agentstudio.types(integer,timestamp with time zone,character varying,timestamp without time zone,double precision,timestamp with time zone[])')
+})
+for(const sql of [
+ 'ALTER FUNCTION agentstudio.missing(uuid) RENAME TO retained;',
+ 'CREATE FUNCTION agentstudio.f(uuid) RETURNS bool AS $$x$$; CREATE FUNCTION agentstudio.retained(uuid) RETURNS bool AS $$x$$; ALTER FUNCTION agentstudio.f(uuid) RENAME TO retained;',
+ 'CREATE FUNCTION agentstudio.f(uuid) RETURNS bool AS $$x$$; ALTER FUNCTION agentstudio.f(text) RENAME TO retained;',
+])test('source inventory refuses absent rename source or occupied exact destination: '+sql.slice(0,65),()=>{assert.throws(()=>applySignatures(new Set(),sql),/catalog_refused/)})
+for(const sql of [
+ 'ALTER FUNCTION agentstudio.f(uuid) RENAME TO "Retained";',
+ 'ALTER FUNCTION "agentstudio".f(uuid) RENAME TO retained;',
+ 'ALTER FUNCTION agentstudio."f"(uuid) RENAME TO retained;',
+ 'ALTER FUNCTION agentstudio.f(uuid) RENAME TO agentstudio.retained;',
+ 'ALTER FUNCTION agentstudio.f(uuid) SET SCHEMA public;',
+ 'ALTER FUNCTION agentstudio.f(uuid,text RENAME TO retained;',
+ 'ALTER FUNCTION agentstudio.f(uuid) RENAME TO retained',
+ 'DROP FUNCTION agentstudio.f(uuid),agentstudio.g(text);',
+ "CREATE FUNCTION agentstudio.f(p text DEFAULT 'unterminated) RETURNS bool AS $$x$$;",
+ 'CREATE FUNCTION agentstudio.f(p text,) RETURNS bool AS $$x$$;',
+ 'CREATE FUNCTION agentstudio.f(p text DEFAULT ARRAY[1,2)) RETURNS bool AS $$x$$;',
+ 'CREATE FUNCTION agentstudio.f(p text DEFAULT) RETURNS bool AS $$x$$;',
+ 'CREATE FUNCTION agentstudio.f(p text) RETURNS bool AS $body$unterminated;',
+])test('source inventory refuses unsupported or incomplete identity syntax: '+sql.slice(0,75),()=>assert.throws(()=>signatures(sql),/catalog_refused/))
+test('actual whole inventory gate rejects an unknown renamed function or a missing retained identity',async()=>{
+ for(const edit of [d=>d.functions.push({oid:'43',schema:'agentstudio',name:'knowledge_content_import_without_embedding_fence',kind:'f',arguments:'uuid,uuid,text,text,text',owner:'agentstudio_knowledge_content_owner',extension:null}),d=>d.functions[0].oid='99',d=>d.functions.pop()]){
+  const c=catalogMemory({edit});await assert.rejects(c.run(),/whole_function_inventory_mismatch/);assert.equal(c.diagnostics.length,1);assert(!c.calls.some(v=>v.sql===modelConfigReceiptGlobalInventory075Sql))
+ }
+})
+
+test('source inventory actual capture body consumes all ordered declarations and seals the exact base and combined signatures',async()=>{
+ const pins=[...completeProfileSqlPins,...employeeUi078SqlPins],texts=new Map(pins.map(pin=>[pin.path,read('../../../'+pin.path)])),baseLedger=new Map()
+ for(const pin of completeProfileSqlPins)for(const row of literals(texts.get(pin.path)))baseLedger.set(row.version,row.description)
+ const base={source_sha256:'b'.repeat(64),manifest:{profile:'complete069',latest_migration:'pg_v9_069',sql_sources:completeProfileSqlPins,sources:['baota-pg18-employee-ui078-init.mjs','pg18-employee-ui078-source.mjs','pg18-employee-ui078-source.d.mts','pg18-employee-ui078-catalog.mjs','pg18-employee-ui078-profile.ts','pg18-employee-ui078-audit.ts','native-employee-ui078-profile.ts'].map(name=>({path:'services/pg-api/src/'+name}))},tables:[],roles:[],versions:[...baseLedger.keys()].sort()},captured=new WeakSet(),calls=[]
+ const deps={Object,Set,Map,Buffer,employeeUi078SqlPins,employeeUi078Profile,employeeUi078CatalogReceipt:'pg18_employee_ui078_catalog_001',employeeUi078Canonical:canonical,employeeUi078ApplyFunctionSignatures:applySignatures,employeeUi078LiteralLedger:literals,sha,captured,freeze:v=>Object.freeze(v),fail(){throw Error('employee_ui078_source_refused')},async captureCompleteProfileSources(){calls.push('base source port');return base},assertCompleteProfileSnapshot(s,hash){assert.equal(s,base);assert.equal(hash,base.source_sha256)},raw(p){assert(texts.has(p));calls.push(p);return Buffer.from(texts.get(p))}}
+ const selected=['employeeUi078SqlBody','captureEmployeeUi078Sources'].map(name=>fun(source,name)).join('\n'),capture=vm.compileFunction(stripTypeScriptTypes(selected,{mode:'strip'})+'\nreturn captureEmployeeUi078Sources',Object.keys(deps))(...Object.values(deps)),snapshot=await capture(),baseExpected=new Set(),combinedExpected=new Set()
+ for(const pin of completeProfileSqlPins)applySignatures(baseExpected,texts.get(pin.path));for(const pin of pins)applySignatures(combinedExpected,texts.get(pin.path))
+ assert.equal(calls.length,61);assert.deepEqual(calls.slice(1),pins.map(pin=>pin.path));assert(captured.has(snapshot));assert.equal(snapshot.base_functions.length,394);assert.equal(snapshot.functions.length,426);assert.equal(snapshot.steps.length,7)
+ assert.deepEqual(plain(snapshot.base_functions),[...baseExpected].sort());assert.deepEqual(plain(snapshot.functions),[...combinedExpected].sort());assert.deepEqual(plain(snapshot.manifest.all_function_signatures),[...combinedExpected].sort());assert.equal(snapshot.source_sha256,sha(canonical(snapshot.manifest)))
+ const badPin=employeeUi078SqlPins[0];texts.set(badPin.path,texts.get(badPin.path)+'\nALTER FUNCTION agentstudio.unknown() RENAME TO hidden;');await assert.rejects(capture(),/source_refused/)
+})
+
+test('actual whole inventory gate requires each source-derived retained function and rejects an extra overload with the same name',async()=>{
+ const expected=new Set();for(const pin of completeProfileSqlPins)applySignatures(expected,read('../../../'+pin.path))
+ const sourceSignatures=[...expected].sort(),c=catalogMemory();c.snapshot.functions=sourceSignatures;c.snapshot.base_functions=sourceSignatures
+ c.data.resolved=sourceSignatures.map((signature,i)=>({signature,oid:String(i+41)}));c.data.functions=sourceSignatures.map((signature,i)=>({oid:String(i+41),schema:signature.slice(0,signature.indexOf('.')),name:signature.slice(signature.indexOf('.')+1,signature.indexOf('(')),kind:'f',arguments:signature.slice(signature.indexOf('(')+1,-1),owner:'agentstudio_source_owner',extension:null}))
+ assert.equal((await c.run()).length,64);assert.equal(c.diagnostics.length,0)
+ const retained=completeProfileSqlPins.flatMap(pin=>signaturesFromPin(pin)).filter(row=>row.action==='rename').map(row=>row.renamed_signature)
+ assert.equal(retained.length,5)
+ for(const signature of retained){const i=sourceSignatures.indexOf(signature),saved=c.data.functions[i];assert(i>=0);c.data.functions.splice(i,1);await assert.rejects(c.run(),/whole_function_inventory_mismatch/);c.data.functions.splice(i,0,saved)}
+ c.data.functions.push({oid:'9999',schema:'agentstudio',name:'knowledge_content_import_without_embedding_fence',kind:'f',arguments:'uuid',owner:'agentstudio_source_owner',extension:null});await assert.rejects(c.run(),/whole_function_inventory_mismatch/)
+ assert.equal(c.diagnostics.length,6);c.data.functions.pop();assert.equal((await c.run()).length,64)
+ function signaturesFromPin(pin){return signatures(read('../../../'+pin.path))}
 })

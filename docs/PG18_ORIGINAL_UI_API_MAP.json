@@ -10862,6 +10862,160 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_e7ad397_exact_catalog_and_source_gate_followup": {
+      "base_head": "e7ad3974087039bbc5c170b9c433792f0efe5623",
+      "source_only": true,
+      "source_reseal_pending": false,
+      "base_hosted_evidence": {
+        "workflows": 22,
+        "success": 14,
+        "failure": 8,
+        "all_terminal": true,
+        "quality_each": {
+          "jobs": 51,
+          "pass": 49,
+          "failure": 2,
+          "main_tests": 5431,
+          "main_pass": 5427,
+          "main_fail": 4,
+          "main_skip": 0,
+          "main_cancel": 0,
+          "prior_15_main_failures_no_longer_seen": true,
+          "current_failures": "two Native child stale-pin assertions and two old queued-story selector source contracts; main suites completed, no successful full check"
+        },
+        "F01": {
+          "run": 41675236931,
+          "jobs": 21,
+          "pass": 19,
+          "failure": 2,
+          "queued_original_browser_stories_not_entered_on_this_head": true,
+          "reason": "source preflight still expects old model selector and history link; no new genuine browser result"
+        },
+        "Role_AB": {
+          "run": 41675236386,
+          "job": 126053960278,
+          "old_optional_SQL_CASE_install_failure_passed": true,
+          "SQLSTATE": "42601",
+          "error_position": 3075,
+          "token": "FROM",
+          "phase": "original-role-catalog query during prepareOriginalRoleUiPool",
+          "authored_17_stories_entered": false
+        },
+        "quality089": {
+          "run": 41675236622,
+          "jobs": 2,
+          "all_failed": true,
+          "reason": "employee_ui078_whole_function_inventory_mismatch",
+          "actual_base_functions": 394,
+          "expected_base_functions": 389,
+          "unexpected": 5,
+          "missing": 0,
+          "actual_names_match_original_SQL_rename_events": true,
+          "logs": [
+            "37de2b5b3d0b807f446590179720fd7526c561adc46fca2dca4fa0a5a3abbfa2",
+            "6fb432a15e15ea7e475c58de1d56c681b2d2b65c2a42249eccce45b706520ebb"
+          ]
+        },
+        "Staff084": {
+          "run": 41675236322,
+          "all_failed": true,
+          "reason": "exact prerequisite inventory still blocked; new collection required"
+        },
+        "telemetry": {
+          "run": 41675236592,
+          "job": 126053961081,
+          "failed_before_actual_telemetry_service": true,
+          "reason": "Native child source pin for reviewed native-auth-http change was stale; original nine-plus-one gates remain"
+        },
+        "strict069": {
+          "run": 41675236400,
+          "Legacy": {
+            "job": 126053960880,
+            "actual_job_pass": true,
+            "log_sha256": "5df49bac82acaa40c74442bb9ffebc1564985aa6756c716372a25906ea09085f",
+            "long_term_or_employee_acceptance": false
+          },
+          "Final14": {
+            "job": 126053961305,
+            "reason": "full069_worker_live_native_heartbeat_unavailable",
+            "phase": "warm_sample",
+            "Native_ms": 7583,
+            "runtime_branch_fulfilled_ms": 26679,
+            "reader_finish_registry_ms": 5038,
+            "reader_remaining_ms": -37,
+            "reader_guards": 118,
+            "reader_guard_ms": 4713,
+            "stable_guards": 30,
+            "stable_guard_ms": 15365,
+            "node_executable_ms": 5336,
+            "final_sources_ms": 7046,
+            "live_context_source_ms": 1758,
+            "log_sha256": "ff54626a69a15be7b1a07373009c84bb612ecbd98eedef3bb4f9db841d8e7312"
+          },
+          "qualified": false
+        },
+        "PB19_same_run_heartbeat_and_other_synthetic_workflows_passed": true
+      },
+      "repairs": {
+        "Role_catalog": "Remove only one extra closing parenthesis in the relations aggregate; strict auditor and query wrapper bodies unchanged. Register 45 source/catalog regressions before real SQL.",
+        "employee078_inventory": "Derive create/drop/rename events from all unchanged ordered53 base and seven extension SQL files; retain old five renamed functions and their replacement original names. Derived exact base394/combined426; unknown/missing/extra overloads remain refused. No ignore list or SQL/grant changes.",
+        "Native_child": "Update only the already-reviewed native-auth-http raw source pin. Retain nine source files and one shared dependency, exact rejection before frame/auth and all original tamper checks.",
+        "queued_source_contracts": "Use current actual drawer model selector and original history link/href; retain every old backend/owner/zero gate and add exact cancelled GET polling and single original cancel POST checks. No story or product changes in this follow-up."
+      },
+      "Root_current_directed_proof": {
+        "Role_workflow_prechecks": 67,
+        "Role_catalog_component": 45,
+        "employee078_full_source_terminal_pures": 146,
+        "Native_child_closed_VM_source_pures": 3,
+        "queued_host_closed_source_pures": 23,
+        "counts_are_component_runs_not_a_distinct_total": true,
+        "API_compiler_exit": 0,
+        "frozen059060_source_recheck_pass": true,
+        "frontend_product_unchanged_from_e7ad397_original_entry_build": true,
+        "local_SQL_Pool_Worker_Native_listener_Electron_browser_or_paid_provider": false,
+        "whole_claim_or_slices_executed_or_imported": false
+      },
+      "private_drafts": {
+        "native_directory_v156_plus_v164": {
+          "Root_current_composition_pures": 26,
+          "actual_frontend_compiler_exit": 0,
+          "actual_API_compiler_with_original_real_dependency_types_exit": 0,
+          "only_test_timing_witness_changed_in_v164": true,
+          "product_integrated": false,
+          "original_browser_and_actual_SQL_Native_execution_acceptance": false,
+          "non_directory_file_permission_app_Office_actions_still_incomplete": true
+        },
+        "Role_acceptance_carry_v5c": {
+          "standard_Node_entry_registered": 33,
+          "Root_frozen_graph_overlap": 0,
+          "product_integrated": false,
+          "actual_SQL_positives_authored": false
+        },
+        "Role_ordinary_case_v5b": {
+          "product_integrated": false,
+          "actual_positive_SQL_and_original_page_acceptance": false
+        },
+        "strict069": {
+          "bounded_hotspot_source_diagnostic_in_progress": true,
+          "no_deadlines_or_fresh_checks_relaxed": true
+        }
+      },
+      "current_candidate_genuine_acceptance": false,
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 28196,
+        "retained_prior_pins": 28171,
+        "all_prior_pin_sets_retained": true,
+        "new_Role_query_regression_pin_in_each_workflow_closure": 25,
+        "nested_Role": 198,
+        "nested_home071": 9,
+        "nested_Native_child": 9,
+        "nested_Native_shared": 1,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,

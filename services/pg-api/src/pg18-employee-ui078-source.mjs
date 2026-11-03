@@ -4,7 +4,7 @@ import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {createHash} from 'node:crypto'
 import {captureCompleteProfileSources,assertCompleteProfileSnapshot,assertCompleteProfileDeployment,completeProfileReceiptBody} from './pg18-complete-profile-source.mjs'
-import {employeeUi078LiteralLedger,employeeUi078FunctionSignatures,employeeUi078Canonical} from './pg18-employee-ui078-catalog.mjs'
+import {employeeUi078LiteralLedger,employeeUi078ApplyFunctionSignatures,employeeUi078Canonical} from './pg18-employee-ui078-catalog.mjs'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..'),captured=new WeakSet(),sha=b=>createHash('sha256').update(b).digest('hex'),fail=()=>{throw Error('employee_ui078_source_refused')}
 export const employeeUi078Profile='complete069-employee-ui078',employeeUi078Receipt='pg18_complete069_employee_ui078_001',employeeUi078CatalogReceipt='pg18_employee_ui078_catalog_001'
 export const employeeUi078SqlPins=Object.freeze([
@@ -37,8 +37,8 @@ export async function captureEmployeeUi078Sources(){
  const functions=new Set(),baseFunctions=new Set(),ledger=new Map(),steps=[],tables=new Set(base.tables)
  const all=[...base.manifest.sql_sources,...employeeUi078SqlPins]
  for(const [i,pin]of all.entries()){
-  const bytes=raw(pin.path);if(sha(bytes)!==pin.sha256)fail();const text=bytes.toString('utf8'),decl=employeeUi078FunctionSignatures(text),count=[...text.matchAll(/\b(?:CREATE(?:\s+OR\s+REPLACE)?|DROP)\s+FUNCTION\s+(?:IF\s+EXISTS\s+)?agentstudio(?:_auth)?\./gi)].length
-  if(count!==decl.length)fail();for(const f of decl){if(f.action==='create')functions.add(f.signature);else functions.delete(f.signature)}
+  const bytes=raw(pin.path);if(sha(bytes)!==pin.sha256)fail();const text=bytes.toString('utf8')
+  employeeUi078ApplyFunctionSignatures(functions,text)
   for(const row of employeeUi078LiteralLedger(text)){if(ledger.has(row.version)&&ledger.get(row.version)!==row.description)fail();ledger.set(row.version,row.description)}
   if(i===52)for(const f of functions)baseFunctions.add(f)
   if(i>=53){for(const m of text.matchAll(/\bCREATE TABLE(?: IF NOT EXISTS)?\s+(agentstudio(?:_auth)?\.[a-z_][a-z_0-9]*)/g))tables.add(m[1]);steps.push({...pin,sql:employeeUi078SqlBody(pin.path,bytes)})}
