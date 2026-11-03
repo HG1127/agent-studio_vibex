@@ -2,6 +2,7 @@
 // No successful backup proof or runtime capability is fabricated by this suite.
 import test from 'node:test'
 import './worker-heartbeat-runtime-layout.test.mjs'
+import './worker-heartbeat-runtime-phases.test.mjs'
 import assert from 'node:assert/strict'
 import {createHash,generateKeyPairSync,sign,verify as verifyNative} from 'node:crypto'
 import vm from 'node:vm'

@@ -18,6 +18,12 @@ export function assertWorkerHeartbeatActivationControlRuntimeStable(before:Reado
 export function assertWorkerHeartbeatActivationControlRuntimeInventory(expected:readonly string[],actual:readonly string[]):void
 export function assertWorkerHeartbeatActivationControlRuntimeCacheRecord(module:unknown,expectedFile:string,previousModule?:unknown,previousExports?:unknown):void
 export function verifyWorkerHeartbeatActivationControlRuntime(snapshot:WorkerHeartbeatActivationControlSources,expectedSourceSha256:string,options:Readonly<{manifestFile:string;manifestSha256:string;lockSha256:string}>):WorkerHeartbeatActivationControlRuntimeCapability
-export function assertWorkerHeartbeatActivationControlRuntime(capability:WorkerHeartbeatActivationControlRuntimeCapability):void
+// Observation tokens are distinct from verified runtime capabilities.
+declare const runtimeTiming:unique symbol
+export type WorkerHeartbeatActivationControlRuntimeTiming=Readonly<{[runtimeTiming]:true}>
+export type WorkerHeartbeatActivationControlRuntimeTimingData=Readonly<{runtime_calls:number;runtime_source_ms:number|null;runtime_manifest_ms:number|null;runtime_tree_ms:number|null;runtime_packages_ms:number|null;runtime_cache_ms:number|null}>
+export function createWorkerHeartbeatActivationControlRuntimeTiming():WorkerHeartbeatActivationControlRuntimeTiming|undefined
+export function describeWorkerHeartbeatActivationControlRuntimeTiming(token:WorkerHeartbeatActivationControlRuntimeTiming|undefined):WorkerHeartbeatActivationControlRuntimeTimingData|undefined
+export function assertWorkerHeartbeatActivationControlRuntime(capability:WorkerHeartbeatActivationControlRuntimeCapability,timing?:WorkerHeartbeatActivationControlRuntimeTiming):void
 export function resolveWorkerHeartbeatActivationControlRuntimeModule(manifest:WorkerHeartbeatActivationControlRuntimeManifest,from:string,specifier:string,conditions?:readonly string[]):Readonly<{builtin:string}>|Readonly<{path:string;format:'commonjs'|'json'}>
 export function loadWorkerHeartbeatActivationControlPg(capability:WorkerHeartbeatActivationControlRuntimeCapability):Readonly<{Pool:typeof Pool;Client:typeof import('pg').Client}>

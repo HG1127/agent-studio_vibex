@@ -11016,6 +11016,177 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_961a531_policy_OID_and_Reader_diagnostics_followup": {
+      "base_head": "961a531be926f1750f2b894a1715a32baf2483d1",
+      "source_only": true,
+      "source_reseal_pending": false,
+      "accepted_employee_UI": {
+        "entry": "src/main.tsx -> src/App.tsx",
+        "reviewed_source_carry_baseline": "c6237d68a8b3ee2a9b4e54e79d2bcd530f863193",
+        "migration_branch_is_Git_descendant": false,
+        "complete_release_inclusion_not_inferred": true,
+        "redesign": false,
+        "separate_workbench_is_not_acceptance": true
+      },
+      "base_hosted_evidence": {
+        "snapshot": {
+          "workflows": 22,
+          "success": 14,
+          "failure": 6,
+          "in_progress": 2,
+          "all_terminal": false
+        },
+        "quality_each": {
+          "jobs": 51,
+          "pass": 50,
+          "in_progress": 1,
+          "failures_so_far": 0,
+          "main_result_pending": true
+        },
+        "F01": {
+          "run": 41683060463,
+          "jobs": 21,
+          "pass": 20,
+          "failure": "after one real cancellation committed behind lost reply, terminal GET recovery wait timed out at original18s",
+          "original_run_detail_queued_actual_browser_pass": true,
+          "original_agent_queued_actual_browser_entered": true,
+          "log": {
+            "sha256": "42c3c4e5d1d517c751b8e5126d95c430e12c3b6aa9684eff2e305c38cc8fd3bf",
+            "source": "completed synthetic hosted CI log"
+          }
+        },
+        "Role_AB": {
+          "run": 41683060766,
+          "job": 126081491969,
+          "prior_SQL_syntax_failure_passed": true,
+          "current_failure": "original_role_catalog_unavailable at strict policy functions multiset, line62 column503",
+          "actual_dependency_rows_not_yet_observed": true,
+          "authored17stories_entered": false,
+          "log": {
+            "sha256": "99ded15b756e5adec796c3836c976394b673458f537c9ca8b2b4de4472f165ed",
+            "source": "completed synthetic hosted CI log"
+          }
+        },
+        "quality089": {
+          "run": 41683060301,
+          "all2failed": true,
+          "reason": "quality089_hosted_verification_failed",
+          "precise_stage_unproven": true,
+          "log": {
+            "sha256": "4530dade86e29838c1130722b4a64d4355161b44eb48945ef2dbb4d8f4b4582d",
+            "source": "completed synthetic hosted CI log"
+          }
+        },
+        "Staff084": {
+          "run": 41683060584,
+          "all4failed": true,
+          "reason": "original_staff084_schema_unavailable from auth catalog audit after employee078 prerequisite",
+          "precise_check_unproven": true,
+          "log": {
+            "sha256": "ab8fc46dcdc6a8e6e31b7d28778837c66dfdf326934c1bbd16fb4f3983612b1c",
+            "source": "completed synthetic hosted CI log"
+          }
+        },
+        "telemetry": {
+          "run": 41683060295,
+          "control_actual_cases": 28,
+          "writer_actual_cases_passed_before_failure": 21,
+          "failure": "component_short_contention_releases_real_lock_within_original_budget_and_all_eight_progress at short_results",
+          "log": {
+            "sha256": "648f52b70456ca730085197d425169175e8834640b5cd509edb974f91b4504bd",
+            "source": "completed synthetic hosted CI log"
+          }
+        },
+        "strict069": {
+          "run": 41683060523,
+          "qualified": false,
+          "Legacy": {
+            "job": 126081493211,
+            "success": false,
+            "reason": "full069_worker_live_path_validation_warmup",
+            "eight_actual_writer_boots_passed": true,
+            "record_selection_before": "writer_closed",
+            "warm_and_final_collected": false,
+            "observed_reader_consumed_ms": [
+              4785,
+              4794,
+              4731,
+              4374,
+              4551,
+              4547,
+              4453,
+              4602,
+              4549,
+              4414,
+              4625
+            ],
+            "log": {
+              "sha256": "fc5d61ac710ddea8e861c571f0b61779ac879326e8fd2d81b60bba429fdcb1aa",
+              "source": "completed synthetic hosted CI log"
+            }
+          },
+          "Final14": {
+            "job": 126081492498,
+            "success": false,
+            "reason": "full069_worker_live_native_io",
+            "phase": "warm_sample",
+            "Native_ms": 8620,
+            "runtime_branch_fulfilled_ms": 33150,
+            "reader_stage": "snapshot",
+            "reader_ms": 5015,
+            "reader_remaining_ms": -14,
+            "reader_guards": 81,
+            "reader_guard_ms": 3911,
+            "stable_guards": 30,
+            "stable_guard_ms": 19964,
+            "node_executable_ms": 6424,
+            "final_sources_ms": 9641,
+            "log": {
+              "sha256": "1b3f98915f7c50e756c4ca76aa3bab92170706bab2488ed3045b4c34348b6fc0",
+              "source": "completed synthetic hosted CI log"
+            }
+          }
+        }
+      },
+      "repairs": {
+        "Role_catalog": "Project each actually referenced pg_proc OID through EXISTS instead of joining every pg_depend row. PostgreSQL separately records USING/WITH CHECK dependencies; repeated same OID collapses, extra distinct overload OIDs with same name remain separate values and strict rejection remains. Auditor/wrapper unchanged; no function-name filtering or deduplication.",
+        "Reader_diagnostics": "Five passive runtime phases, distinct private observation token, bounded scalar output. Every original fresh check/order/error/cleanup and5/8/30s deadlines,15s sample,45s heartbeat,8kinds,14LOGIN serial pool1 retained. Diagnostic data grants no authority.",
+        "standard_regression": "13 standard node:test cases statically imported by existing runtime test entry used by telemetry and quality; no package/workflow command changes; no full runtime entry executed locally.",
+        "Root_type_correction": "Actual API compiler first exposed four null/undefined narrowing errors; explicit numeric scalar checks added before same bounds; actual API compiler now exit0."
+      },
+      "Root_current_directed_proof": {
+        "Role_query_and_strict_auditor_pures": 49,
+        "Reader_layout_ancestor_observation_component_pures": 219,
+        "Reader_post_type_fix_pures": 13,
+        "component_runs_overlap_not_distinct_total": true,
+        "API_compiler_exit": 0,
+        "frozen059060_source_recheck_pass": true,
+        "frontend_product_unchanged": true,
+        "local_SQL_Pool_Worker_Native_listener_Electron_browser_paid_provider": false,
+        "whole_claim_or_slices_executed_or_imported": false
+      },
+      "remaining": {
+        "backend": "Role actual SQL and optional auth/quality catalog audit, strict Worker performance, ordinary-case/revision-carry integration remain.",
+        "original_pages": "Original ToolHub draft and directory draft remain unintegrated; remaining device file/permission/application/Office actions and original Agent cancellation recovery continue.",
+        "actual_original_E2E": "F01 original RunDetail now genuine pass, Agent queued still genuine failure; new candidate actual SQL/page acceptance pending.",
+        "formal_cutover": "Accepted release inclusion, target environment/network/version, backup/restore/rollback, long Worker validation and employee UAT/signoff remain open."
+      },
+      "current_candidate_genuine_acceptance": false,
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 28221,
+        "retained_prior_pins": 28196,
+        "all_prior_pin_sets_retained": true,
+        "new_standard_Reader_regression_pin_in_each_workflow_closure": 25,
+        "nested_Role": 198,
+        "nested_home071": 9,
+        "nested_Native_child": 9,
+        "nested_Native_shared": 1,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,

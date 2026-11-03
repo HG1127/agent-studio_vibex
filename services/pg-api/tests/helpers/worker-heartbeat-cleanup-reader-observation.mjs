@@ -14,7 +14,9 @@ export function parseCleanupReaderObservation(raw){
   const event=Object.getOwnPropertyDescriptor(raw,'event')?.value;let v
   if(event==='worker_heartbeat_registry_read_failure_observation')return parseRegistryReadFailureObservation(raw)
   if(event==='worker_heartbeat_reader_lease_timing_observation'){
-   v=record(raw,['event','stage','outcome','elapsed_ms','remaining_ms','guard_calls','guard_ms','writer_operation','writer_cleanups','observed_data_only'])
+   const keys=['runtime_calls','runtime_source_ms','runtime_manifest_ms','runtime_tree_ms','runtime_packages_ms','runtime_cache_ms'],hasTiming=Object.hasOwn(raw,'runtime_calls')
+   v=record(raw,['event','stage','outcome','elapsed_ms','remaining_ms','guard_calls','guard_ms','writer_operation','writer_cleanups','observed_data_only',...(hasTiming?keys:[])])
+   if(hasTiming&&(!integer(v.runtime_calls,0,4096)||keys.slice(1).some(k=>!time(v[k]))))return null
    if(!['begin_registry','connect_reader','identity','begin_rr','catalog','snapshot','finish_registry'].includes(v.stage)||!['failed','consumed'].includes(v.outcome)||!time(v.elapsed_ms)||!time(v.remaining_ms,-120000)||!integer(v.guard_calls,0,4096)||!time(v.guard_ms)||typeof v.writer_operation!=='boolean'||!integer(v.writer_cleanups,0,32))return null
   }else if(event==='worker_heartbeat_owned_cleanup_timing_observation'){
    v=record(raw,['event','kind','outcome','elapsed_ms','end_client_ms','terminate_owned_ms','discover_ms','wait_absence_ms','ended_journal_ms','observed_data_only'])

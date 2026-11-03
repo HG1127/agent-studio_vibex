@@ -5,6 +5,7 @@ import path from 'node:path'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import {createHash} from 'node:crypto'
 import {isUtf8} from 'node:buffer'
+import {performance} from 'node:perf_hooks'
 import {createRequire,registerHooks,isBuiltin,getCompileCacheDir} from 'node:module'
 import {assertWorkerHeartbeatActivationControlSources} from './worker-heartbeat-activation-control-source.mjs'
 
@@ -330,8 +331,27 @@ function runtimeTreeLayout(state,initial){
   for(const p of allowed.keys()){const pieces=p.split('/');for(let i=3;i<pieces.length;i++)dirs.add(pieces.slice(0,i).join('/'))}
   const layout=Object.freeze({rootPackages,allowed,dirs});treeLayouts.set(state,layout);return layout
 }
-function verifyTree(state,initial=false){
+/* READER_RUNTIME_TIMING_BEGIN */
+// Passive Reader timings. Tokens contain no identity, state or verdict and
+// never authorize, retain a completed check, or alter a filesystem operation.
+const runtimeTimings=new WeakMap()
+export function createWorkerHeartbeatActivationControlRuntimeTiming(){
+  try{const token=Object.freeze(Object.create(null));runtimeTimings.set(token,{calls:0,valid:true,parts:{source:0,manifest:0,tree:0,packages:0,cache:0}});return token}catch{return undefined}
+}
+export function describeWorkerHeartbeatActivationControlRuntimeTiming(token){
+  try{const t=runtimeTimings.get(token);if(!t)return undefined;const ms=key=>t.valid?Math.min(120000,Math.ceil(t.parts[key])):null;return Object.freeze({runtime_calls:t.calls,runtime_source_ms:ms("source"),runtime_manifest_ms:ms("manifest"),runtime_tree_ms:ms("tree"),runtime_packages_ms:ms("packages"),runtime_cache_ms:ms("cache")})}catch{return undefined}
+}
+function beginRuntimeTiming(token){
+  try{const t=runtimeTimings.get(token);if(!t)return undefined;if(t.calls>=4096){t.valid=false;return undefined}t.calls++;if(!t.valid)return undefined;const now=performance.now();if(!Number.isFinite(now)||now<0){t.valid=false;return undefined}return {timing:t,stage:"source",at:now}}catch{try{const t=runtimeTimings.get(token);if(t)t.valid=false}catch{}return undefined}
+}
+function markRuntimeTiming(frame,next){
+  try{if(!frame||!frame.timing.valid)return;const now=performance.now(),elapsed=now-frame.at;if(!Number.isFinite(now)||now<0||!Number.isFinite(elapsed)||elapsed<0){frame.timing.valid=false;return}frame.timing.parts[frame.stage]=Math.min(120000,frame.timing.parts[frame.stage]+elapsed);frame.at=now;frame.stage=next}catch{try{if(frame)frame.timing.valid=false}catch{}}
+}
+/* READER_RUNTIME_TIMING_END */
+function verifyTree(state,initial=false,timing){
+  /* READER_RUNTIME_TIMING_BEGIN */const frame=beginRuntimeTiming(timing);try{/* READER_RUNTIME_TIMING_END */
   host();assertSource(state.snapshot,state.expected);assertProtocolPins(state)
+  /* READER_RUNTIME_TIMING_BEGIN */markRuntimeTiming(frame,"manifest");/* READER_RUNTIME_TIMING_END */
   const manifest=readBound(state.manifestFile,state.manifestSha,'manifest')
   if(state.manifestStamp)trustedStable(state.manifestStamp,manifest.stamp)
   if(state.manifestChain)sameChain(state.manifestChain,manifest.chain)
@@ -341,6 +361,7 @@ function verifyTree(state,initial=false){
   // Root package metadata is decoded by packageInfo below in THIS assertion.
   // Keep every original readBound/hash/stat/chain observation; only the
   // earlier duplicate root-type JSON decode is omitted. No cross-assert cache.
+  /* READER_RUNTIME_TIMING_BEGIN */markRuntimeTiming(frame,"tree");/* READER_RUNTIME_TIMING_END */
   const {rootPackages,allowed,dirs}=runtimeTreeLayout(state,initial)
   const seen=new Set();let count=0
   const walk=relative=>{
@@ -370,8 +391,11 @@ function verifyTree(state,initial=false){
     trustedStatStable(directoryStamp,lstatSync(path.join(root,relative)))
   }
   walk(prefix.slice(0,-1));assertWorkerHeartbeatActivationControlRuntimeInventory([...allowed.keys()],[...seen])
+  /* READER_RUNTIME_TIMING_BEGIN */markRuntimeTiming(frame,"packages");/* READER_RUNTIME_TIMING_END */
   for(const name of Object.keys(graph))packageInfo(state,name)
+  /* READER_RUNTIME_TIMING_BEGIN */markRuntimeTiming(frame,"cache");/* READER_RUNTIME_TIMING_END */
   if(initial){state.manifestStamp=manifest.stamp;state.lockStamp=lock.stamp;state.manifestChain=manifest.chain;state.lockChain=lock.chain}else cacheCheck(state)
+  /* READER_RUNTIME_TIMING_BEGIN */}finally{markRuntimeTiming(frame,undefined)}/* READER_RUNTIME_TIMING_END */
 }
 export function verifyWorkerHeartbeatActivationControlRuntime(snapshot,expectedSourceSha256,options){
   host();assertSource(snapshot,expectedSourceSha256)
@@ -388,9 +412,9 @@ export function verifyWorkerHeartbeatActivationControlRuntime(snapshot,expectedS
   verifyTree(state,true)
   const capability=Object.freeze({});capabilities.set(capability,state);claimed.set(root,state);return capability
 }
-export function assertWorkerHeartbeatActivationControlRuntime(capability){
+export function assertWorkerHeartbeatActivationControlRuntime(capability,timing){
   const state=capabilities.get(capability);if(!state||state.failed||claimed.get(root)!==state)fail()
-  try{verifyTree(state)}catch(error){state.failed=true;throw error}
+  try{verifyTree(state,false,timing)}catch(error){state.failed=true;throw error}
 }
 function packageName(relative){return filePath(relative)}
 function executable(relative){if(/\/(?:esm|native)(?:\/|\.)/.test(relative)||/\.mjs$/.test(relative))fail();if(relative.endsWith('/package.json'))return 'json';if(!/\.(?:js|cjs)$/.test(relative))fail();return 'commonjs'}
