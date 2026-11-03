@@ -105,7 +105,7 @@ try {
       assert.equal(result.data.status,'succeeded',tool+': '+result.data.result)
       const value=JSON.parse(result.data.result)
       if(tool==='apps.windows')assert.deepEqual(value.windows,[],'fixture must begin with no window')
-      else {assert.equal(value.status,'ready');assert.ok(value.windows.length);assert.equal(value.alreadyRunning,electronColdStart);electronColdStart=true}
+      else {assert.equal(value.status,'ready');assert.ok(value.windows.length);assert.equal(value.windows[0].minimized,false,'launch must return a shown window');assert.equal(value.alreadyRunning,electronColdStart);electronColdStart=true}
     }
     let receipt
     for(let i=0;i<100&&!receipt;i++){try{receipt=JSON.parse(await fs.readFile(electronFixture.receipt,'utf8'))}catch(error){if(error.code!=='ENOENT')throw error}if(!receipt)await sleep(50)}

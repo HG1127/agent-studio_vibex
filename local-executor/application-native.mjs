@@ -6,7 +6,7 @@ import path from 'node:path'
 export const APPLICATION_NATIVE_CODE=String.raw`
 using System;using System.Collections.Generic;using System.Diagnostics;using System.Drawing;using System.Drawing.Imaging;using System.IO;using System.Runtime.InteropServices;using System.Windows.Automation;
 public static class StudioApplications {
- public class Win {public string id,title,path;public int pid,x,y,width,height;}
+ public class Win {public string id,title,path;public int pid,x,y,width,height;public bool minimized;}
  public class Control {public int id;public string name,type,runtime;public bool password,enabled;public double[] rect;public List<string> actions;public string value;}
  public class View {public Win window;public uint input;public List<Control> controls;public string image;}
  [StructLayout(LayoutKind.Sequential)]public struct Rect{public int left,top,right,bottom;}
@@ -41,7 +41,8 @@ public static class StudioApplications {
  // holds its loader lock during startup. It does not require reading process
  // memory, and the resulting executable path is still matched exactly.
  static string Executable(uint pid){var process=OpenProcess(0x1000,false,pid);if(process==IntPtr.Zero)throw new Exception("application_window_changed");try{uint size=32768;var name=new System.Text.StringBuilder((int)size);if(!QueryFullProcessImageName(process,0,name,ref size))throw new Exception("application_window_changed");return name.ToString();}finally{CloseHandle(process);}}
- static Win Get(IntPtr h,string expected){uint pid;GetWindowThreadProcessId(h,out pid);string exe=Executable(pid);if(expected!=null&&!String.Equals(Path.GetFullPath(exe),Path.GetFullPath(expected),StringComparison.OrdinalIgnoreCase))throw new Exception("application_window_changed");var b=new System.Text.StringBuilder(512);GetWindowText(h,b,512);var title=b.ToString();if(System.Text.RegularExpressions.Regex.IsMatch(title,@"Agent Studio|ChatGPT|Codex|Windows Terminal|Windows PowerShell|命令提示符|Windows Security|Windows 安全|用户帐户控制|User Account Control|Credential|密码管理|password manager",System.Text.RegularExpressions.RegexOptions.IgnoreCase))throw new Exception("application_sensitive_window");Rect r;if(!GetWindowRect(h,out r))throw new Exception("application_window_changed");return new Win{id=h.ToInt64().ToString(),title=title,path=exe,pid=(int)pid,x=r.left,y=r.top,width=r.right-r.left,height=r.bottom-r.top};}
+ static Win Get(IntPtr h,string expected){uint pid;GetWindowThreadProcessId(h,out pid);string exe=Executable(pid);if(expected!=null&&!String.Equals(Path.GetFullPath(exe),Path.GetFullPath(expected),StringComparison.OrdinalIgnoreCase))throw new Exception("application_window_changed");var b=new System.Text.StringBuilder(512);GetWindowText(h,b,512);var title=b.ToString();if(System.Text.RegularExpressions.Regex.IsMatch(title,@"Agent Studio|ChatGPT|Codex|Windows Terminal|Windows PowerShell|命令提示符|Windows Security|Windows 安全|用户帐户控制|User Account Control|Credential|密码管理|password manager",System.Text.RegularExpressions.RegexOptions.IgnoreCase))throw new Exception("application_sensitive_window");Rect r;if(!GetWindowRect(h,out r))throw new Exception("application_window_changed");return new Win{id=h.ToInt64().ToString(),title=title,path=exe,pid=(int)pid,x=r.left,y=r.top,width=r.right-r.left,height=r.bottom-r.top,minimized=IsIconic(h)};}
+ public static Win Reveal(string id,string expected){var h=new IntPtr(long.Parse(id));Get(h,expected);if(IsIconic(h))ShowWindow(h,9);SetForegroundWindow(h);return Get(h,expected);}
  static AutomationElementCollection Elements(IntPtr h){return AutomationElement.FromHandle(h).FindAll(TreeScope.Descendants,new PropertyCondition(AutomationElement.IsControlElementProperty,true));}
  static string Runtime(AutomationElement e){return String.Join(".",e.GetRuntimeId());}
  static bool Sensitive(AutomationElement e){var c=e.Current;return c.IsPassword||System.Text.RegularExpressions.Regex.IsMatch((c.ClassName??"")+" "+(c.AutomationId??"")+" "+(c.Name??""),@"password|credential|xterm|terminal|powershell|命令提示|终端",System.Text.RegularExpressions.RegexOptions.IgnoreCase);}
@@ -77,8 +78,8 @@ public static class StudioApplications {
 // Enumeration reuses the observer's exact identity/filter methods without
 // loading UI Automation, drawing or input support on every startup probe.
 export const APPLICATION_WINDOW_CODE='using System;using System.Collections.Generic;using System.IO;using System.Runtime.InteropServices;public static class StudioApplications {\n'+APPLICATION_NATIVE_CODE.split('\n').filter(line=>
- /^ public class Win |^ \[StructLayout\(LayoutKind.Sequential\)\]public struct Rect|^ delegate bool EnumProc|^ public static List<Win> Windows\(|^ static string Executable\(|^ static Win Get\(/.test(line)||
- line.includes('[DllImport')&&/\b(?:EnumWindows|IsWindowVisible|IsIconic|GetWindowThreadProcessId|OpenProcess|QueryFullProcessImageName|CloseHandle|GetWindowText|GetWindowRect)\(/.test(line)
+ /^ public class Win |^ \[StructLayout\(LayoutKind.Sequential\)\]public struct Rect|^ delegate bool EnumProc|^ public static List<Win> Windows\(|^ static string Executable\(|^ static Win Get\(|^ public static Win Reveal\(/.test(line)||
+ line.includes('[DllImport')&&/\b(?:EnumWindows|IsWindowVisible|IsIconic|GetWindowThreadProcessId|OpenProcess|QueryFullProcessImageName|CloseHandle|GetWindowText|GetWindowRect|ShowWindow|SetForegroundWindow)\(/.test(line)
 ).join('\n')+'\n}'
 
 const wrapper=String.raw`$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
@@ -101,6 +102,7 @@ try{
  $code=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:STUDIO_APPLICATION_CODE))
  Add-Type -TypeDefinition $code
  $result=@([StudioApplications]::Windows([string]$v.path))
+ if($v.reveal -eq $true -and $result.Count -gt 0){$result[0]=[StudioApplications]::Reveal([string]$result[0].id,[string]$v.path)}
  }else{
  Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,WindowsBase,System.Drawing
  $code=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:STUDIO_APPLICATION_CODE))
