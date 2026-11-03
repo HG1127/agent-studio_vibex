@@ -1,4 +1,5 @@
 import test from 'node:test'
+import './original-queued-cancel-recovery-source-pure.test.mjs'
 import assert from 'node:assert/strict'
 import {createOriginalAgentRunTransport,originalAgentRunRoute} from '../src/lib/originalAgentRunTransport.ts'
 import {originalRunAgent,originalRunDetail,originalRunFeedback} from '../src/lib/originalAgentRunProjection.ts'
@@ -34,4 +35,24 @@ for(const terminalStatus of ['succeeded','cancelled'])test('actual original pare
   const current=detail();current.run.status=terminalStatus;current.pending_effect=null;f.setDetail(current);const before=reads.length
   await f.c.control('cancel');assert.equal(posts,1);assert.equal(reads.length,before+1);assert.equal(f.c.snapshot().runs.pendingMutation,null);assert(f.c.snapshot().runs.notice.includes('无法确认是否由本次取消操作引起'))
  }finally{t.close();f.c.dispose()}
+})
+
+// The browser story uses this existing control again after an unknown cancel.
+// These are inert terminal DTO/stream ports, not a browser or backend fixture.
+for(const terminalStatus of ['cancelled','succeeded'])test('queued unknown cancel suspends polling until the original control reads the same '+terminalStatus+' task once without replay',async()=>{
+ const reads=[],confirmations=[];let fail,entered,posts=0;const entering=new Promise(resolve=>{entered=resolve})
+ const t=createOriginalAgentRunTransport({employeeId:employee,verifyEmployee:async()=>employee,transport:async(url,init)=>{assert.equal(url,'/__pg_native/api/v2/agent-autonomous-runs/'+run+'/cancel');assert.equal(init.method,'POST');assert.equal(init.body,'{}');posts++;const committed=detail();committed.run.status=terminalStatus;committed.pending_effect=null;f.setDetail(committed);return new Response(new ReadableStream({start(c){fail=()=>c.error(Error('inert lost cancel reply'));entered()}}),{headers:{'content-type':'application/json'}})}})
+ const actual=createPgNativePilotApi(t.transport),f=fixture({confirm:request=>{confirmations.push(request);return true},configure(api){const get=api.getAutonomousAgentRun;api.getAutonomousAgentRun=async id=>{reads.push(id);return get(id)};api.cancelAutonomousAgentRun=id=>actual.cancelAutonomousAgentRun(id)}}),queued=detail();queued.run.status='queued';queued.pending_effect=null;f.setDetail(queued);await f.start()
+ try{const request=f.c.control('cancel');await entering;assert.equal(f.c.snapshot().runs.busy,true);fail();await request;const pending=f.c.snapshot().runs.pendingMutation;assert.deepEqual(pending,{kind:'cancel',id:run});assert.equal(f.c.snapshot().activeRun.status,'queued');assert.equal(f.c.snapshot().runs.busy,false);assert.equal(posts,1);assert.equal(confirmations.length,1);assert.equal(confirmations[0].purpose,'cancel');assert.equal(confirmations[0].run_id,run)
+  const before=reads.length;await f.c.poll();await f.c.poll();assert.equal(reads.length,before);assert.equal(f.c.snapshot().runs.pendingMutation,pending);assert.equal(await f.c.prepareNewTask(),false);assert.equal(f.c.navigationBlocked(),true)
+  await f.c.control('cancel');assert.deepEqual(reads.slice(before),[run]);assert.equal(posts,1);assert.equal(confirmations.length,1);assert.equal(f.c.snapshot().activeRun.id,run);assert.equal(f.c.snapshot().activeRun.status,terminalStatus);assert.equal(f.c.snapshot().runs.pendingMutation,null);assert(f.c.snapshot().runs.notice.includes('无法确认是否由本次取消操作引起'));assert.equal(await f.c.prepareNewTask(),true);assert.equal(posts,1)
+ }finally{t.close();f.c.dispose()}
+})
+test('unknown cancel recovery cannot reveal the previous owner after the read crosses an identity epoch',async()=>{
+ let recovery=false,enter,release;const entered=new Promise(resolve=>{enter=resolve}),gate=new Promise(resolve=>{release=resolve}),reads=[];const f=fixture({configure(api){const get=api.getAutonomousAgentRun;api.getAutonomousAgentRun=async id=>{reads.push(id);if(recovery){enter();return gate}return get(id)}}});await f.start()
+ try{await f.c.control('cancel');assert.equal(f.calls.filter(v=>v.kind==='cancel').length,1);const before=reads.length;recovery=true;const checking=f.c.control('cancel');await entered;f.setOwner(other);const result=detail();result.run.status='cancelled';result.pending_effect=null;release(result);await checking;assert.deepEqual(reads.slice(before),[run]);assert.equal(f.c.snapshot().activeRun,null);assert.equal(f.c.snapshot().runs.detail,null);assert.equal(f.calls.filter(v=>v.kind==='cancel').length,1);await f.c.control('cancel');assert.equal(f.calls.filter(v=>v.kind==='cancel').length,1)}finally{f.c.dispose()}
+})
+test('same-owner ACL refusal during unknown cancel recovery hides source and never resends cancellation',async()=>{
+ let revoked=false;const f=fixture({configure(api){const get=api.getAutonomousAgentRun;api.getAutonomousAgentRun=async id=>{if(revoked){const value=detail();value.knowledge_outputs_available=false;return value}return get(id)}}});await f.start()
+ try{await f.c.control('cancel');revoked=true;await f.c.control('cancel');assert.equal(f.c.snapshot().activeRun,null);assert.equal(f.c.snapshot().runs.detail,null);assert.equal(f.calls.filter(v=>v.kind==='cancel').length,1);await f.c.control('cancel');assert.equal(f.calls.filter(v=>v.kind==='cancel').length,1);assert.equal(await f.c.prepareNewTask(),false)}finally{f.c.dispose()}
 })

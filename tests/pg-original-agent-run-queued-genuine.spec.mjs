@@ -24,11 +24,14 @@ test('actual original AgentRun queued read/cancel, complete owner models and rea
    expect(f.observations.paging_requests).toBeGreaterThanOrEqual(2);expect(f.observations.paging_complete_responses).toBeGreaterThan(0);expect(f.observations.partial_model_reads).toBe(0)
    expect(await f.runState('alice',aliceRun.id)).toMatchObject({status:'queued',step_count:0,actual_owner_verified:true});await expect(p.getByRole('button',{name:'取消任务',exact:true})).toBeEnabled();steps.original_parent_actual_queue_and_complete_models=true
   })
-  await test.step('real cancel commits behind lost reply; existing original polling reads the same terminal task without resending cancellation',async()=>{
+  await test.step('real cancel commits behind lost reply; existing original cancel control reads the same terminal task without resending cancellation',async()=>{
    const failed=b.controlDisconnect(p,'/api/v2/agent-autonomous-runs/'+aliceRun.id+'/cancel'),dropped=f.dropNextActualCancelReply(aliceRun.id,'agent_autonomous'),dialog=b.expectedDialog(p,'confirm','取消本人任务')
    const terminalRead=p.waitForResponse(async response=>new URL(response.url()).pathname==='/__pg_native/api/v2/agent-autonomous-runs/'+aliceRun.id&&response.request().method()==='GET'&&response.status()===200&&(await response.json()).run?.status==='cancelled');void terminalRead.catch(()=>{})
    await p.getByRole('button',{name:'取消任务',exact:true}).click();await dialog;expect((await dropped.entered()).actual_committed_status).toBe(200);expect(await dropped.clientClosed()).toMatchObject({actual_proxy_response_closed:true,actual_socket_destroyed:true});expect(await failed.failed()).toMatchObject({actual_requestfailed:true,same_original_request:true})
-   expect((await terminalRead).status()).toBe(200);await expect(p.getByText('已取消',{exact:true}).first()).toBeVisible();await expect(p.getByRole('button',{name:'取消任务',exact:true})).toHaveCount(0)
+   // Unknown cancel suspends automatic polling. The existing cancel control
+   // enters the pendingMutation read-only branch and never resends the POST.
+   await expect(p.getByRole('button',{name:'取消任务',exact:true})).toBeEnabled();await p.getByRole('button',{name:'取消任务',exact:true}).click()
+   expect((await terminalRead).status()).toBe(200);expect((await (await terminalRead).json()).run).toMatchObject({id:aliceRun.id,owner_user_id:f.users.alice,status:'cancelled'});await expect(p.getByText('已取消',{exact:true}).first()).toBeVisible();await expect(p.getByRole('button',{name:'取消任务',exact:true})).toHaveCount(0)
    expect(f.observations.control_posts.filter(v=>v.path.endsWith('/'+aliceRun.id+'/cancel'))).toHaveLength(1);expect((await f.runState('alice',aliceRun.id)).status).toBe('cancelled');steps.original_unknown_cancel_only_reads=true;await prepareNewTask(p,alice.parent.id);await expect(task(p)).toHaveValue('');steps.original_cancelled_page_can_prepare_new_task=true
   })
   await test.step('real identity response loss hides local drafts and disables fresh actions; same verified owner may recover unsubmitted task/budget',async()=>{

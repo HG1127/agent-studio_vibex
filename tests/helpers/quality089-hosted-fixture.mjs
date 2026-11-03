@@ -1,11 +1,14 @@
+import {withHostedProfileDiagnostics,hostedProfilePhase as phase} from '../../services/pg-api/src/hosted-profile-diagnostic.mjs'
 
 import {requireQuality089Hosted} from './quality089-hosted-guard.mjs'
 import {verifyQuality089HostedSources} from './quality089-hosted-sources.mjs'
 import {withQuality089HostedContainer} from './quality089-hosted-container.mjs'
 /** Genuine PG18/real LOGIN/real Cookie fixture. No injected DB/audit/HTTP result ports. */
 export async function withQuality089HostedFixture(env,story){
- const permit=requireQuality089Hosted(env),reviewed=await verifyQuality089HostedSources(env);reviewed.check()
- return await withQuality089HostedContainer(env,async owned=>{
+ const permit=requireQuality089Hosted(env)
+ return await withHostedProfileDiagnostics('quality089',async()=>{
+ const reviewed=await phase('source_capture',()=>verifyQuality089HostedSources(env));reviewed.check()
+ return await phase('owned_target',()=>withQuality089HostedContainer(env,async owned=>{
  const {createRequire}=await import('node:module'),serviceRequire=createRequire(new URL('../../services/pg-api/package.json',import.meta.url))
  const [{default:assert},fs,os,path,crypto,https,pg,base,complete,service,profile,authModule,cookie,nativeModule,http,repo,contracts,homeRuntime,qualityRuntime,releasesModule,interactionsModule,modelsModule,toolsModule,workflowModule,knowledgeModule,nativeRun,safeRun,v2Run,autoRun,tlsModule,qualityContract,policyModule]=await Promise.all([
  import('node:assert/strict'),import('node:fs/promises'),import('node:os'),import('node:path'),import('node:crypto'),import('node:https'),Promise.resolve(serviceRequire('pg')),
@@ -20,26 +23,26 @@ export async function withQuality089HostedFixture(env,story){
   serviceSecrets.api=crypto.randomBytes(40).toString('hex');serviceSecrets.worker=crypto.randomBytes(40).toString('hex')
   await adminClient.query('BEGIN');bootstrapBegun=true;await adminClient.query("SET LOCAL password_encryption='scram-sha-256'");await adminClient.query(snapshot.parent.base.fresh.baseline.sql)
   await adminClient.query("SELECT set_config('agentstudio.bootstrap_api_password',$1,true),set_config('agentstudio.bootstrap_worker_password',$2,true)",[serviceSecrets.api,serviceSecrets.worker]);await adminClient.query(base.loginSqlForTest)
-  await base.verifyFreshForTest(adminClient);await complete.installCompleteProfile(adminClient,snapshot.parent.base,snapshot.parent.base.source_sha256,physical);await adminClient.query('COMMIT');bootstrapBegun=false
+  await base.verifyFreshForTest(adminClient);await phase('complete069_install',()=>complete.installCompleteProfile(adminClient,snapshot.parent.base,snapshot.parent.base.source_sha256,physical));await adminClient.query('COMMIT');bootstrapBegun=false
   const api=dbPool('agentstudio_stage_login',serviceSecrets.api),configuration={sourceSha256:snapshot.parent.base.source_sha256,target:physical},prepare=async action=>{
    const password=serviceSecrets[action]??(serviceSecrets[action]=crypto.randomBytes(40).toString('hex')),cfg={...configuration,action,operationId:crypto.randomUUID()},pre=await service.completeServicePreflight(admin,api,snapshot.parent.base,cfg)
    await service.prepareCompleteServiceRole(admin,api,snapshot.parent.base,cfg,password,pre.ledger,async digest=>{const file=path.join(markerDir,action+'.json'),handle=await fs.open(file,'wx',0o600);try{await handle.writeFile(JSON.stringify({action,operation_id:cfg.operationId,source_sha256:configuration.sourceSha256,target:physical,verifier_sha256:digest}));await handle.sync()}finally{await handle.close()}const dir=await fs.open(markerDir,'r');try{await dir.sync()}finally{await dir.close()}})
    return password
   }
-  await prepare('api');await complete.verifyCompleteProfile(admin,api,snapshot.parent.base,snapshot.parent.base.source_sha256);const nativePassword=await prepare('native-auth'),nativePool=dbPool('agentstudio_native_login',nativePassword),auth=new authModule.NativeAuthRepository(nativePool)
-  users.alice=(await auth.provisionInitialAdmin({...credentials.alice,display_name:'Quality089 Alice'})).id
-  await prepare('worker');const workerPg=dbPool('agentstudio_stage_worker',serviceSecrets.worker),identityPassword=await prepare('identity'),brokerPassword=await prepare('broker')
+  await phase('service_api',()=>prepare('api'));await phase('complete069_verify',()=>complete.verifyCompleteProfile(admin,api,snapshot.parent.base,snapshot.parent.base.source_sha256));const nativePassword=await phase('service_native_auth',()=>prepare('native-auth')),nativePool=dbPool('agentstudio_native_login',nativePassword),auth=new authModule.NativeAuthRepository(nativePool)
+  users.alice=(await phase('initial_admin',()=>auth.provisionInitialAdmin({...credentials.alice,display_name:'Quality089 Alice'}))).id
+  await phase('service_worker',()=>prepare('worker'));const workerPg=dbPool('agentstudio_stage_worker',serviceSecrets.worker),identityPassword=await phase('service_identity',()=>prepare('identity')),brokerPassword=await phase('service_broker',()=>prepare('broker'))
   const identityPool=dbPool('agentstudio_bound_dispatch_login',identityPassword),brokerPool=dbPool('agentstudio_model_broker_login',brokerPassword)
   for(const [p,action]of [[api,'api'],[nativePool,'native-auth'],[workerPg,'worker'],[identityPool,'identity'],[brokerPool,'broker']])await service.completeServiceActualLogin(p,action)
-  await profile.installEmployeeUi078Profile(admin,api,snapshot.parent,snapshot.parent.source_sha256,physical)
-  const composed=await import('../../services/pg-api/src/employee-quality089-profile.mjs'),profileProof=await composed.installEmployeeQuality089Profile(admin,api,snapshot,snapshot.source_sha256,physical)
+  await phase('employee_ui078_install',()=>profile.installEmployeeUi078Profile(admin,api,snapshot.parent,snapshot.parent.source_sha256,physical))
+  const composed=await import('../../services/pg-api/src/employee-quality089-profile.mjs'),profileProof=await phase('composite_install',()=>composed.installEmployeeQuality089Profile(admin,api,snapshot,snapshot.source_sha256,physical))
   assert.equal(profileProof.actual_API_LOGIN,true);assert.equal(profileProof.whole_catalog_and_ledger,true)
   // Use the actual exported old verifier: the combination must stay rejected.
   const oldAudit=await import('../../services/pg-api/src/pg18-employee-ui078-audit.ts')
   await assert.rejects(()=>oldAudit.verifyEmployeeUi078ApiPool(api,snapshot.parent,snapshot.parent.source_sha256,physical))
   const capabilities=policyModule.selectNativePg18UatCapabilities(env,true,permit.origin);assert.equal(capabilities.configurationWrites,true);assert.equal(capabilities.employeeProvisioning,true)
   assert.equal(capabilities.autonomousAgentUat===true,permit.suite==='worker-browser')
-  return await tlsModule.withDisposableBoundModelTls(async()=>{throw Error('quality089_unused_private_endpoint')},async tls=>{
+  return await phase('tls_story',()=>tlsModule.withDisposableBoundModelTls(async()=>{throw Error('quality089_unused_private_endpoint')},async tls=>{
    const serverTls=tls.serverTls;assert(serverTls)
    const apiPool={knowledgeSharing:true,connect:()=>api.connect()},workerPool={knowledgeSharing:true,connect:()=>workerPg.connect()},agents=new repo.AgentSpecRepository(apiPool),releases=new releasesModule.AgentReleaseRepository(apiPool,{enabled:true,allowAcceptance:capabilities.autonomousAgentUat===true,allowHumanInput:true}),interactions=new interactionsModule.OriginalRunInteractionRepository(apiPool,{writes:capabilities.autonomousAgentUat===true,allowHumanInput:true})
    let home,quality,generic,native,upstreamServer,frontServer,nextLoss=null,closed=false,fixture
@@ -92,9 +95,10 @@ export async function withQuality089HostedFixture(env,story){
     async proveTeamBoundary(){const team=crypto.randomUUID();await admin.query('INSERT INTO agentstudio.teams(id,name,created_by) VALUES($1,$2,$3)',[team,'Synthetic same-team owner test',users.alice]);await admin.query("INSERT INTO agentstudio.team_memberships(team_id,user_id,role,status) VALUES($1,$2,'owner','active'),($1,$3,'editor','active')",[team,users.alice,users.bob]);const r=await request('bob',qualityBase);assert.equal(r.status,404);return {actual_same_team_membership:true,foreign_quality_read_denied:true}},
     async actualRunProof(run,{qualityPassed=true}={}){assert(dispatch);const r=(await admin.query('SELECT owner_user_id,agent_spec_id,status,result_text,checkpoint,finished_at FROM agentstudio.runs WHERE id=$1::uuid',[run])).rows[0];assert.equal(r.owner_user_id,users.alice);assert.equal(r.agent_spec_id,spec.id);assert.equal(r.status,'succeeded');assert.equal(r.result_text,'Synthetic completed release result '+dispatch.nonce);assert(r.finished_at);const wire=dispatch.wire.filter(v=>v.run_id===run);assert.equal(wire.filter(v=>v.kind==='model').length,4);assert.equal(wire.filter(v=>v.kind==='tool').length,1);for(const e of wire){const effects=(await admin.query("SELECT status FROM agentstudio.external_effects WHERE owner_user_id=$1::uuid AND run_id=$2::uuid AND step_key=$3 AND arguments_sha256=$4",[users.alice,run,'wf2_'+e.kind+':'+e.step_key,e.input_sha256])).rows;assert.equal(effects.length,1);assert.equal(effects[0].status,'succeeded')}const status=await request('alice','/api/v2/original-ui/agent-releases/'+spec.id+'/acceptance/'+run);assert.equal(status.status,200);assert.equal(status.body.item.test_current,qualityPassed);const workspace=await releases.workspace(identities.alice,spec.id,users.alice);assert.equal(Number(r.checkpoint.spec_revision),workspace.spec_revision);const jobs=(await admin.query("SELECT status,payload FROM agentstudio.jobs WHERE owner_user_id=$1::uuid AND run_id=$2::uuid AND kind='run_tick'",[users.alice,run])).rows;assert.equal(jobs.length,1);assert.equal(jobs[0].status,'succeeded');assert.equal(jobs[0].payload.phase,'agent_native_v2');const steps=(await admin.query('SELECT status,metadata FROM agentstudio.run_steps WHERE owner_user_id=$1::uuid AND run_id=$2::uuid',[users.alice,run])).rows;assert.equal(steps.filter(v=>v.metadata.agent_phase==='model'&&v.status==='succeeded').length,4);assert.equal(steps.filter(v=>v.metadata.agent_phase==='tool'&&v.status==='succeeded').length,1);const decisions=(await admin.query("SELECT count(*)::integer AS n FROM agentstudio.audit_events WHERE owner_user_id=$1::uuid AND actor_user_id=$1::uuid AND run_id=$2::uuid AND action='agent.v2_original_decision'",[users.alice,run])).rows[0];assert.equal(decisions.n,6);const humans=(await admin.query('SELECT decision FROM agentstudio.agent_human_input_responses WHERE owner_user_id=$1::uuid AND run_id=$2::uuid ORDER BY created_at',[users.alice,run])).rows;assert.deepEqual(humans.map(v=>v.decision),['approve','reply']);return{actual_queue_job:true,source_sha256:workspace.source_sha256,human_responses:2,decision_receipts:6,quality_passed:qualityPassed,actual_Worker:true,actual_bound_mTLS_dispatch:true,run_id:run,spec_revision:Number(r.checkpoint.spec_revision),model_calls:4,tool_calls:1}}
    }
-   reviewed.check();return await story(fixture)
-   }finally{closed=true;nextLoss=null;await dispatch?.close();dispatch=null;for(const s of [frontServer,upstreamServer])if(s){s.closeAllConnections();await new Promise(resolve=>s.close(resolve))}await composed.verifyEmployeeQuality089ApiPool(api,snapshot,snapshot.source_sha256,physical);assert.deepEqual(poolErrors,[]);reviewed.check()}
-  },{includeServerTls:true})
+   reviewed.check();return await phase('story',()=>story(fixture))
+   }finally{closed=true;nextLoss=null;await dispatch?.close();dispatch=null;for(const s of [frontServer,upstreamServer])if(s){s.closeAllConnections();await new Promise(resolve=>s.close(resolve))}await phase('cleanup_profile',async()=>{await composed.verifyEmployeeQuality089ApiPool(api,snapshot,snapshot.source_sha256,physical);assert.deepEqual(poolErrors,[]);reviewed.check()})}
+  },{includeServerTls:true}))
  }finally{if(bootstrapBegun)await adminClient.query('ROLLBACK');adminClient.release();await dispatch?.close();for(const p of pools.reverse())await p.end();const resolved=path.resolve(markerDir);assert.equal(path.dirname(resolved),path.resolve(os.tmpdir()));assert(path.basename(resolved).startsWith('quality089-service-intents-'));await fs.rm(resolved,{recursive:true,force:true});key.fill(0)}
+ }))
  })
 }

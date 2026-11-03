@@ -352,7 +352,7 @@ test('byte-pipeline optimization leaves full fresh hash, FD/path/ancestor and ca
   for(const text of ['ancestors(file,kind===\'manifest\')','before=lstatSync(file)','realpathSync(file)!==file','O_NOFOLLOW','O_NONBLOCK','trustedStatStable(beforeStamp,fstatSync(fd))','trustedStatStable(beforeStamp,lstatSync(file))','sha(bytes)!==expected','assertUtf8Bytes(bytes','closeSync(fd)'])assert.ok(reader.includes(text),text)
   assert.equal((reader.match(/ancestors\(file,/g)||[]).length,2)
   for(const text of ['host();assertSource(state.snapshot,state.expected);assertProtocolPins(state)','readBound(state.manifestFile','readBound(path.join(root,\'services/pg-api/pnpm-lock.yaml\')','readdirSync','readBound(actual,record.sha256','assertWorkerHeartbeatActivationControlRuntimeInventory','packageInfo(state,name)','cacheCheck(state)'])assert.ok(verify.includes(text),text)
-  assert.ok(body('assertWorkerHeartbeatActivationControlRuntime').includes('try{verifyTree(state)}catch(error){state.failed=true;throw error}'))
+  assert.ok(body('assertWorkerHeartbeatActivationControlRuntime').includes('try{verifyTree(state,false,timing)}catch(error){state.failed=true;throw error}'))
 })
 // END additive fresh-byte performance regression section.
 

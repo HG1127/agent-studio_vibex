@@ -11187,6 +11187,143 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_af6ad28_original_recovery_and_hosted_diagnostics_followup": {
+      "base_head": "af6ad280286aee1abefe0bf0816e7bb115a7bd34",
+      "source_only": true,
+      "source_reseal_pending": false,
+      "parent961a531_final": {
+        "workflows": 22,
+        "success": 16,
+        "failure": 6,
+        "all_terminal": true,
+        "quality_each_jobs": 51,
+        "quality_each_pass": 51,
+        "actual_main_runs": [
+          {
+            "file": "961a531-quality-push-main-terminal.log",
+            "tests": 5431,
+            "pass": 5431,
+            "fail": 0,
+            "skip": 0,
+            "cancel": 0,
+            "log": {
+              "sha256": "4ddc58c89dadd290129ab1c3ea157560b32a12ef4db8ecaed215817d5c2950ed",
+              "source": "terminal synthetic hosted log"
+            }
+          },
+          {
+            "file": "961a531-quality-PR-main-terminal.log",
+            "tests": 5431,
+            "pass": 5431,
+            "fail": 0,
+            "skip": 0,
+            "cancel": 0,
+            "log": {
+              "sha256": "09a1b396a7610af2b4944db9abb4e0aaccefd63d0732fbc2eaaaff0ebb5fb2bb",
+              "source": "terminal synthetic hosted log"
+            }
+          }
+        ],
+        "F01": "20/21, original RunDetail actual browser pass; original Agent unknown cancellation recovery action still failed"
+      },
+      "current_af6ad28_snapshot": {
+        "workflows": 22,
+        "success": 14,
+        "failure": 5,
+        "in_progress": 3,
+        "all_terminal": false,
+        "Role_AB": {
+          "run": 41688309960,
+          "job": 126099858514,
+          "policy_dependency_OID_projection_passed": true,
+          "refusal": "original_role_catalog_unavailable",
+          "actual_failure_site": "original-role-catalog.mjs line68 column576: same(expr(c.expression),expr(e.expression))",
+          "authored17stories_entered": false,
+          "actual_constraint_and_AST_difference_unproven": true,
+          "log": {
+            "sha256": "03f4e7d63bce68346efbd9be272accd02755e8e851200aca0b1cf73ade5ec5d9",
+            "source": "terminal synthetic hosted log"
+          }
+        },
+        "telemetry": {
+          "run": 41688310025,
+          "job": 126099860186,
+          "failure": "one stale source expected-call literal in runtime test line355 after optional timing parameter",
+          "actual_service_cases_not_entered": true,
+          "log": {
+            "sha256": "2cd26d28bece8356451e1525a3e3a42f57c6727ab035faae6cba9ef6205d4fbe",
+            "source": "terminal synthetic hosted log"
+          }
+        },
+        "quality089_Staff084_and_F01_still_failed": true,
+        "new_strict069_and_full_quality_not_terminal": true
+      },
+      "repairs": {
+        "original_Agent_unknown_cancel_story": "After the original lost reply, click the existing enabled original cancel control again; actual pendingMutation branch only refreshes the same record before any confirmation/POST. Preserve original terminal GET predicate,18s timeout, one original cancel POST, all prior assertions/fixture calls and zero gates. No product change.",
+        "Reader_precheck": "Update exactly one expected verifyTree(state,false,timing) call string; preserve all original fresh hash/FD/path/ancestor/cache checks and failed-state rethrow assertion.",
+        "hosted_profiles": "Fixed async diagnostic scopes only after original purpose guards; fixed phase states and Staff check IDs136/145, no metadata values/SQL/body/stack. Both normalized auditor ASTs and all helpers/query projections unchanged; original results/error objects and cleanup order preserved."
+      },
+      "Root_proof": {
+        "B167_controller_owner_cases": 35,
+        "queued_host_source_cases": 23,
+        "C_hosted_guard_process_cases": 90,
+        "C_new_unique_cases": 34,
+        "C_old_unique_guards": 22,
+        "C_unique_total": 56,
+        "C_34_cases_repeated_in_two_guard_processes": true,
+        "Reader_actual_AST_selected_source_callback": 1,
+        "full_runtime_entry_not_imported_or_executed": true,
+        "API_compiler_exit": 0,
+        "frozen059060_source_recheck_pass": true,
+        "actual_SQL_Worker_API_listener_Native_browser_paid_provider": false,
+        "whole_claim_or_slices_executed_or_imported": false,
+        "component_runs_not_distinct_aggregate": true
+      },
+      "private_original_ToolHub": {
+        "candidate_targets": 19,
+        "Root_current_composition_files": 3019,
+        "exact_forward_inverse_hunks": 23,
+        "payload_seals": 159,
+        "actual_frontend_types_exit": 0,
+        "actual_original_main_App_Vite_build_exit": 0,
+        "current_closed_pures": 63,
+        "product_integrated": false,
+        "source_transport_and_session_reviewed": true,
+        "original_page_actual_acceptance": false,
+        "CI_facade_gap": "Existing F16 fixture does not enable original Home facade used by the new hook; fresh allowlist/facade source must be reviewed, not a fabricated response or suppressed anomaly.",
+        "remaining_actual_stories": [
+          "approval/cancel lost ACK",
+          "current owner/resource/approval revocation",
+          "original web/summarize/knowledge actions"
+        ],
+        "web_G01_G02_G03_still_open": true
+      },
+      "remaining": {
+        "backend": "Role exact constraint expression evidence/fix, optional catalog predicates, strict Worker deadlines and ordinary-case/revision-carry integration.",
+        "original_pages": "ToolHub/directory private candidates and remaining file/permission/application/Office actions; preserve accepted original UI and no workbench acceptance.",
+        "actual_original_E2E": "New original Agent recovery story and actual hosted profile routes require CI; pures/builds are not employee acceptance.",
+        "formal_cutover": "Accepted release inclusion, target/network/version, backup/restore/rollback, long-running Worker and real employee UAT/signoff remain open."
+      },
+      "current_candidate_genuine_acceptance": false,
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 28296,
+        "retained_prior_pins": 28221,
+        "all_prior_pin_sets_retained": true,
+        "new_source_paths_in_each_workflow_closure": [
+          "services/pg-api/src/hosted-profile-diagnostic.mjs",
+          "tests/hosted-profile-diagnostic.test.mjs",
+          "tests/original-queued-cancel-recovery-source-pure.test.mjs"
+        ],
+        "nested_Role": 198,
+        "nested_home071": 9,
+        "nested_Native_child": 9,
+        "nested_Native_shared": 1,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,
