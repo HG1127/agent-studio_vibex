@@ -15,6 +15,13 @@ export function getPocketBaseUrl(): string {
 export function getBasename(): string {
   return "/"
 }
+/** Only the recoverable PB branch creates the original PB connection ticket.
+ * Native tickets obtain their verified server privately in desktop main. */
+export function getConnectionServerUrl():string{
+ if(ORIGINAL_PG_UI_ENABLED)return legacyBackendBlocked()
+ const desktop=(window as Window&{__STUDIO_DESKTOP_SERVER_ORIGIN__?:string}).__STUDIO_DESKTOP_SERVER_ORIGIN__
+ return new URL(getPocketBaseUrl(),desktop||window.location.origin).href
+}
 // PG mode must not load or mutate the recoverable PB browser credential store.
 export const pb = new PocketBase('/__pb',ORIGINAL_PG_UI_ENABLED?new BaseAuthStore():new LocalAuthStore("agent_studio_employee_auth"))
 if(ORIGINAL_PG_UI_ENABLED)pb.beforeSend=()=>legacyBackendBlocked()

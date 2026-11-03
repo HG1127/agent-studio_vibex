@@ -28,7 +28,7 @@ test('real native refusal, response length mismatch, redirect and aborted reads 
 function fixture(options={}){
  const state={claims:0,renews:0,commits:0,role:'',...options},trace=[]
  const pool={connect:async()=>({async query(sql,p=[]){
-  trace.push({sql,p})
+  trace.push({sql,p});if(sql==="SELECT to_regnamespace('agentstudio_roles') IS NOT NULL AS installed,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid")return{rows:[{installed:false,database_oid:'16384'}]};
   if(sql==='BEGIN'||sql==='ROLLBACK'||sql==='SET LOCAL search_path=pg_catalog'||sql.startsWith('SELECT set_config'))return{rows:[]}
   if(sql.startsWith('SET LOCAL ROLE ')){state.role=sql.slice(15);return{rows:[]}}
   if(sql==='COMMIT'){state.commits++;if(state.dropCommit===state.commits)throw Error('synthetic commit ack lost');return{rows:[]}}

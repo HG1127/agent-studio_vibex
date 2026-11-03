@@ -1,6 +1,7 @@
 // AgentSpec 数据类型与可复用内置模板（需求落地 / 研究 / 知识库 / 数据分析）
 
 import type { AgentQualityCheck } from "../../lib/agentQualityChecks"
+import type {OriginalRole,OriginalRoleSkillRef,OriginalRoleCapability} from "../../../shared/original-role-execution-contract.mjs"
 
 export type AgentSpec = {
   goal: string
@@ -17,8 +18,11 @@ export type AgentSpec = {
   require_approval?: boolean
   /** 阶段方案确认关卡：需求草案必须经用户确认后才能继续执行落地计划。 */
   require_plan_review?: boolean
-  /** 受控能力 ID；服务端结合自然语言要求检查，不能把提示词当作实现。 */
-  capability_requirements?: string[]
+  /** Structured requirements are data; selected tools and server checks grant execution. */
+  capability_requirements?: OriginalRoleCapability[]
+  roles?: (Omit<OriginalRole,"skill_refs">&{skill_refs?:OriginalRoleSkillRef[]})[]
+  /** Legacy employee-capture IDs. Never interpreted as structured requirements or tool grants. */
+  capture_capability_ids?: string[]
   /** Immutable private request locator, supplied by employee capture API. */
   _studio_authoring?: {request_id:string}
 }

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {prepareOriginalRoleExecutionPool} from './original-role-ui-policy.ts'
 import {prepareOrdinaryCaseRuntime} from './native-ordinary-case-runtime.ts'
 import {NativeOrdinaryCaseCapture} from './native-ordinary-case-capture.ts'
 import {selectNativeLocalDeviceExecution} from './native-local-device-runtime-policy.ts'
@@ -139,6 +140,7 @@ export async function startBoundDispatchServer(
   let server:ReturnType<typeof createServer>|undefined
   const endPools=async()=>{await Promise.allSettled(pools.map(pool=>pool.end()))}
   try{
+    await prepareOriginalRoleExecutionPool(business,env)
     await verifyBoundDispatchRole(business,cfg.target,"api")
     if(localDeviceExecutionApproved)await inspectNativeLocalDevicePool(business,"agentstudio_api")
     await verifyBoundDispatchRole(adapter(identities),cfg.target,"identity")

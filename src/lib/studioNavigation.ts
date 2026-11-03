@@ -47,6 +47,7 @@ export const STUDIO_WORKSPACES: StudioWorkspace[] = [
       {to:"/model-connections",label:"模型连接",icon: Sparkles,keywords:"LLM API"},
       {to:"/knowledge-bases",label:"知识库",icon: BookOpen,keywords:"RAG 语义检索"},
       {to:"/tool-connections",label:"工具连接",icon: Wrench},
+      ...(import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED==='true'&&import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_ROLES_UI_ENABLED==='true'?[{to:'/skills',label:'Skills 方法库',icon:BookOpen,keywords:'Skill 审核 版本 角色'}]:[]),
       {to:"/plugin-market",label:"插件",icon: Puzzle},
     ],
   },

@@ -1,0 +1,2252 @@
+{
+  "format": "original-skill-ab-catalog.v1",
+  "context": {
+    "database": "agent_studio",
+    "database_oid": "16384",
+    "host": "127.0.0.1",
+    "port": 5333,
+    "version": 180004,
+    "role": "agentstudio_api",
+    "login": "agentstudio_stage_login",
+    "primary": true,
+    "replication_role": "origin",
+    "search_path": "pg_catalog"
+  },
+  "namespace": {
+    "oid": 26000,
+    "owner": "postgres",
+    "acl": [
+      {
+        "grantor": "postgres",
+        "grantee": "postgres",
+        "right": "USAGE",
+        "grantable": false
+      },
+      {
+        "grantor": "postgres",
+        "grantee": "postgres",
+        "right": "CREATE",
+        "grantable": false
+      },
+      {
+        "grantor": "postgres",
+        "grantee": "agentstudio_api",
+        "right": "USAGE",
+        "grantable": false
+      },
+      {
+        "grantor": "postgres",
+        "grantee": "agentstudio_skill_ab_dispatch",
+        "right": "USAGE",
+        "grantable": false
+      }
+    ]
+  },
+  "stamp": [
+    {
+      "protocol": "original-skill-ab-v1",
+      "source_sha256": "c2b784c8da63e1df41cc02b0b84c2b3433990f8de5e7042f42b1264a6c9096e1"
+    }
+  ],
+  "roles": [
+    {
+      "name": "agentstudio_skill_ab_dispatch",
+      "login": false,
+      "inherit": false,
+      "super": false,
+      "bypass": false,
+      "createdb": false,
+      "createrole": false,
+      "replication": false,
+      "config": null,
+      "limit": -1,
+      "valid_until": null
+    },
+    {
+      "name": "agentstudio_stage_skill_ab_dispatch",
+      "login": true,
+      "inherit": false,
+      "super": false,
+      "bypass": false,
+      "createdb": false,
+      "createrole": false,
+      "replication": false,
+      "config": null,
+      "limit": -1,
+      "valid_until": null
+    }
+  ],
+  "members": [
+    {
+      "role": "agentstudio_skill_ab_dispatch",
+      "member": "agentstudio_stage_skill_ab_dispatch",
+      "grantor": "postgres",
+      "admin": false,
+      "inherit": false,
+      "set": true
+    }
+  ],
+  "relations": [
+    {
+      "name": "runtime_profile",
+      "oid": 26001,
+      "kind": "r",
+      "owner": "postgres",
+      "rls": true,
+      "force": true,
+      "safe": true
+    },
+    {
+      "name": "requests",
+      "oid": 26003,
+      "kind": "r",
+      "owner": "postgres",
+      "rls": true,
+      "force": true,
+      "safe": true
+    },
+    {
+      "name": "effects",
+      "oid": 26005,
+      "kind": "r",
+      "owner": "postgres",
+      "rls": true,
+      "force": true,
+      "safe": true
+    },
+    {
+      "name": "results",
+      "oid": 26007,
+      "kind": "r",
+      "owner": "postgres",
+      "rls": true,
+      "force": true,
+      "safe": true
+    },
+    {
+      "name": "controls",
+      "oid": 26009,
+      "kind": "r",
+      "owner": "postgres",
+      "rls": true,
+      "force": true,
+      "safe": true
+    }
+  ],
+  "columns": [
+    {
+      "table": "runtime_profile",
+      "position": 1,
+      "name": "protocol",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "runtime_profile",
+      "position": 2,
+      "name": "source_sha256",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "runtime_profile",
+      "position": 3,
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "required": true,
+      "default": "clock_timestamp()",
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "requests",
+      "position": 1,
+      "name": "owner_user_id",
+      "type": "uuid",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "requests",
+      "position": 2,
+      "name": "request_id",
+      "type": "uuid",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "requests",
+      "position": 3,
+      "name": "request_sha256",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "requests",
+      "position": 4,
+      "name": "selection",
+      "type": "jsonb",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "requests",
+      "position": 5,
+      "name": "input_sha256",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "requests",
+      "position": 6,
+      "name": "source_sha256",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "requests",
+      "position": 7,
+      "name": "owner_epoch",
+      "type": "bigint",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "requests",
+      "position": 8,
+      "name": "with_skill_first",
+      "type": "boolean",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "requests",
+      "position": 9,
+      "name": "state",
+      "type": "text",
+      "required": true,
+      "default": "'active'::text",
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "requests",
+      "position": 10,
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "required": true,
+      "default": "clock_timestamp()",
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "effects",
+      "position": 1,
+      "name": "owner_user_id",
+      "type": "uuid",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "effects",
+      "position": 2,
+      "name": "request_id",
+      "type": "uuid",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "effects",
+      "position": 3,
+      "name": "ordinal",
+      "type": "integer",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "effects",
+      "position": 4,
+      "name": "variant",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "effects",
+      "position": 5,
+      "name": "state",
+      "type": "text",
+      "required": true,
+      "default": "'planned'::text",
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "effects",
+      "position": 6,
+      "name": "dispatch_token",
+      "type": "uuid",
+      "required": false,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "effects",
+      "position": 7,
+      "name": "claimed_at",
+      "type": "timestamp with time zone",
+      "required": false,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "effects",
+      "position": 8,
+      "name": "reserved_at",
+      "type": "timestamp with time zone",
+      "required": false,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "effects",
+      "position": 9,
+      "name": "finished_at",
+      "type": "timestamp with time zone",
+      "required": false,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "effects",
+      "position": 10,
+      "name": "input_tokens",
+      "type": "bigint",
+      "required": false,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "effects",
+      "position": 11,
+      "name": "output_tokens",
+      "type": "bigint",
+      "required": false,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "effects",
+      "position": 12,
+      "name": "total_tokens",
+      "type": "bigint",
+      "required": false,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "effects",
+      "position": 13,
+      "name": "truncated",
+      "type": "boolean",
+      "required": false,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "effects",
+      "position": 14,
+      "name": "result_sha256",
+      "type": "text",
+      "required": false,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "results",
+      "position": 1,
+      "name": "owner_user_id",
+      "type": "uuid",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "results",
+      "position": 2,
+      "name": "request_id",
+      "type": "uuid",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "results",
+      "position": 3,
+      "name": "ordinal",
+      "type": "integer",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "results",
+      "position": 4,
+      "name": "text",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "results",
+      "position": 5,
+      "name": "result_sha256",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "results",
+      "position": 6,
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "required": true,
+      "default": "clock_timestamp()",
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "controls",
+      "position": 1,
+      "name": "owner_user_id",
+      "type": "uuid",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "controls",
+      "position": 2,
+      "name": "operation_id",
+      "type": "uuid",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "controls",
+      "position": 3,
+      "name": "request_id",
+      "type": "uuid",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "controls",
+      "position": 4,
+      "name": "action",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "controls",
+      "position": 5,
+      "name": "request_sha256",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "controls",
+      "position": 6,
+      "name": "receipt",
+      "type": "jsonb",
+      "required": true,
+      "default": null,
+      "safe": true,
+      "acl": true
+    },
+    {
+      "table": "controls",
+      "position": 7,
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "required": true,
+      "default": "clock_timestamp()",
+      "safe": true,
+      "acl": true
+    }
+  ],
+  "constraints": [
+    {
+      "table": "runtime_profile",
+      "safe": true,
+      "columns": [
+        "protocol"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "runtime_profile_protocol_nn",
+      "kind": "n"
+    },
+    {
+      "table": "runtime_profile",
+      "safe": true,
+      "columns": [
+        "source_sha256"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "runtime_profile_source_sha256_nn",
+      "kind": "n"
+    },
+    {
+      "table": "runtime_profile",
+      "safe": true,
+      "columns": [
+        "created_at"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "runtime_profile_created_at_nn",
+      "kind": "n"
+    },
+    {
+      "table": "runtime_profile",
+      "safe": true,
+      "columns": [
+        "protocol"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "runtime_profile_pkey",
+      "kind": "p"
+    },
+    {
+      "table": "runtime_profile",
+      "safe": true,
+      "columns": null,
+      "expression": "protocol = 'original-skill-ab-v1'::text",
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "runtime_profile_ck0",
+      "kind": "c"
+    },
+    {
+      "table": "runtime_profile",
+      "safe": true,
+      "columns": null,
+      "expression": "source_sha256 ~ '^[a-f0-9]{64}$'::text",
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "runtime_profile_ck1",
+      "kind": "c"
+    },
+    {
+      "table": "requests",
+      "safe": true,
+      "columns": [
+        "owner_user_id"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "requests_owner_user_id_nn",
+      "kind": "n"
+    },
+    {
+      "table": "requests",
+      "safe": true,
+      "columns": [
+        "request_id"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "requests_request_id_nn",
+      "kind": "n"
+    },
+    {
+      "table": "requests",
+      "safe": true,
+      "columns": [
+        "request_sha256"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "requests_request_sha256_nn",
+      "kind": "n"
+    },
+    {
+      "table": "requests",
+      "safe": true,
+      "columns": [
+        "selection"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "requests_selection_nn",
+      "kind": "n"
+    },
+    {
+      "table": "requests",
+      "safe": true,
+      "columns": [
+        "input_sha256"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "requests_input_sha256_nn",
+      "kind": "n"
+    },
+    {
+      "table": "requests",
+      "safe": true,
+      "columns": [
+        "source_sha256"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "requests_source_sha256_nn",
+      "kind": "n"
+    },
+    {
+      "table": "requests",
+      "safe": true,
+      "columns": [
+        "owner_epoch"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "requests_owner_epoch_nn",
+      "kind": "n"
+    },
+    {
+      "table": "requests",
+      "safe": true,
+      "columns": [
+        "with_skill_first"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "requests_with_skill_first_nn",
+      "kind": "n"
+    },
+    {
+      "table": "requests",
+      "safe": true,
+      "columns": [
+        "state"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "requests_state_nn",
+      "kind": "n"
+    },
+    {
+      "table": "requests",
+      "safe": true,
+      "columns": [
+        "created_at"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "requests_created_at_nn",
+      "kind": "n"
+    },
+    {
+      "table": "requests",
+      "safe": true,
+      "columns": [
+        "owner_user_id",
+        "request_id"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "requests_pkey",
+      "kind": "p"
+    },
+    {
+      "table": "requests",
+      "safe": true,
+      "columns": null,
+      "expression": "request_sha256 ~ '^[a-f0-9]{64}$'::text",
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "requests_ck0",
+      "kind": "c"
+    },
+    {
+      "table": "requests",
+      "safe": true,
+      "columns": null,
+      "expression": "input_sha256 ~ '^[a-f0-9]{64}$'::text",
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "requests_ck1",
+      "kind": "c"
+    },
+    {
+      "table": "requests",
+      "safe": true,
+      "columns": null,
+      "expression": "source_sha256 ~ '^[a-f0-9]{64}$'::text",
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "requests_ck2",
+      "kind": "c"
+    },
+    {
+      "table": "requests",
+      "safe": true,
+      "columns": null,
+      "expression": "owner_epoch >= 1 AND owner_epoch <= 9007199254740989",
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "requests_ck3",
+      "kind": "c"
+    },
+    {
+      "table": "requests",
+      "safe": true,
+      "columns": null,
+      "expression": "state = ANY(ARRAY['active'::text,'stopped'::text,'erased'::text])",
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "requests_ck4",
+      "kind": "c"
+    },
+    {
+      "table": "requests",
+      "safe": true,
+      "columns": [
+        "owner_user_id"
+      ],
+      "expression": null,
+      "target": "agentstudio.users",
+      "references": [
+        "id"
+      ],
+      "delete": "r",
+      "update": "a",
+      "match": "s",
+      "name": "requests_fk0",
+      "kind": "f"
+    },
+    {
+      "table": "effects",
+      "safe": true,
+      "columns": [
+        "owner_user_id"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "effects_owner_user_id_nn",
+      "kind": "n"
+    },
+    {
+      "table": "effects",
+      "safe": true,
+      "columns": [
+        "request_id"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "effects_request_id_nn",
+      "kind": "n"
+    },
+    {
+      "table": "effects",
+      "safe": true,
+      "columns": [
+        "ordinal"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "effects_ordinal_nn",
+      "kind": "n"
+    },
+    {
+      "table": "effects",
+      "safe": true,
+      "columns": [
+        "variant"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "effects_variant_nn",
+      "kind": "n"
+    },
+    {
+      "table": "effects",
+      "safe": true,
+      "columns": [
+        "state"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "effects_state_nn",
+      "kind": "n"
+    },
+    {
+      "table": "effects",
+      "safe": true,
+      "columns": [
+        "owner_user_id",
+        "request_id",
+        "ordinal"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "effects_pkey",
+      "kind": "p"
+    },
+    {
+      "table": "effects",
+      "safe": true,
+      "columns": null,
+      "expression": "ordinal = ANY(ARRAY[0,1])",
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "effects_ck0",
+      "kind": "c"
+    },
+    {
+      "table": "effects",
+      "safe": true,
+      "columns": null,
+      "expression": "variant = ANY(ARRAY['baseline'::text,'with_skill'::text])",
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "effects_ck1",
+      "kind": "c"
+    },
+    {
+      "table": "effects",
+      "safe": true,
+      "columns": null,
+      "expression": "state = ANY(ARRAY['planned'::text,'claimed'::text,'reserved'::text,'succeeded'::text,'unknown'::text,'stopped'::text])",
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "effects_ck2",
+      "kind": "c"
+    },
+    {
+      "table": "effects",
+      "safe": true,
+      "columns": null,
+      "expression": "input_tokens >= 0 AND input_tokens <= 10000000",
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "effects_ck3",
+      "kind": "c"
+    },
+    {
+      "table": "effects",
+      "safe": true,
+      "columns": null,
+      "expression": "output_tokens >= 0 AND output_tokens <= 900",
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "effects_ck4",
+      "kind": "c"
+    },
+    {
+      "table": "effects",
+      "safe": true,
+      "columns": null,
+      "expression": "total_tokens = input_tokens + output_tokens AND total_tokens <= 10000000",
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "effects_ck5",
+      "kind": "c"
+    },
+    {
+      "table": "effects",
+      "safe": true,
+      "columns": null,
+      "expression": "result_sha256 ~ '^[a-f0-9]{64}$'::text",
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "effects_ck6",
+      "kind": "c"
+    },
+    {
+      "table": "effects",
+      "safe": true,
+      "columns": [
+        "owner_user_id",
+        "request_id"
+      ],
+      "expression": null,
+      "target": "agentstudio_skill_ab.requests",
+      "references": [
+        "owner_user_id",
+        "request_id"
+      ],
+      "delete": "r",
+      "update": "a",
+      "match": "s",
+      "name": "effects_fk0",
+      "kind": "f"
+    },
+    {
+      "table": "results",
+      "safe": true,
+      "columns": [
+        "owner_user_id"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "results_owner_user_id_nn",
+      "kind": "n"
+    },
+    {
+      "table": "results",
+      "safe": true,
+      "columns": [
+        "request_id"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "results_request_id_nn",
+      "kind": "n"
+    },
+    {
+      "table": "results",
+      "safe": true,
+      "columns": [
+        "ordinal"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "results_ordinal_nn",
+      "kind": "n"
+    },
+    {
+      "table": "results",
+      "safe": true,
+      "columns": [
+        "text"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "results_text_nn",
+      "kind": "n"
+    },
+    {
+      "table": "results",
+      "safe": true,
+      "columns": [
+        "result_sha256"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "results_result_sha256_nn",
+      "kind": "n"
+    },
+    {
+      "table": "results",
+      "safe": true,
+      "columns": [
+        "created_at"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "results_created_at_nn",
+      "kind": "n"
+    },
+    {
+      "table": "results",
+      "safe": true,
+      "columns": [
+        "owner_user_id",
+        "request_id",
+        "ordinal"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "results_pkey",
+      "kind": "p"
+    },
+    {
+      "table": "results",
+      "safe": true,
+      "columns": null,
+      "expression": "length(text) >= 1 AND length(text) <= 12000",
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "results_ck0",
+      "kind": "c"
+    },
+    {
+      "table": "results",
+      "safe": true,
+      "columns": null,
+      "expression": "result_sha256 ~ '^[a-f0-9]{64}$'::text",
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "results_ck1",
+      "kind": "c"
+    },
+    {
+      "table": "results",
+      "safe": true,
+      "columns": [
+        "owner_user_id",
+        "request_id",
+        "ordinal"
+      ],
+      "expression": null,
+      "target": "agentstudio_skill_ab.effects",
+      "references": [
+        "owner_user_id",
+        "request_id",
+        "ordinal"
+      ],
+      "delete": "r",
+      "update": "a",
+      "match": "s",
+      "name": "results_fk0",
+      "kind": "f"
+    },
+    {
+      "table": "controls",
+      "safe": true,
+      "columns": [
+        "owner_user_id"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "controls_owner_user_id_nn",
+      "kind": "n"
+    },
+    {
+      "table": "controls",
+      "safe": true,
+      "columns": [
+        "operation_id"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "controls_operation_id_nn",
+      "kind": "n"
+    },
+    {
+      "table": "controls",
+      "safe": true,
+      "columns": [
+        "request_id"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "controls_request_id_nn",
+      "kind": "n"
+    },
+    {
+      "table": "controls",
+      "safe": true,
+      "columns": [
+        "action"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "controls_action_nn",
+      "kind": "n"
+    },
+    {
+      "table": "controls",
+      "safe": true,
+      "columns": [
+        "request_sha256"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "controls_request_sha256_nn",
+      "kind": "n"
+    },
+    {
+      "table": "controls",
+      "safe": true,
+      "columns": [
+        "receipt"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "controls_receipt_nn",
+      "kind": "n"
+    },
+    {
+      "table": "controls",
+      "safe": true,
+      "columns": [
+        "created_at"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "controls_created_at_nn",
+      "kind": "n"
+    },
+    {
+      "table": "controls",
+      "safe": true,
+      "columns": [
+        "owner_user_id",
+        "operation_id"
+      ],
+      "expression": null,
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "controls_pkey",
+      "kind": "p"
+    },
+    {
+      "table": "controls",
+      "safe": true,
+      "columns": null,
+      "expression": "action = ANY(ARRAY['cancel'::text,'erase'::text])",
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "controls_ck0",
+      "kind": "c"
+    },
+    {
+      "table": "controls",
+      "safe": true,
+      "columns": null,
+      "expression": "request_sha256 ~ '^[a-f0-9]{64}$'::text",
+      "target": null,
+      "references": null,
+      "delete": " ",
+      "update": " ",
+      "match": " ",
+      "name": "controls_ck1",
+      "kind": "c"
+    },
+    {
+      "table": "controls",
+      "safe": true,
+      "columns": [
+        "owner_user_id",
+        "request_id"
+      ],
+      "expression": null,
+      "target": "agentstudio_skill_ab.requests",
+      "references": [
+        "owner_user_id",
+        "request_id"
+      ],
+      "delete": "r",
+      "update": "a",
+      "match": "s",
+      "name": "controls_fk0",
+      "kind": "f"
+    }
+  ],
+  "indexes": [
+    {
+      "table": "runtime_profile",
+      "name": "runtime_profile_pkey",
+      "oid": 26002,
+      "keys": [
+        "protocol"
+      ],
+      "safe": true,
+      "opclasses": [
+        "pg_catalog.text_ops"
+      ],
+      "collations": [
+        "pg_catalog.default"
+      ]
+    },
+    {
+      "table": "requests",
+      "name": "requests_pkey",
+      "oid": 26004,
+      "keys": [
+        "owner_user_id",
+        "request_id"
+      ],
+      "safe": true,
+      "opclasses": [
+        "pg_catalog.uuid_ops",
+        "pg_catalog.uuid_ops"
+      ],
+      "collations": [
+        "-",
+        "-"
+      ]
+    },
+    {
+      "table": "effects",
+      "name": "effects_pkey",
+      "oid": 26006,
+      "keys": [
+        "owner_user_id",
+        "request_id",
+        "ordinal"
+      ],
+      "safe": true,
+      "opclasses": [
+        "pg_catalog.uuid_ops",
+        "pg_catalog.uuid_ops",
+        "pg_catalog.int4_ops"
+      ],
+      "collations": [
+        "-",
+        "-",
+        "-"
+      ]
+    },
+    {
+      "table": "results",
+      "name": "results_pkey",
+      "oid": 26008,
+      "keys": [
+        "owner_user_id",
+        "request_id",
+        "ordinal"
+      ],
+      "safe": true,
+      "opclasses": [
+        "pg_catalog.uuid_ops",
+        "pg_catalog.uuid_ops",
+        "pg_catalog.int4_ops"
+      ],
+      "collations": [
+        "-",
+        "-",
+        "-"
+      ]
+    },
+    {
+      "table": "controls",
+      "name": "controls_pkey",
+      "oid": 26010,
+      "keys": [
+        "owner_user_id",
+        "operation_id"
+      ],
+      "safe": true,
+      "opclasses": [
+        "pg_catalog.uuid_ops",
+        "pg_catalog.uuid_ops"
+      ],
+      "collations": [
+        "-",
+        "-"
+      ]
+    }
+  ],
+  "policies": [
+    {
+      "table": "runtime_profile",
+      "name": "runtime_profile_read",
+      "command": "r",
+      "permissive": true,
+      "roles": [
+        "agentstudio_api",
+        "agentstudio_skill_ab_dispatch"
+      ],
+      "using": "true",
+      "check": null
+    }
+  ],
+  "acl": [
+    {
+      "table": "runtime_profile",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "SELECT",
+      "grantable": false
+    },
+    {
+      "table": "runtime_profile",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "INSERT",
+      "grantable": false
+    },
+    {
+      "table": "runtime_profile",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "UPDATE",
+      "grantable": false
+    },
+    {
+      "table": "runtime_profile",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "DELETE",
+      "grantable": false
+    },
+    {
+      "table": "runtime_profile",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "TRUNCATE",
+      "grantable": false
+    },
+    {
+      "table": "runtime_profile",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "REFERENCES",
+      "grantable": false
+    },
+    {
+      "table": "runtime_profile",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "TRIGGER",
+      "grantable": false
+    },
+    {
+      "table": "runtime_profile",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "MAINTAIN",
+      "grantable": false
+    },
+    {
+      "table": "runtime_profile",
+      "grantor": "postgres",
+      "grantee": "agentstudio_api",
+      "right": "SELECT",
+      "grantable": false
+    },
+    {
+      "table": "runtime_profile",
+      "grantor": "postgres",
+      "grantee": "agentstudio_skill_ab_dispatch",
+      "right": "SELECT",
+      "grantable": false
+    },
+    {
+      "table": "requests",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "SELECT",
+      "grantable": false
+    },
+    {
+      "table": "requests",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "INSERT",
+      "grantable": false
+    },
+    {
+      "table": "requests",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "UPDATE",
+      "grantable": false
+    },
+    {
+      "table": "requests",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "DELETE",
+      "grantable": false
+    },
+    {
+      "table": "requests",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "TRUNCATE",
+      "grantable": false
+    },
+    {
+      "table": "requests",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "REFERENCES",
+      "grantable": false
+    },
+    {
+      "table": "requests",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "TRIGGER",
+      "grantable": false
+    },
+    {
+      "table": "requests",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "MAINTAIN",
+      "grantable": false
+    },
+    {
+      "table": "effects",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "SELECT",
+      "grantable": false
+    },
+    {
+      "table": "effects",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "INSERT",
+      "grantable": false
+    },
+    {
+      "table": "effects",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "UPDATE",
+      "grantable": false
+    },
+    {
+      "table": "effects",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "DELETE",
+      "grantable": false
+    },
+    {
+      "table": "effects",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "TRUNCATE",
+      "grantable": false
+    },
+    {
+      "table": "effects",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "REFERENCES",
+      "grantable": false
+    },
+    {
+      "table": "effects",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "TRIGGER",
+      "grantable": false
+    },
+    {
+      "table": "effects",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "MAINTAIN",
+      "grantable": false
+    },
+    {
+      "table": "results",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "SELECT",
+      "grantable": false
+    },
+    {
+      "table": "results",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "INSERT",
+      "grantable": false
+    },
+    {
+      "table": "results",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "UPDATE",
+      "grantable": false
+    },
+    {
+      "table": "results",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "DELETE",
+      "grantable": false
+    },
+    {
+      "table": "results",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "TRUNCATE",
+      "grantable": false
+    },
+    {
+      "table": "results",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "REFERENCES",
+      "grantable": false
+    },
+    {
+      "table": "results",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "TRIGGER",
+      "grantable": false
+    },
+    {
+      "table": "results",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "MAINTAIN",
+      "grantable": false
+    },
+    {
+      "table": "controls",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "SELECT",
+      "grantable": false
+    },
+    {
+      "table": "controls",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "INSERT",
+      "grantable": false
+    },
+    {
+      "table": "controls",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "UPDATE",
+      "grantable": false
+    },
+    {
+      "table": "controls",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "DELETE",
+      "grantable": false
+    },
+    {
+      "table": "controls",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "TRUNCATE",
+      "grantable": false
+    },
+    {
+      "table": "controls",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "REFERENCES",
+      "grantable": false
+    },
+    {
+      "table": "controls",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "TRIGGER",
+      "grantable": false
+    },
+    {
+      "table": "controls",
+      "grantor": "postgres",
+      "grantee": "postgres",
+      "right": "MAINTAIN",
+      "grantable": false
+    }
+  ],
+  "functions": [
+    {
+      "name": "compact_json",
+      "oid": 26011,
+      "args": "jsonb",
+      "returns": "text",
+      "language": "plpgsql",
+      "volatility": "i",
+      "strict": true,
+      "definer": false,
+      "owner": "postgres",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "source_sha256": "f6d732337441ec6736fa2f629711eb13077da7ec359d47ecc2b15ed5195b5223",
+      "safe": true,
+      "acl": [
+        {
+          "grantor": "postgres",
+          "grantee": "postgres",
+          "right": "EXECUTE",
+          "grantable": false
+        }
+      ]
+    },
+    {
+      "name": "digest",
+      "oid": 26012,
+      "args": "jsonb",
+      "returns": "text",
+      "language": "plpgsql",
+      "volatility": "i",
+      "strict": true,
+      "definer": false,
+      "owner": "postgres",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "source_sha256": "2d301ef957058bf54881edfe71f43e8c81872334b3bcf1db76d4ddac22adde95",
+      "safe": true,
+      "acl": [
+        {
+          "grantor": "postgres",
+          "grantee": "postgres",
+          "right": "EXECUTE",
+          "grantable": false
+        }
+      ]
+    },
+    {
+      "name": "utf16_length",
+      "oid": 26013,
+      "args": "text",
+      "returns": "integer",
+      "language": "plpgsql",
+      "volatility": "i",
+      "strict": true,
+      "definer": false,
+      "owner": "postgres",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "source_sha256": "7621784df761dcbbe649181abc740b91f5f592dd0aad0d72a0414b130726ede7",
+      "safe": true,
+      "acl": [
+        {
+          "grantor": "postgres",
+          "grantee": "postgres",
+          "right": "EXECUTE",
+          "grantable": false
+        }
+      ]
+    },
+    {
+      "name": "session",
+      "oid": 26014,
+      "args": "text",
+      "returns": "void",
+      "language": "plpgsql",
+      "volatility": "v",
+      "strict": false,
+      "definer": true,
+      "owner": "postgres",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "source_sha256": "07d35a109694feba9f184c37a78e36b8a9fc7a807a18ab69644f169b6f422b02",
+      "safe": true,
+      "acl": [
+        {
+          "grantor": "postgres",
+          "grantee": "postgres",
+          "right": "EXECUTE",
+          "grantable": false
+        }
+      ]
+    },
+    {
+      "name": "native",
+      "oid": 26015,
+      "args": "uuid",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "volatility": "v",
+      "strict": false,
+      "definer": true,
+      "owner": "postgres",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "source_sha256": "26f94ad724ef98c9a3aa58fc4e88df39be294f39a473e824577bb5cf2d4662f5",
+      "safe": true,
+      "acl": [
+        {
+          "grantor": "postgres",
+          "grantee": "postgres",
+          "right": "EXECUTE",
+          "grantable": false
+        }
+      ]
+    },
+    {
+      "name": "source",
+      "oid": 26016,
+      "args": "uuid, jsonb",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "volatility": "v",
+      "strict": false,
+      "definer": true,
+      "owner": "postgres",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "source_sha256": "01e75ab9911df7724986a74f143417a285deb43de4c98d3015d8a12cff278f49",
+      "safe": true,
+      "acl": [
+        {
+          "grantor": "postgres",
+          "grantee": "postgres",
+          "right": "EXECUTE",
+          "grantable": false
+        }
+      ]
+    },
+    {
+      "name": "receipt_private",
+      "oid": 26017,
+      "args": "uuid, uuid",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "volatility": "v",
+      "strict": false,
+      "definer": true,
+      "owner": "postgres",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "source_sha256": "4c3e872eb0094361a0a3d6d4e3a43b6aeec724441fcd22bf9af4d55161a85719",
+      "safe": true,
+      "acl": [
+        {
+          "grantor": "postgres",
+          "grantee": "postgres",
+          "right": "EXECUTE",
+          "grantable": false
+        }
+      ]
+    },
+    {
+      "name": "receipt",
+      "oid": 26018,
+      "args": "uuid",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "volatility": "v",
+      "strict": false,
+      "definer": true,
+      "owner": "postgres",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "source_sha256": "5aa8a6b1a4d7629d89b456270f30c5a486e983f79ac37533b16dd0119bb16731",
+      "safe": true,
+      "acl": [
+        {
+          "grantor": "postgres",
+          "grantee": "postgres",
+          "right": "EXECUTE",
+          "grantable": false
+        },
+        {
+          "grantor": "postgres",
+          "grantee": "agentstudio_api",
+          "right": "EXECUTE",
+          "grantable": false
+        }
+      ]
+    },
+    {
+      "name": "record",
+      "oid": 26019,
+      "args": "jsonb",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "volatility": "v",
+      "strict": false,
+      "definer": true,
+      "owner": "postgres",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "source_sha256": "14a0791ec8997c91fa39457b41531c596d7e1eeffa51010b137d491452e1b3af",
+      "safe": true,
+      "acl": [
+        {
+          "grantor": "postgres",
+          "grantee": "postgres",
+          "right": "EXECUTE",
+          "grantable": false
+        },
+        {
+          "grantor": "postgres",
+          "grantee": "agentstudio_api",
+          "right": "EXECUTE",
+          "grantable": false
+        }
+      ]
+    },
+    {
+      "name": "claim",
+      "oid": 26020,
+      "args": "uuid, integer, text",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "volatility": "v",
+      "strict": false,
+      "definer": true,
+      "owner": "postgres",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "source_sha256": "7c7651d2841f9d8bdb58113c68cbdd4920939c5f357aeaf19b1a935182f4388a",
+      "safe": true,
+      "acl": [
+        {
+          "grantor": "postgres",
+          "grantee": "postgres",
+          "right": "EXECUTE",
+          "grantable": false
+        },
+        {
+          "grantor": "postgres",
+          "grantee": "agentstudio_api",
+          "right": "EXECUTE",
+          "grantable": false
+        }
+      ]
+    },
+    {
+      "name": "context",
+      "oid": 26021,
+      "args": "uuid, integer, uuid",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "volatility": "v",
+      "strict": false,
+      "definer": true,
+      "owner": "postgres",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "source_sha256": "b4015a650c99e6211bd711b061cd0c5e11d47710dd18eb090dc5924429f2cb8a",
+      "safe": true,
+      "acl": [
+        {
+          "grantor": "postgres",
+          "grantee": "postgres",
+          "right": "EXECUTE",
+          "grantable": false
+        },
+        {
+          "grantor": "postgres",
+          "grantee": "agentstudio_skill_ab_dispatch",
+          "right": "EXECUTE",
+          "grantable": false
+        }
+      ]
+    },
+    {
+      "name": "reserve",
+      "oid": 26022,
+      "args": "uuid, integer, uuid",
+      "returns": "boolean",
+      "language": "plpgsql",
+      "volatility": "v",
+      "strict": false,
+      "definer": true,
+      "owner": "postgres",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "source_sha256": "2b6cbd92997235b4eae7c5f604122a6619801b38419154dde6062ad1dc0bd905",
+      "safe": true,
+      "acl": [
+        {
+          "grantor": "postgres",
+          "grantee": "postgres",
+          "right": "EXECUTE",
+          "grantable": false
+        },
+        {
+          "grantor": "postgres",
+          "grantee": "agentstudio_skill_ab_dispatch",
+          "right": "EXECUTE",
+          "grantable": false
+        }
+      ]
+    },
+    {
+      "name": "finish",
+      "oid": 26023,
+      "args": "uuid, integer, uuid, jsonb",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "volatility": "v",
+      "strict": false,
+      "definer": true,
+      "owner": "postgres",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "source_sha256": "dfda6af3d38ffb2e2905cff057cf3e47bd07e397e8f3351105132dd0866f73b5",
+      "safe": true,
+      "acl": [
+        {
+          "grantor": "postgres",
+          "grantee": "postgres",
+          "right": "EXECUTE",
+          "grantable": false
+        },
+        {
+          "grantor": "postgres",
+          "grantee": "agentstudio_skill_ab_dispatch",
+          "right": "EXECUTE",
+          "grantable": false
+        }
+      ]
+    },
+    {
+      "name": "view",
+      "oid": 26024,
+      "args": "uuid",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "volatility": "v",
+      "strict": false,
+      "definer": true,
+      "owner": "postgres",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "source_sha256": "d0b4530d3ac240a0d16d49304bd64b0cbd02d31a1195f4239c0bb1319ff7c571",
+      "safe": true,
+      "acl": [
+        {
+          "grantor": "postgres",
+          "grantee": "postgres",
+          "right": "EXECUTE",
+          "grantable": false
+        },
+        {
+          "grantor": "postgres",
+          "grantee": "agentstudio_api",
+          "right": "EXECUTE",
+          "grantable": false
+        }
+      ]
+    },
+    {
+      "name": "control_receipt",
+      "oid": 26025,
+      "args": "uuid",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "volatility": "v",
+      "strict": false,
+      "definer": true,
+      "owner": "postgres",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "source_sha256": "09134a4081b0bfb5d7110da295e0d9ac014d963f727c69aaab29dafc5ea3f92b",
+      "safe": true,
+      "acl": [
+        {
+          "grantor": "postgres",
+          "grantee": "postgres",
+          "right": "EXECUTE",
+          "grantable": false
+        },
+        {
+          "grantor": "postgres",
+          "grantee": "agentstudio_api",
+          "right": "EXECUTE",
+          "grantable": false
+        }
+      ]
+    },
+    {
+      "name": "control",
+      "oid": 26026,
+      "args": "uuid, uuid, text",
+      "returns": "jsonb",
+      "language": "plpgsql",
+      "volatility": "v",
+      "strict": false,
+      "definer": true,
+      "owner": "postgres",
+      "config": [
+        "search_path=pg_catalog"
+      ],
+      "source_sha256": "b877cf6bf7d09ebd324f4d438112bf81479d556ca95642cab0204af692116bbe",
+      "safe": true,
+      "acl": [
+        {
+          "grantor": "postgres",
+          "grantee": "postgres",
+          "right": "EXECUTE",
+          "grantable": false
+        },
+        {
+          "grantor": "postgres",
+          "grantee": "agentstudio_api",
+          "right": "EXECUTE",
+          "grantable": false
+        }
+      ]
+    }
+  ],
+  "violations": {
+    "triggers": 0,
+    "incoming_fk": 0,
+    "default_acl": 0,
+    "events": 0,
+    "types": 0,
+    "other_relations": 0,
+    "foreign_effective_grants": 0,
+    "global_data_memberships": 0,
+    "other_objects": 0
+  }
+}

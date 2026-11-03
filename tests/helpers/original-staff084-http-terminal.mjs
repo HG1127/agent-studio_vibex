@@ -17,6 +17,8 @@ export async function staffHttpTerminal(action){
   trace.push({kind:'query',sql,params,transaction})
   if(sql.startsWith('BEGIN')){transactions.push({id:transaction,sql});return{rows:[]}}
   if(sql==='COMMIT'||sql==='ROLLBACK'||sql.startsWith('SET LOCAL '))return{rows:[]}
+  // This terminal frame represents standalone084, without the optional composite.
+  if(sql==="SELECT description FROM agentstudio.schema_migrations WHERE version='pg18_employee_staff084_composite_001'")return{rows:[]}
   if(sql===originalStaffCatalog084SQL)return{rows:[{value:staff084Catalog()}]}
   if(sql.startsWith('/* original-staff:session */'))return{rows:[{user_id:httpOwner,is_admin:true}]}
   if(sql==='SELECT pg_advisory_xact_lock(61824,20261048)')return{rows:[]}

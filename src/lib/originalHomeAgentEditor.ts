@@ -1,4 +1,5 @@
 import type {AgentSpec} from '../pages/Home/presets'
+import {parseOriginalRoleUiExtension} from '../../shared/original-role-execution-contract.mjs'
 import {parseOriginalHomeAuthoring,type OriginalHomeAuthoring} from '../../shared/original-home-authoring.ts'
 import {normalizeOriginalHomeExecutionSpec,OriginalHomeApiError,type OriginalHomeAgent,type OriginalHomeAgentUpdate} from './originalHomeAgentApi.ts'
 import {normalizeOriginalHomeBindingOptions,type OriginalHomeBindingOptions} from './originalHomeResources.ts'
@@ -9,8 +10,8 @@ export type NativeHomeEditingContext=Readonly<{
   id:string;revision:number;spec:Readonly<Record<string,unknown>>;authoring:OriginalHomeAuthoring|null
 }>
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
-const visibleFields=['goal','task_scope','deliverables','tools','task_plan','done_criteria','knowledge_base_ids','require_approval','require_plan_review']
-const unsupportedFields=['quality_checks','capability_requirements','_studio_authoring']
+const visibleFields=['goal','task_scope','deliverables','tools','task_plan','done_criteria','knowledge_base_ids','require_approval','require_plan_review','roles','capability_requirements']
+const unsupportedFields=['quality_checks','capture_capability_ids','_studio_authoring']
 const fail=(code:string):never=>{throw new OriginalHomeApiError(400,code)}
 function freeze<T>(data:T):T{
   if(data&&typeof data==='object'){for(const value of Object.values(data))freeze(value);Object.freeze(data)}
@@ -62,6 +63,11 @@ export function originalHomeAgentForEditor(row:OriginalHomeAgent){
   // describe them. Editing prose must not discard the real bindings.
   for(const name of actualTools)if(!requirements.includes(name))requirements.push(name)
   const visible:AgentSpec={goal:spec.goal as string,task_scope:spec.task_scope as string,deliverables:[...spec.deliverables as string[]],tools:requirements,task_plan:[...spec.task_plan as string[]],done_criteria:[...spec.done_criteria as string[]],knowledge_base_ids:[...spec.knowledge_base_ids as string[]],require_approval:true,...(spec.require_plan_review===undefined?{}:{require_plan_review:spec.require_plan_review as boolean})}
+  if(Object.hasOwn(spec,'roles')||Object.hasOwn(spec,'capability_requirements')){
+    const ext=parseOriginalRoleUiExtension({roles:spec.roles??[],capability_requirements:spec.capability_requirements??[]},actualTools)
+    if(Object.hasOwn(spec,'roles'))visible.roles=ext.roles
+    if(Object.hasOwn(spec,'capability_requirements'))visible.capability_requirements=ext.capability_requirements
+  }
   return {id:row.id,rh_user_id:row.owner_user_id,name:row.name,spec:visible,source:context.authoring?.source??'unknown',template_key:context.authoring?.template_key??'',created:row.created_at,updated:row.updated_at,native_pg:context}
 }
 export function originalHomeEditorWrite(input:{name:string;spec:AgentSpec;source:'create'|'template';templateKey:string;context?:NativeHomeEditingContext|null;asCopy?:boolean;bindings?:OriginalHomeBindingOptions;builtinSelections?:string[];designMetadata?:OriginalHomeDesignMetadata|null}):OriginalHomeAgentUpdate{

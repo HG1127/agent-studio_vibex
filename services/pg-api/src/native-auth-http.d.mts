@@ -32,6 +32,7 @@ export function createNativeAuthHttpHandler(deps:{
   allowAgentCollaboration?:boolean
   allowAgentReleases?:boolean
   originalRunInteractionProtocol?:'native_original_run_interaction_v1'
+  originalRunOptionsProtocol?:'native_original_run_options_v1'
   allowAgentHumanInput?:boolean
   allowAgentMemory?:boolean
   allowAgentMemoryRuntime?:boolean

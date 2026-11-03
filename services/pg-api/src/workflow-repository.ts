@@ -31,6 +31,7 @@ export async function verifyWorkflowGraphResources(db:SqlClient,actor:string,gra
   if(graph.version!==2)return
   for(const node of graph.nodes)await verifyWorkflowResourceReferences(db,actor,node.data)
 }
+import {roleHistoricalSpec,assertOriginalRoleLauncher} from './original-role-history.ts'
 export async function verifyWorkflowResourceReferences(db:SqlClient,actor:string,data:WorkflowGraph["nodes"][number]["data"]){
     await verifyKnowledgeRetrievalBinding(db,data.knowledge_retrieval)
     const {model_binding:model,agent_binding:agent,tool_binding:tool,knowledge_base_ids:kb}=data
@@ -50,7 +51,9 @@ export async function verifyWorkflowResourceReferences(db:SqlClient,actor:string
     if(agent||tool){
       const table=agent?"agent_specs":"tool_connections",id=agent?agent.spec_id:tool!.connection_id
       const revision=agent?agent.spec_revision:tool!.connection_revision
-      const row=(await db.query<{revision:number|string;spec?:unknown}>(
+      if(agent)await assertOriginalRoleLauncher(db,actor,agent.spec_id,agent.spec_revision)
+      const historical=agent?roleHistoricalSpec(db,actor,agent.spec_id,agent.spec_revision):undefined
+      const row=historical?{revision:revision,spec:historical}:(await db.query<{revision:number|string;spec?:unknown}>(
         "SELECT revision"+(agent?",spec":"")+" FROM agentstudio."+table+
         " WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[id,actor])).rows[0]
       if(!row)throw new HttpError(404,"workflow_resource_not_found")

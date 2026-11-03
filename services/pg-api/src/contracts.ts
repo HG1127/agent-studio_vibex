@@ -12,7 +12,7 @@ export interface SqlClient {
   query<Row=Record<string,unknown>>(
     sql: string, values?: unknown[],
   ): Promise<QueryResult<Row>>
-  release(): void
+  release(destroy?:boolean): void
 }
 export interface SqlPool {
   /** Trusted service configuration only; never derived from request fields. */

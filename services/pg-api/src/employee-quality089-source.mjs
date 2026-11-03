@@ -1,0 +1,19 @@
+
+import fs from 'node:fs'
+import path from 'node:path'
+import {fileURLToPath} from 'node:url'
+import {captureEmployeeUi078Sources,assertEmployeeUi078Snapshot} from './pg18-employee-ui078-source.mjs'
+import {employeeUi078Canonical as canonical} from './pg18-employee-ui078-catalog.mjs'
+import {employeeQuality089Profile,employeeQuality089Migration,quality089Sha,quality089InstallSql} from './employee-quality089-contract.mjs'
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..'),captured=new WeakSet(),fail=()=>{throw Error('employee_quality089_source_refused')}
+const files=["services/pg-api/src/employee-quality089-contract.mjs","services/pg-api/src/employee-quality089-profile.mjs","services/pg-api/src/employee-quality089-source.mjs","services/pg-api/src/native-employee-quality089-profile.mjs","services/pg-api/src/original-agent-quality-http.ts","services/pg-api/src/original-agent-quality-repository.ts","services/pg-api/src/original-agent-quality-runtime.ts","services/pg-api/src/original-agent-quality-service.ts","services/pg-api/src/original-quality089-audit.ts","services/pg-api/src/original-quality089-catalog-sql.d.mts","services/pg-api/src/original-quality089-catalog-sql.mjs","services/pg-api/src/original-quality089-catalog.d.mts","services/pg-api/src/original-quality089-catalog.mjs","services/pg-api/src/original-quality089-expression.mjs","services/pg-api/src/original-quality089-profile.mjs","services/pg-api/src/original-quality089-static.mjs","services/pg-api/src/native-employee-quality089-profile.d.mts","shared/original-agent-quality-contract.ts"]
+const freeze=v=>{if(v&&typeof v==='object'){Object.values(v).forEach(freeze);Object.freeze(v)}return v}
+function bytes(relative){let file=root;if(typeof relative!=='string'||relative.split('/').some(p=>!p||p==='.'||p==='..'))fail();for(const p of relative.split('/')){if(fs.lstatSync(file).isSymbolicLink())fail();file=path.join(file,p)}const a=fs.lstatSync(file);if(!a.isFile()||a.isSymbolicLink()||a.size<1||a.size>16*1024*1024)fail();const b=fs.readFileSync(file),z=fs.lstatSync(file);if(['dev','ino','mode','uid','gid','nlink','size','mtimeMs','ctimeMs'].some(k=>a[k]!==z[k])||!Buffer.from(b.toString('utf8')).equals(b)||b.includes(0))fail();return b}
+export async function captureEmployeeQuality089Sources(){
+ const parent=await captureEmployeeUi078Sources();assertEmployeeUi078Snapshot(parent,parent.source_sha256)
+ const sql=bytes(employeeQuality089Migration.path).toString('utf8');quality089InstallSql(sql)
+ const pins=files.map(p=>({path:p,sha256:quality089Sha(bytes(p))}))
+ const manifest={profile:employeeQuality089Profile,parent_profile:parent.manifest.profile,parent_source_sha256:parent.source_sha256,migration:employeeQuality089Migration,sources:pins,base_sql_count:53,optional_versions:[...parent.versions.filter(v=>!parent.base.versions.includes(v)),'pg_v9_089'].sort(),default050_059_060_strict069_unchanged:true,materials080_or_artifacts081_required:false}
+ const s=freeze({parent,manifest,source_sha256:quality089Sha(canonical(manifest)),sql:quality089InstallSql(sql),tables:[...parent.tables,'agentstudio.agent_quality089_revisions','agentstudio.agent_quality089_receipts','agentstudio.agent_quality089_versions','agentstudio.agent_quality089_intents'].sort(),roles:[...parent.roles,'agentstudio_quality089'].sort()});captured.add(s);return s
+}
+export function assertEmployeeQuality089Snapshot(s,expected){if(!captured.has(s)||s.source_sha256!==expected||quality089Sha(canonical(s.manifest))!==expected)fail();assertEmployeeUi078Snapshot(s.parent,s.parent.source_sha256);quality089InstallSql(bytes(employeeQuality089Migration.path).toString('utf8'));for(const p of s.manifest.sources)if(quality089Sha(bytes(p.path))!==p.sha256)fail()}

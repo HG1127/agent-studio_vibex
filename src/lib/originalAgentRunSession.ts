@@ -1,3 +1,8 @@
+import {originalOptimizationRetestSelection} from './originalOptimizationRetestSelection.ts'
+import {createOriginalOptimizationRecovery} from './originalAgentOptimizationRecovery.ts'
+import {parseOriginalRunOptions,originalRunOptionsProtocol} from '../../shared/original-agent-run-options.ts'
+import {readOriginalRunPreparation,originalRunPreparationSource,type OriginalRunPreparation,type OriginalRunPreparationChoice,type OriginalRunPreparationPorts} from './originalAgentRunPreparation.ts'
+import {createOriginalRunCopyAction} from './originalAgentRunCopy.ts'
 import {parseOrdinaryCaseRunInput,type OrdinaryCaseRunInput} from '../../shared/ordinary-case-run-contract.ts'
 import {createPgNativeAutonomousAgentSession,emptyAutonomousView,autonomousApprovalReady,autonomousReview,readyAutonomousModel,type AutonomousDetail} from './pgNativeAutonomousAgentSession.ts'
 import {usesPaidKnowledge} from './pgNativeKnowledgeTool.ts'
@@ -26,9 +31,14 @@ export function originalRunZeroCostEffect(detail:AutonomousDetail):boolean{
  if(p.kind==='agent')return true
  return p.kind==='tool'&&!p.configuration.tool_binding&&!p.configuration.mcp_binding&&['calculate','business_case_get','business_record_query','business_record_write','result_read'].includes(String(p.configuration.tool))
 }
-export function createOriginalAgentRunSession(options:{employeeId:string;api:Api;home:Home;inbox:Inbox;models:Pick<ReturnType<typeof createOriginalModelConnectionsApi>,'listSnapshot'>;verifyEmployee:()=>Promise<string>;confirm:(request:OriginalRunConfirmation)=>Promise<boolean>|boolean}){
+export function createOriginalAgentRunSession(options:{employeeId:string;api:Api;home:Home;inbox:Inbox;models:Pick<ReturnType<typeof createOriginalModelConnectionsApi>,'listSnapshot'>;preparation?:OriginalRunPreparationPorts;probeRoleProfile?:boolean;verifyEmployee:()=>Promise<string>;confirm:(request:OriginalRunConfirmation)=>Promise<boolean>|boolean}){
  const employee=options.employeeId,listeners=new Set<()=>void>();let closed=false,suspended=false,recovering=false,sourceDenied=false,ownerChanged=false,epoch=0,read=0,error='',notice='',loading=false,selectedAgent='',agents:OriginalHomeAgent[]=[],models:PgNativeModelConnection[]=[],tools:PgNativeToolConnection[]=[],mcps:PgNativeMcpConnection[]=[],caps:PgNativeConfigCapabilities|null=null,workspace=emptyWorkspace(),feedbackRun:string|null=null,historyKey='',historyRead=0,historyLoading=false,historyError='';let historyDetails=new Map<string,AutonomousDetail>()
-  let approvalSelection=0,decisionInFlight=false
+  let approvalSelection=0,decisionInFlight=false,preparationRead=0,preparationLoading=false,draftRevision=0,preparationChoiceRevision=0,preparationError='';let preparation:OriginalRunPreparation|null=null,preparationChoice:OriginalRunPreparationChoice={localDeviceId:'',structuredPlanning:false}
+ const copyAction=createOriginalRunCopyAction({
+  context(){const detail=runs.snapshot().detail;return privateVisible()&&detail?{employee,epoch,selection:approvalSelection,runId:detail.run.id,specId:detail.run.agent_spec_id,version:detail.run.updated_at}:null},
+  verify:identity,
+  async read(id){const before=runs.snapshot().detail;if(!before||before.run.id!==id)return '';const actual=await api.getAutonomousAgentRun(id),next=originalRunDetail(actual,employee);if(actual.run.agent_spec_id!==before.run.agent_spec_id||actual.run.updated_at!==before.run.updated_at)throw new PgNativePilotError(409,'original_copy_source_changed');return next.result}
+ })
   const publish=()=>{if(!closed)listeners.forEach(fn=>fn())}
  function lockPrivate(message:string,owner=false){if(!sourceDenied){epoch++;read++;historyRead++}sourceDenied=true;if(owner)ownerChanged=true;error=message;publish()}
  async function identity(){
@@ -46,15 +56,26 @@ export function createOriginalAgentRunSession(options:{employeeId:string;api:Api
   }catch(cause){const status=cause&&typeof cause==='object'&&'status'in cause?Number(cause.status):0;if([401,403,404].includes(status)){lockPrivate('后台拒绝当前来源读取，详情、历史、反馈、记忆与复制正文均已隐藏；原未确认操作保留。',status===401);throw new PgNativePilotError(503,'original_run_source_denied')}throw cause}
  }}return Object.freeze(result) as T}
  const api=scoped(options.api),home=scoped(options.home),inbox=scoped(options.inbox),modelSource=scoped(options.models)
+ const preparationPorts=options.preparation?scoped(options.preparation):null
  const runs=createPgNativeAutonomousAgentSession(api,{onExpired:dispose})
  const feedback=createPgNativeFeedbackSession(api,{onExpired:dispose}),memories=createPgNativeMemorySession(api,{onExpired:dispose})
+ const recovery=createOriginalOptimizationRecovery({employeeId:employee,context:()=>{const a=currentAgent();return{employeeId:employee,identityEpoch:epoch,selectionEpoch:approvalSelection,runId:runs.snapshot().detail?.run.id??null,ready:privateVisible(),agent:a??null,available:caps?.agent_optimization_available===true&&typeof api.getAgentOptimizations==='function',canRetest:caps?.agent_optimization_available===true&&caps.agent_optimization_acceptance_enabled===true&&caps.config_writes_enabled===true&&caps.autonomous_agent_submission_enabled===true&&Boolean(a&&!Object.hasOwn(a.spec,'roles')&&!Object.hasOwn(a.spec,'capability_requirements'))}},readHistory:id=>api.getAgentOptimizations(id),onChange:publish})
  async function hydrateHistory(){const summary=runs.snapshot().runs,key=JSON.stringify(summary.map(r=>[r.id,r.updated_at]));if(key===historyKey||closed)return;historyKey=key;const ticket=++historyRead,life=epoch;historyLoading=true;historyError='';publish();const next=new Map<string,AutonomousDetail>();let cursor=0;try{if(summary.length>50||new Set(summary.map(r=>r.id)).size!==summary.length)throw Error('invalid_history_page');const worker=async()=>{while(cursor<summary.length){const row=summary[cursor++],cached=historyDetails.get(row.id),d=cached?.run.updated_at===row.updated_at?cached:await api.getAutonomousAgentRun(row.id);originalRunDetail(d,employee);if(d.run.agent_spec_id!==row.agent_spec_id)throw Error('history_source_changed');next.set(row.id,d)}};await Promise.all([worker(),worker(),worker()]);if(!closed&&life===epoch&&ticket===historyRead)historyDetails=next}catch{if(!closed&&life===epoch&&ticket===historyRead){historyDetails.clear();historyError='本人运行历史尚未核实；不会以预览、零轮次或当前助手标题充当完整历史。'}}finally{if(!closed&&ticket===historyRead){historyLoading=false;publish()}}}
  const unsubs=[runs.subscribe(()=>{const d=runs.snapshot().detail;if(d)historyDetails.set(d.run.id,d);void hydrateHistory();const id=d?.run.id??null;if(id!==feedbackRun){feedbackRun=id;void feedback.select(id)}publish()}),feedback.subscribe(publish),memories.subscribe(publish)]
- function dispose(){if(closed)return;closed=true;epoch++;read++;historyRead++;historyDetails.clear();runs.dispose();feedback.dispose();memories.dispose();agents=[];models=[];tools=[];mcps=[];caps=null;workspace=emptyWorkspace();selectedAgent='';error='';notice='';listeners.forEach(fn=>fn());listeners.clear();unsubs.forEach(fn=>fn())}
+ function dispose(){if(closed)return;copyAction.close();recovery.dispose();closed=true;epoch++;read++;historyRead++;historyDetails.clear();preparationRead++;preparation=null;preparationLoading=false;runs.dispose();feedback.dispose();memories.dispose();agents=[];models=[];tools=[];mcps=[];caps=null;workspace=emptyWorkspace();selectedAgent='';error='';notice='';listeners.forEach(fn=>fn());listeners.clear();unsubs.forEach(fn=>fn())}
  function blocked(){if(closed)return false;const f=feedback.snapshot(),m=memories.snapshot();return runs.navigationBlocked()||Boolean(f.busy||f.pending||m.busy||m.pending)}
  function privateVisible(){return !closed&&!suspended&&!recovering&&!sourceDenied&&!ownerChanged}
  function currentAgent(){return agents.find(a=>a.id===selectedAgent)}
  const nativeAgents=():PgNativeAgent[]=>agents.map(a=>({id:a.id,name:a.name,revision:a.revision,spec:a.spec as PgNativeAgent['spec']}))
+ async function refreshPreparation(choice?:OriginalRunPreparationChoice){
+  if(choice){if(typeof choice.localDeviceId!=='string'||choice.localDeviceId&&!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(choice.localDeviceId)||typeof choice.structuredPlanning!=='boolean')throw Error('invalid_original_preparation_choice');if(JSON.stringify(choice)!==JSON.stringify(preparationChoice)){preparationChoiceRevision++;preparationChoice={...choice}}}
+  const a=currentAgent(),ticket=++preparationRead,life=epoch,scope=selectionScope(),source=a?originalRunPreparationSource(a,preparationChoice):''
+  preparation=null;preparationError='';preparationLoading=Boolean(privateVisible()&&a&&caps&&preparationPorts);publish()
+  if(!privateVisible()||!a||!caps||!preparationPorts)return null
+  try{await identity();if(!scope())return null;const value=await readOriginalRunPreparation({employeeId:employee,agent:a,presentation:originalRunAgent(a,employee).spec,models,caps,choice:{...preparationChoice},ports:preparationPorts,probeRoleProfile:options.probeRoleProfile===true});await identity();if(!scope()||life!==epoch||ticket!==preparationRead||source!==originalRunPreparationSource(currentAgent()!,preparationChoice))return null;preparation=value;return value}
+  catch{if(scope()&&life===epoch&&ticket===preparationRead)preparationError='本人模型、连接、知识、设备或 Skill 来源尚未核实，请刷新资源；未启动任务。';return null}
+  finally{if(ticket===preparationRead){preparationLoading=false;publish()}}
+ }
  async function load(){
   if(closed)return;const ticket=++read,life=epoch;loading=true;error='';publish()
   try{
@@ -71,6 +92,8 @@ export function createOriginalAgentRunSession(options:{employeeId:string;api:Api
    feedback.setScopes({available:caps.agent_feedback_available===true,submit:caps.agent_feedback_submission_enabled===true,lessons:false})
    memories.setWritable(caps.agent_memory_writes_enabled===true)
    if(selectedAgent&&!agents.some(a=>a.id===selectedAgent)){selectedAgent='';await memories.select(null)}
+   if(preparationPorts)await refreshPreparation()
+   await recovery.refresh()
   }catch(cause){if(!closed&&life===epoch&&ticket===read){lockPrivate('原运行页完整来源尚未核实，所有私有正文与草稿展示已隐藏。');agents=[];models=[];tools=[];mcps=[];workspace=emptyWorkspace();caps=null;error=cause instanceof PgNativePilotError&&cause.status===403?'当前员工或实例未授权原运行页所需的读取接口。':'原运行页数据尚未核实，请刷新重试。'}}
   finally{if(!closed&&life===epoch&&ticket===read){loading=false;publish()}}
  }
@@ -83,17 +106,18 @@ export function createOriginalAgentRunSession(options:{employeeId:string;api:Api
   if(r.detail)warnings.push('当前后台未提供原时间线事件及历史助手名称合同；步骤状态不会伪造成事件，运行名称显示真实 Agent ID。步数仅取后台已成功完成的模型轮次，不表示实际金额或工具预算。 ')
   if(r.detail?.run.status==='awaiting_input')warnings.push('当前任务等待本人回复；原父页尚需接入已有 Native 问题/草案确认控件。')
   if(workspace.pending_items.some(item=>item.engine_kind==='agent_single'))warnings.push('本人还有单轮运行待办；其原页面详情与控制合同尚未接入此自主运行分支。')
-  return{employeeId:closed?'':employee,agents:hidden?[]:agents.map(a=>originalRunAgent(a,employee)),nativeAgents:hidden?[]:agents,models:hidden?[]:models,caps:hidden?null:caps,workspace:hidden?emptyWorkspace():workspace,selectedAgentId:hidden?'':selectedAgent,loading:!closed&&!hidden&&(loading||historyLoading),runs:r,feedback:f,memories:m,activeRun:hidden?null:active,runHistory:hidden?[]:history,pendingApproval:hidden?null:originalRunApproval(r.detail),error:closed?'登录或员工会话已变化，请重新登录。':hidden?error:[error,historyError,projectionError,r.error,f.error,m.error,...warnings].filter(Boolean).join(' '),notice:hidden?'身份未核实，旧页面数据不会展示；原未确认操作保留在内存。':[historyLoading?'正在核对本人运行历史的完整详情。':'',notice,r.notice,f.notice,m.notice].filter(Boolean).join(' '),closed,recovering,sourceDenied,ownerChanged,suspended:hidden&&!closed}
+  const prepared=!hidden&&preparation&&currentAgent()&&preparation.source===originalRunPreparationSource(currentAgent()!,preparationChoice)?preparation:null
+  return{optimizationRecovery:hidden?{candidate:null,linked:false,loading:false,error:''}:recovery.snapshot(),preparation:prepared,preparationLoading:!hidden&&preparationLoading,preparationError:hidden?'':preparationError,preparationChoice:{...preparationChoice},identityEpoch:epoch,qualitySelectionEpoch:approvalSelection,employeeId:closed?'':employee,agents:hidden?[]:agents.map(a=>originalRunAgent(a,employee)),nativeAgents:hidden?[]:agents,models:hidden?[]:models,caps:hidden?null:caps,workspace:hidden?emptyWorkspace():workspace,selectedAgentId:hidden?'':selectedAgent,loading:!closed&&!hidden&&(loading||historyLoading),runs:r,feedback:f,memories:m,activeRun:hidden?null:active,runHistory:hidden?[]:history,pendingApproval:hidden?null:originalRunApproval(r.detail),error:closed?'登录或员工会话已变化，请重新登录。':hidden?error:[error,historyError,projectionError,r.error,f.error,m.error,...warnings].filter(Boolean).join(' '),notice:hidden?'身份未核实，旧页面数据不会展示；原未确认操作保留在内存。':[historyLoading?'正在核对本人运行历史的完整详情。':'',notice,r.notice,f.notice,m.notice].filter(Boolean).join(' '),closed,recovering,sourceDenied,ownerChanged,suspended:hidden&&!closed}
  }
   function selectionScope(){const life=epoch,selection=approvalSelection,agent=selectedAgent;return()=>privateVisible()&&life===epoch&&selection===approvalSelection&&agent===selectedAgent}
   async function confirm(request:OriginalRunConfirmation,work:()=>Promise<void>,current:()=>boolean=()=>true){const life=epoch;await identity();if(suspended||recovering||sourceDenied||ownerChanged||life!==epoch||!current())return;if(!await options.confirm(Object.freeze(request))||closed||life!==epoch||!current())return;await identity();if(life!==epoch||!privateVisible()||!current())return;error='';notice='';publish();await work()}
  return{
   hidePrivateForIdentity(owner=false){if(owner){suspended=true;lockPrivate('员工身份已变化，旧私有正文与本地草稿已隐藏。原请求仅保留在原员工控制器。',true)}else{if(!suspended){epoch++;read++;historyRead++}suspended=true;error='员工身份暂不可用，旧私有正文与草稿展示已隐藏，原未确认请求仍保留。';publish()}},
-  snapshot,dispose,subscribe(fn:()=>void){listeners.add(fn);return()=>{listeners.delete(fn)}},navigationBlocked:blocked,
+  snapshot,dispose,refreshPreparation,retireRunDraft(){draftRevision++},subscribe(fn:()=>void){listeners.add(fn);return()=>{listeners.delete(fn)}},navigationBlocked:blocked,
   async verifyIdentity(){if(closed)return;const restore=suspended||sourceDenied||ownerChanged;recovering=restore;if(restore){epoch++;read++;historyRead++;publish()}try{await identity();if(restore){suspended=false;sourceDenied=false;ownerChanged=false;await Promise.all([load(),runs.refresh(),feedback.refresh(),memories.refresh()])}}finally{recovering=false;publish()}},
   async activate(){await identity();runs.setActive(true);feedback.setActive(true);memories.setActive(true);await load()},
   async refresh(){if(closed)return;await Promise.all([load(),runs.refresh(),feedback.refresh(),memories.refresh()])},
-   async selectAgent(id:string){if(!privateVisible())return;if(blocked()){error='请先核对当前未确认的操作，再切换助手。';publish();return}const a=agents.find(a=>a.id===id);if(id&&!a){error='未找到当前员工的助手。';publish();return}approvalSelection++;error='';selectedAgent=id;await memories.select(a?{id:a.id,name:a.name,revision:a.revision}:null);publish()},
+   async selectAgent(id:string){if(!privateVisible())return;if(blocked()){error='请先核对当前未确认的操作，再切换助手。';publish();return}const a=agents.find(a=>a.id===id);if(id&&!a){error='未找到当前员工的助手。';publish();return}approvalSelection++;error='';selectedAgent=id;await memories.select(a?{id:a.id,name:a.name,revision:a.revision}:null);if(preparationPorts)await refreshPreparation();await recovery.refresh();publish()},
   async selectRun(id:string,specId?:string,kind=''){
    if(!privateVisible())return
    const actualKind=kind||[...workspace.items,...workspace.pending_items].find(item=>item.id===id)?.engine_kind||'agent_autonomous'
@@ -103,21 +127,53 @@ export function createOriginalAgentRunSession(options:{employeeId:string;api:Api
    error='';if(specId){const source=await api.getAutonomousAgentRun(id);if(source.run.agent_spec_id!==specId){error='运行和助手来源不匹配，未加载该详情。';publish();return}}
    await runs.select(id);const detail=runs.snapshot().detail
    if(specId&&detail&&detail.run.agent_spec_id!==specId){runs.setActive(false);error='运行和助手来源不匹配，已清除详情。';publish();return}
-   if(detail){selectedAgent=detail.run.agent_spec_id;const a=currentAgent();await memories.select(a?{id:a.id,name:a.name,revision:a.revision}:null)}publish()
+   if(detail){selectedAgent=detail.run.agent_spec_id;const a=currentAgent();await memories.select(a?{id:a.id,name:a.name,revision:a.revision}:null)}await recovery.refresh();publish()
   },
+  async prepareNewTask(){if(!privateVisible()||blocked()||!runs.clearSelection())return false;approvalSelection++;copyAction.cancel();feedbackRun=null;await feedback.select(null);error='';notice='';publish();return true},
   async poll(){if(!closed){await identity();await runs.poll()}},
-  async submit(instruction:string,maxSteps:number,businessCase?:OrdinaryCaseRunInput){
+
+  async refreshOptimizationRecovery(){if(!privateVisible())return false;await identity();return privateVisible()?recovery.refresh():false},
+  async restoreOptimizationLink(){if(!privateVisible()||blocked())return false;const scope=selectionScope();await identity();if(!scope())return false;draftRevision++;const accepted=await recovery.restore();if(accepted&&scope())draftRevision++;return accepted&&scope()},
+  unlinkOptimization(){if(!privateVisible())return;draftRevision++;recovery.unlink()},
+  async prepareOptimizedRetest(){
+   if(!privateVisible()||blocked())return null
+   const before=runs.snapshot().detail,accepted=recovery.selected(),a=currentAgent()
+   if(!before||!accepted||!a||!terminal.has(before.run.status)||accepted.run_id!==before.run.id||accepted.spec_id!==a.id||accepted.after_spec_revision!==a.revision){error='请先核验并关联当前已接受的反馈优化版本，再准备同一任务。';publish();return null}
+   const scope=selectionScope(),fingerprint=JSON.stringify({id:before.run.id,spec:before.run.agent_spec_id,instruction:before.run.instruction,updated:before.run.updated_at}),link=JSON.stringify(accepted)
+   await identity();if(!scope())return null
+   await load();if(!scope()||JSON.stringify(recovery.selected())!==link)return null
+   const actual=await api.getAutonomousAgentRun(before.run.id);originalRunDetail(actual,employee)
+   if(!scope()||blocked()||JSON.stringify(recovery.selected())!==link||!terminal.has(actual.run.status)||JSON.stringify({id:actual.run.id,spec:actual.run.agent_spec_id,instruction:actual.run.instruction,updated:actual.run.updated_at})!==fingerprint){error='原运行、反馈或已接受版本已变化，未准备新任务。';publish();return null}
+   if(!runs.clearSelection())return null
+   approvalSelection++;draftRevision++;copyAction.cancel();feedbackRun=null;await feedback.select(null);error='';notice='已准备原任务草稿，并保留已核验优化关联；请核对资源与预算后点击运行。';publish()
+   const life=epoch,selection=approvalSelection,draft=draftRevision,specId=a.id,revision=a.revision
+   return{instruction:actual.run.instruction,specId,revision,requirePlanReview:a.spec.require_plan_review===true,focusCurrent:()=>privateVisible()&&life===epoch&&draft===draftRevision&&approvalSelection>=selection&&approvalSelection<=selection+1&&selectedAgent===specId&&currentAgent()?.revision===revision&&runs.snapshot().detail===null&&JSON.stringify(recovery.selected())===link,current:()=>privateVisible()&&life===epoch&&selection===approvalSelection&&draft===draftRevision&&selectedAgent===specId&&currentAgent()?.revision===revision&&runs.snapshot().detail===null&&JSON.stringify(recovery.selected())===link}
+  },
+  async submit(instruction:string,maxSteps:number,businessCase?:OrdinaryCaseRunInput,roleOptions?:{taskPlanning?:'reviewed_v1';localDeviceId?:string;requirePlanReview?:boolean;structuredPlanning?:boolean;maxModelCalls?:number;maxRuntimeMinutes?:number}){
+    if(roleOptions?.taskPlanning!==undefined&&roleOptions.taskPlanning!=='reviewed_v1')throw new PgNativePilotError(400,'invalid_agent_task_planning')
+    if(roleOptions?.taskPlanning&&businessCase)throw new PgNativePilotError(409,'original_role_business_launcher_not_supported')
    if(!privateVisible())return
-   const a=currentAgent(),r=runs.snapshot()
+   if(recovery.snapshot().loading){error='正在核验已接受的优化来源，请待核验完成后再运行。';publish();return}
+   const draftVersion=draftRevision,a=currentAgent(),r=runs.snapshot()
+   if(roleOptions&&(roleOptions.requirePlanReview!==undefined&&typeof roleOptions.requirePlanReview!=='boolean'||roleOptions.structuredPlanning!==undefined&&typeof roleOptions.structuredPlanning!=='boolean'||roleOptions.localDeviceId!==undefined&&typeof roleOptions.localDeviceId!=='string'||roleOptions.taskPlanning&&roleOptions.structuredPlanning===false))throw new PgNativePilotError(400,'invalid_original_run_choice')
+   const chosen=roleOptions===undefined?undefined:Object.freeze({requirePlanReview:roleOptions.requirePlanReview??(roleOptions.taskPlanning?true:a?.spec.require_plan_review===true),structuredPlanning:roleOptions.structuredPlanning??Boolean(roleOptions.taskPlanning),localDeviceId:roleOptions.localDeviceId??'',maxModelCalls:roleOptions.maxModelCalls,maxRuntimeMinutes:roleOptions.maxRuntimeMinutes})
    if(!a||!caps?.autonomous_agent_submission_enabled||!caps.config_writes_enabled){error='当前员工或实例未授权发起自主运行。';publish();return}
    if(r.pendingSubmit){await runs.refresh();error='原任务登记结果未确认；此入口没有独立登记回执查询合同，原请求保留，不重新提交。';publish();return}
    if(blocked()){error='请先核对当前操作。';publish();return}
    if(!readyAutonomousModel(nativeAgents().find(x=>x.id===a.id),models)){error='当前助手尚未绑定本人已核验的模型版本，请先在原助手配置中保存。';publish();return}
+   if(chosen&&(typeof chosen.requirePlanReview!=='boolean'||typeof chosen.structuredPlanning!=='boolean'||typeof chosen.localDeviceId!=='string'||chosen.structuredPlanning&&!chosen.requirePlanReview))throw Error('invalid_original_run_choice')
+   const choice=chosen?{localDeviceId:chosen.localDeviceId,structuredPlanning:chosen.structuredPlanning}:{...preparationChoice}
+   if(choice.structuredPlanning&&businessCase)throw new PgNativePilotError(409,'original_role_business_launcher_not_supported')
+   const hasBudget=chosen?.maxModelCalls!==undefined||chosen?.maxRuntimeMinutes!==undefined;let budget:ReturnType<typeof parseOriginalRunOptions>|undefined
+   if(hasBudget)try{budget=parseOriginalRunOptions({protocol:originalRunOptionsProtocol,max_model_calls:chosen?.maxModelCalls,max_runtime_minutes:chosen?.maxRuntimeMinutes,require_plan_review:choice.structuredPlanning?true:chosen?.requirePlanReview??a.spec.require_plan_review===true,structured_planning:choice.structuredPlanning,local_device_id:choice.localDeviceId||null})}catch{error='请填写 1～100 次模型调用上限及有效运行时限，未提交任务。';publish();return}
+   if(budget&&caps.original_run_options_protocol!==originalRunOptionsProtocol){error='当前后台尚未核实模型调用与运行时限预算合同，未创建任务。';publish();return}
+   if(preparationPorts){const checked=await refreshPreparation(choice);if(!checked?.readiness.ready){error=checked?.readiness.issues.join('；')||preparationError||'运行资源尚未核实。';publish();return}}
+   const acceptedOptimization=recovery.selected();if(acceptedOptimization&&(choice.structuredPlanning||businessCase)){error='当前后台不支持将已接受优化关联到结构化角色计划或业务案例启动，未创建任务。';publish();return}
    const caseInput=businessCase===undefined?undefined:parseOrdinaryCaseRunInput(businessCase)
    if((a.spec.tools as string[]).some(t=>['business_case_get','business_record_query','business_record_write','result_read'].includes(t))&&!caseInput){error='请从本人业务案例进入后再启动此助手。';publish();return}
    if(!instruction.trim()||instruction.trim().length>2000||!Number.isSafeInteger(maxSteps)||maxSteps<1||maxSteps>30){error='请填写1～2000字任务及1～30轮上限。';publish();return}
-    const scope=selectionScope(),source=JSON.stringify(a),current=()=>scope()&&JSON.stringify(currentAgent())===source
-    await confirm({purpose:'submit',run_id:null,step_key:null,input_sha256:null,description:'创建当前员工助手 '+a.id+' 第 '+a.revision+' 版的任务，最多 '+maxSteps+' 轮。只登记任务；模型和工具步骤仍需逐次审批及费用预览。'},async()=>{await load();if(!current()||!caps?.autonomous_agent_submission_enabled||!caps.config_writes_enabled||!readyAutonomousModel(nativeAgents().find(x=>x.id===a.id),models))return;await runs.submit({agentId:a.id,revision:a.revision,instruction,maxSteps,requirePlanReview:a.spec.require_plan_review===true,...(caseInput?{businessCase:caseInput}:{})})},current)
+    const scope=selectionScope(),source=JSON.stringify(a),choiceVersion=preparationChoiceRevision,current=()=>scope()&&draftVersion===draftRevision&&choiceVersion===preparationChoiceRevision&&JSON.stringify(currentAgent())===source&&JSON.stringify(recovery.selected())===JSON.stringify(acceptedOptimization)
+    await confirm({purpose:'submit',run_id:null,step_key:null,input_sha256:null,description:'创建当前员工助手 '+a.id+' 第 '+a.revision+' 版的任务，最多 '+maxSteps+' 轮。'+(budget?'模型/摘要调用授权最多 '+budget.max_model_calls+' 次；'+(budget.max_runtime_minutes?'从登记起 '+budget.max_runtime_minutes+' 分钟后不再授权新外部步骤。':'本次未设置总时限。'):'')+(acceptedOptimization?'关联已接受修改 '+acceptedOptimization.request_id+'（原运行 '+acceptedOptimization.run_id+'，新版本 '+acceptedOptimization.after_spec_revision+'）。':'')+'只登记任务；模型和工具步骤仍需逐次审批及费用预览。'},async()=>{await load();if(!current()||!caps?.autonomous_agent_submission_enabled||!caps.config_writes_enabled||!readyAutonomousModel(nativeAgents().find(x=>x.id===a.id),models))return;if(budget&&caps.original_run_options_protocol!==originalRunOptionsProtocol){error='预算合同已变化，未提交任务。';publish();return}if(preparationPorts){const checked=await refreshPreparation();if(!current()||!checked?.readiness.ready){if(privateVisible()){error=checked?.readiness.issues.join('；')||'当前来源已变化，请重新核对资源。';publish()}return}}if(runs.snapshot().pendingSubmit||runs.snapshot().busy){error='原任务登记结果尚未确认，未重复登记。';publish();return}await runs.submit({...(acceptedOptimization?{optimizationLineageId:acceptedOptimization.request_id,optimizationExpected:originalOptimizationRetestSelection({acceptance_request_id:acceptedOptimization.request_id,source_run_id:acceptedOptimization.run_id,spec_id:acceptedOptimization.spec_id,spec_revision:acceptedOptimization.after_spec_revision,source_sha256:acceptedOptimization.after_spec_sha256,feedback_id:acceptedOptimization.feedback_id,feedback_sha256:acceptedOptimization.feedback_sha256,after_revision_id:acceptedOptimization.after_revision_id})}:{}),...(budget?{originalRunOptions:budget}:{}),agentId:a.id,revision:a.revision,instruction,maxSteps,requirePlanReview:choice.structuredPlanning?true:chosen?.requirePlanReview??a.spec.require_plan_review===true,...(choice.structuredPlanning?{taskPlanning:'reviewed_v1' as const}:{}),...(choice.localDeviceId?{localDeviceId:choice.localDeviceId}:{}),...(caseInput?{businessCase:caseInput}:{})})},current)
   },
   async decide(decision:'approve'|'reject'){
    if(!privateVisible()||decisionInFlight)return
@@ -167,6 +223,7 @@ export function createOriginalAgentRunSession(options:{employeeId:string;api:Api
   },
   async forgetMemory(id:string){if(!privateVisible())return;const m=memories.snapshot();if(m.pending){await memories.confirm();return}const item=m.items.find(x=>x.id===id);if(!item||!m.canWrite)return;const scope=selectionScope(),source=JSON.stringify({role:m.role,item}),current=()=>{const actual=memories.snapshot();return scope()&&actual.canWrite&&JSON.stringify({role:actual.role,item:actual.items.find(x=>x.id===id)})===source};await confirm({purpose:'forget',run_id:null,step_key:null,input_sha256:item.content_sha256,description:'忘记当前助手中本人保存的这条记忆：'+item.fact},async()=>{await Promise.all([load(),memories.refresh()]);if(current())await memories.forget(id,true)},current)},
   async respond(decision:'reply'|'approve'|'revise',answer:string){if(!privateVisible())return;if(!caps?.agent_human_responses_enabled)return;if(runs.snapshot().pendingHumanResponse){await runs.retryHumanResponse();return}const d=runs.snapshot().detail,p=d?.human_input;if(!d||!p||d.run.status!=='awaiting_input'||d.human_input_current!==true)return;const scope=selectionScope(),key=(actual:AutonomousDetail|null)=>JSON.stringify({run:actual?.run.id,status:actual?.run.status,input:actual?.human_input,current:actual?.human_input_current}),source=key(d),current=()=>scope()&&caps?.agent_human_responses_enabled===true&&key(runs.snapshot().detail)===source;await confirm({purpose:'human',run_id:d.run.id,step_key:p.pending_step_key,input_sha256:p.pending_sha256,description:'确认本次人员回复/草案决定 '+decision+'。后续模型和工具仍需单独审批及费用预览。\n问题：'+p.question+'\n草案：'+p.draft+'\n本次回复：'+answer},async()=>{await Promise.all([load(),runs.refresh()]);if(current())await runs.respond(decision,answer,true)},current)},
+  copyResultToClipboard(write:(text:string)=>Promise<void>){return copyAction.copy(write)},
   async readResultForCopy(){await identity();if(suspended||recovering||sourceDenied)return '';const current=runs.snapshot().detail;if(!current)return '';const actual=await api.getAutonomousAgentRun(current.run.id);const next=originalRunDetail(actual,employee);if(suspended||recovering||sourceDenied||runs.snapshot().detail?.run.id!==next.id)return '';return next.result},
   reportUnavailable(message:string){error=message;publish()},dismissError(){error='';publish()},
  }

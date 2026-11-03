@@ -1,3 +1,4 @@
+import {parseOriginalRunAdmission,originalRunAdmissionOnClient,type OriginalRunAdmission} from './original-agent-run-options-policy.ts'
 import {existingOrdinaryCaseAgentBinding} from './native-ordinary-case-binding.ts'
 import {hasMonitorBusinessAgentTools} from './native-monitor-business-contract.ts'
 import {optionalMonitorAgentBinding} from './native-monitor-agent-binding.ts'
@@ -6,7 +7,7 @@ import {ownedStepDecisionActor,auditDelegatedOwnedStep} from './owned-step-decis
 import {autonomousAgentGraph} from "./autonomous-agent-graph.ts"
 import {workflowAgentJson} from "./workflow-v2-agent-machine.ts"
 import {durableV2Root,type DurableV2Mode} from "./durable-v2-root.ts"
-import {HttpError,isUuid,safeWorkflowGraph,type Identity,type SqlClient,type SqlPool,type WorkflowGraph} from "./contracts.ts"
+import {HttpError,isUuid,safeWorkflowGraph,type Identity,type SqlClient,type SqlPool,type WorkflowGraph,type AgentSpecInput} from "./contracts.ts"
 import {withActor,assertOwnedAdmissionContext} from "./repository.ts"
 import {KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT} from "./knowledge-retrieval-binding.ts"
 import {currentKnowledgeObservations} from "./knowledge-observation-policy.ts"
@@ -27,7 +28,11 @@ import {agentHumanContext,agentHumanEvidenceExpected,requireHumanInputSchema,ver
 import {parseAgentMemoryContext,type AgentMemoryContext} from "./agent-memory-context.ts"
 import {verifyCurrentAgentMemoryContext} from "./agent-memory-context-policy.ts"
 import {checkedAgentRunPause,agentRunControlStateHash,type AgentRunPause} from "./agent-run-control.ts"
+import {roleHistoricalSpec,withOriginalRoleHistory,originalRoleRunRef,verifyOriginalRoleState,type OriginalRoleRunRef} from './original-role-history.ts'
+import {verifyOriginalRoleEvidence} from './original-role-evidence.ts'
 export type WorkflowV2StoredState={
+  original_ui?:Readonly<OriginalRunAdmission>
+  role_run?:OriginalRoleRunRef
   caller_binding?:AgentCallerBinding
   manual_pause?:AgentRunPause
   stage:string;execution_mode:DurableV2Mode;workflow_revision?:number;spec_revision?:number
@@ -41,6 +46,17 @@ export type WorkflowV2StoredState={
 export type WorkflowV2RunRow={id:string;owner_user_id:string;workflow_id:string|null;agent_spec_id:string|null;kind:"workflow"|"agent";status:string;
   instruction:string;result_text:string;checkpoint:WorkflowV2StoredState;step_count:number;
   last_error_code:string;created_at:string;updated_at:string;finished_at:string|null}
+/** Actual public checkpoint projection; private graphs, pins and journals are
+ * not part of this DTO. Planning mode is a closed optional wire field. */
+export type WorkflowV2PublicCheckpoint={
+  original_ui?:Readonly<OriginalRunAdmission>;original_ui_model_calls?:number
+ stage:string;execution_mode:DurableV2Mode;workflow_revision?:number;spec_revision?:number
+ max_steps?:number;require_plan_review?:boolean;task_planning?:'reviewed_v1'
+ selected_model_binding?:AgentSpecInput['model_binding'];node_debug?:{node_id:string;request_sha256:string}
+ graph_sha256:string;cursor:number
+ executions:ReturnType<typeof inspectWorkflowV2Checkpoint>['executions']
+ loop_progress:ReturnType<typeof inspectWorkflowV2Checkpoint>['loops']
+}
 export const workflowV2RunColumns="id,owner_user_id,workflow_id,agent_spec_id,kind,status,instruction,result_text,checkpoint,step_count,last_error_code,created_at,updated_at,finished_at"
 function invalid():never{throw new HttpError(400,"invalid_workflow_v2_request")}
 export function safeWorkflowV2Request(raw:unknown){
@@ -58,12 +74,14 @@ export function checkedWorkflowV2StoredState(raw:unknown,instruction:string):Wor
   let root:ReturnType<typeof durableV2Root>
   try{root=durableV2Root(value.execution_mode)}catch{throw new HttpError(409,"invalid_workflow_v2_state")}
   const required=["stage","execution_mode",root.revision,"graph","machine"]
-  if(required.some(key=>!Object.hasOwn(value,key))||Object.keys(value).some(key=>![...required,"agent_state","agent_dispatch","node_debug","human_agent_keys","memory_context","manual_pause","caller_binding"].includes(key))||
+  if(required.some(key=>!Object.hasOwn(value,key))||Object.keys(value).some(key=>![...required,"agent_state","agent_dispatch","node_debug","human_agent_keys","memory_context","manual_pause","caller_binding","role_run","original_ui"].includes(key))||
      typeof value.stage!=="string"||!new RegExp("^"+root.stage+"[a-z_]{1,60}$").test(value.stage)||
      !Number.isSafeInteger(value[root.revision])||Number(value[root.revision])<1||
      !value.machine||value.machine.instruction!==instruction)throw new HttpError(409,"invalid_workflow_v2_state")
+  if(Object.hasOwn(value,'original_ui')){if(root.kind!=='agent'||value.caller_binding||value.node_debug)throw new HttpError(409,'invalid_original_run_admission');value.original_ui=parseOriginalRunAdmission(value.original_ui)}
   if(Object.hasOwn(value,"manual_pause")){if(root.kind!=="agent")throw new HttpError(409,"invalid_agent_run_pause");value.manual_pause=checkedAgentRunPause(value.manual_pause)}
   if(Object.hasOwn(value,"caller_binding")){if(root.kind!=="agent"||value.memory_context||value.node_debug)throw new HttpError(409,"agent_caller_source_unavailable");value.caller_binding=checkedAgentCallerBinding(value.caller_binding)}
+  if(value.role_run){if(root.kind!=='agent')throw new HttpError(409,'original_role_profile_required');value.role_run=originalRoleRunRef(value.role_run)}
   const graph=safeWorkflowGraph(value.graph)
   if(Object.hasOwn(value,"memory_context")){
     const ref=graph.nodes[1]?.data.agent_binding
@@ -107,14 +125,17 @@ export async function auditWorkflowV2(db:SqlClient,owner:string,runId:string,act
     "CASE WHEN kind='agent' THEN 'agent_run' ELSE 'workflow_run' END,$2::text,'succeeded',$4::jsonb FROM agentstudio.runs WHERE id=$2::uuid AND owner_user_id=$1::uuid",
     [owner,runId,action,JSON.stringify(metadata)])
 }
-export async function verifyWorkflowV2Snapshot(db:SqlClient,owner:string,run:WorkflowV2RunRow,state:WorkflowV2StoredState,authoringMonitorBusiness=false){
+async function verifyWorkflowV2SnapshotCore(db:SqlClient,owner:string,run:WorkflowV2RunRow,state:WorkflowV2StoredState,authoringMonitorBusiness=false){
   if(isUuid(run.id))await verifyScheduleRunSource(db,run.id)
   await verifyAgentCallerSource(db,owner,run,state)
   const root=durableV2Root(state.execution_mode)
   if(run.kind!==root.kind||!run[root.id]||run[root.id==="workflow_id"?"agent_spec_id":"workflow_id"])throw new HttpError(409,"invalid_v2_root")
+  if(root.kind==='agent'&&isUuid(run.id))await originalRunAdmissionOnClient(db,owner,run,Number(state.spec_revision),state.original_ui)
+  else if(state.original_ui)throw new HttpError(409,'invalid_original_run_admission')
   const current=(await db.query<{revision:number|string;graph?:unknown;spec?:unknown}>("SELECT revision"+(root.kind==="agent"?",spec":"")+(state.node_debug?",graph":"")+" FROM agentstudio."+root.table+
     " WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[run[root.id],owner])).rows[0]
-  if(Number(current?.revision)!==state[root.revision])throw new HttpError(409,root.kind+"_revision_changed")
+  const historical=root.kind==='agent'?roleHistoricalSpec(db,owner,run.agent_spec_id!,state.spec_revision!):undefined
+  if(!current||!historical&&Number(current.revision)!==state[root.revision])throw new HttpError(409,root.kind+"_revision_changed")
   if(state.node_debug)try{
     if(root.kind!=="workflow"||workflowAgentJson(workflowNodeDebugGraph(current!.graph,state.node_debug))!==workflowAgentJson(state.graph))throw Error()
   }catch{throw new HttpError(409,"workflow_node_debug_state_changed")}
@@ -122,7 +143,7 @@ export async function verifyWorkflowV2Snapshot(db:SqlClient,owner:string,run:Wor
     const graph=autonomousAgentGraph(run.agent_spec_id!,state.spec_revision!,state.graph.nodes[1]?.data.max_steps??0,state.graph.nodes[1]?.data.model_binding,state.graph.nodes[1]?.data.require_plan_review)
     if(workflowAgentJson(graph)!==workflowAgentJson(state.graph))throw new HttpError(409,"invalid_v2_root")
     const agent=graph.nodes[1]!
-    const {spec}=await verifyWorkflowAgentResources(db,owner,{step_key:"",node_id:agent.id,kind:"agent",input:"",input_sha256:"",configuration:agent.data,missing:[]},undefined,true,isUuid(run.id)&&(state.agent_state?.monitor_business!==undefined||hasMonitorBusinessAgentTools(current?.spec))?await optionalMonitorAgentBinding(db,owner,run.id):undefined,authoringMonitorBusiness,isUuid(run.id)&&(state.agent_state?.case_business!==undefined||hasMonitorBusinessAgentTools(current?.spec))?await existingOrdinaryCaseAgentBinding(db,owner,run.id):undefined)
+    const {spec}=await verifyWorkflowAgentResources(db,owner,{step_key:"",node_id:agent.id,kind:"agent",input:"",input_sha256:"",configuration:agent.data,missing:[]},undefined,true,isUuid(run.id)&&(state.agent_state?.monitor_business!==undefined||hasMonitorBusinessAgentTools(historical??current?.spec))?await optionalMonitorAgentBinding(db,owner,run.id):undefined,authoringMonitorBusiness,isUuid(run.id)&&(state.agent_state?.case_business!==undefined||hasMonitorBusinessAgentTools(historical??current?.spec))?await existingOrdinaryCaseAgentBinding(db,owner,run.id):undefined)
     const required=agent.data.require_plan_review??spec.require_plan_review??false
     if(required&&state.machine.effects.some(effect=>effect.step_key==="wf2_00002_agent"&&!effect.outcome)&&!state.human_agent_keys?.includes("wf2_00002_agent"))
       throw new HttpError(409,"agent_human_archive_unavailable")
@@ -136,6 +157,12 @@ export async function verifyWorkflowV2Snapshot(db:SqlClient,owner:string,run:Wor
   if(root.kind==="agent"&&run.status==="succeeded"&&state.human_agent_keys?.includes("wf2_00002_agent")&&
     run.result_text!==evidence.deliveries.wf2_00002_agent?.output)throw new HttpError(409,"agent_human_delivery_unavailable")
   return evidence
+}
+export async function verifyWorkflowV2Snapshot(...args:Parameters<typeof verifyWorkflowV2SnapshotCore>){
+ const [db,owner,run,state]=args
+ await verifyOriginalRoleState(db,owner,run.id,state.role_run,state.agent_state)
+ if(state.role_run)return withOriginalRoleHistory(db,owner,run.id,state.role_run.payload_sha256,async()=>{const proof=await verifyWorkflowV2SnapshotCore(...args);await verifyOriginalRoleEvidence(db,owner,run.id,state);return proof})
+ return verifyWorkflowV2SnapshotCore(...args)
 }
 // Optional historical source denial must not poison the enclosing Owner read.
 // Only an expected HttpError makes evidence unavailable; infrastructure errors
@@ -170,7 +197,8 @@ export class WorkflowV2RunRepository{
   readonly allowKnowledgeExecution:boolean
   readonly allowHumanInput:boolean
   constructor(pool:SqlPool,mode:DurableV2Mode="workflow_native_v2",options:{allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean;allowHumanInput?:boolean}={}){this.pool=pool;this.root=durableV2Root(mode);this.allowMcpExecution=options.allowMcpExecution===true;this.allowKnowledgeExecution=options.allowKnowledgeExecution===true;this.allowHumanInput=options.allowHumanInput===true}
-  protected async checkMcpAdmission(db:SqlClient,owner:string,graph:WorkflowGraph){
+  protected async checkMcpAdmission(db:SqlClient,owner:string,graph:WorkflowGraph,roleRun?:OriginalRoleRunRef):Promise<void>{
+    if(roleRun)return withOriginalRoleHistory(db,owner,roleRun.run_id,roleRun.payload_sha256,()=>this.checkMcpAdmission(db,owner,graph))
     const agents=graph.nodes.filter(node=>node.data.agent_binding)
     if(agents.length){
       if(this.allowHumanInput)await requireHumanInputSchema(db)
@@ -186,12 +214,15 @@ export class WorkflowV2RunRepository{
     if(!this.allowKnowledgeExecution&&graph.nodes.some(node=>node.data.knowledge_retrieval))throw new HttpError(409,"knowledge_execution_not_enabled")
     const ids=[...new Set(graph.nodes.flatMap(node=>node.data.agent_binding?[node.data.agent_binding.spec_id]:[]))]
     if(!ids.length)return
-    const rows=(await db.query<{spec:Record<string,unknown>}>("SELECT spec FROM agentstudio.agent_specs WHERE owner_user_id=$1::uuid AND id=ANY($2::uuid[]) FOR SHARE",[owner,ids])).rows
+    const historicalRows:{spec:Record<string,unknown>}[]=[]
+    for(const id of ids){const ref=agents.find(node=>node.data.agent_binding?.spec_id===id)!.data.agent_binding!,frozen=roleHistoricalSpec(db,owner,id,ref.spec_revision);if(frozen)historicalRows.push({spec:frozen as unknown as Record<string,unknown>})}
+    const rows=historicalRows.length===ids.length?historicalRows:(await db.query<{spec:Record<string,unknown>}>("SELECT spec FROM agentstudio.agent_specs WHERE owner_user_id=$1::uuid AND id=ANY($2::uuid[]) FOR SHARE",[owner,ids])).rows
     if(!this.allowMcpExecution&&rows.some(row=>Object.hasOwn(row.spec,"mcp_tools")&&(!Array.isArray(row.spec.mcp_tools)||row.spec.mcp_tools.length)))throw new HttpError(409,"mcp_execution_not_enabled")
     if(!this.allowKnowledgeExecution&&rows.some(row=>row.spec.knowledge_retrieval!==undefined))throw new HttpError(409,"knowledge_execution_not_enabled")
   }
   protected async assemble(db:SqlClient,owner:string,row:WorkflowV2RunRow,replayed:boolean){
     const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
+    const budget=this.root.kind==='agent'?await originalRunAdmissionOnClient(db,owner,row,Number(state.spec_revision),state.original_ui):null
     const view=inspectWorkflowV2Checkpoint(state.graph,state.machine)
     const pending=workflowV2ExecutionRequest(state)
     let observationsCurrent=await readWorkflowV2HistoryObservations(db,()=>currentKnowledgeObservations(db,row.id,pending?.step_key))
@@ -211,13 +242,14 @@ export class WorkflowV2RunRepository{
     const runControl=this.root.kind==='agent'?{state_sha256:agentRunControlStateHash(row),manually_paused:row.status==='paused'&&Boolean(state.manual_pause),in_flight:controlEffects.some(e=>e.status==='started'),outcome_unknown:controlEffects.some(e=>e.status==='unknown'),can_pause:['queued','running','awaiting_approval','awaiting_input'].includes(row.status),can_resume:row.status==='paused'&&Boolean(state.manual_pause)&&controlEffects.length===0}:undefined
     // Do not send graph snapshots, replay journals or private node bodies with
     // run history. The current pending request is shown only for explicit review.
-    return {run:{...row,result_text:observationsCurrent?redactResultText(row.result_text):"",instruction:!observationsCurrent&&state.node_debug?"":row.instruction,step_count:Number(row.step_count),checkpoint:{stage:state.stage,execution_mode:state.execution_mode,
+    const publicCheckpoint:WorkflowV2PublicCheckpoint={stage:state.stage,execution_mode:state.execution_mode,...(budget&&observationsCurrent?{original_ui:budget.binding,original_ui_model_calls:budget.model_calls}:{}),
       [this.root.revision]:state[this.root.revision],...(this.root.kind==="agent"?{max_steps:state.graph.nodes[1]!.data.max_steps,
         ...(typeof state.graph.nodes[1]!.data.require_plan_review==="boolean"?{require_plan_review:state.graph.nodes[1]!.data.require_plan_review}:{}),
         ...(state.graph.nodes[1]!.data.model_binding?{selected_model_binding:state.graph.nodes[1]!.data.model_binding}:{})}:{}),
       ...(state.node_debug?{node_debug:{node_id:state.node_debug.node_id,request_sha256:createHash("sha256").update(workflowNodeDebugFingerprintData(row.workflow_id!,state.workflow_revision!,state.node_debug)).digest("hex")}}:{}),
       graph_sha256:state.machine.graph_sha256,cursor:state.machine.cursor,
-      executions:view.executions,loop_progress:view.loops}},
+      executions:view.executions,loop_progress:view.loops}
+    return {run:{...row,result_text:observationsCurrent?redactResultText(row.result_text):"",instruction:!observationsCurrent&&state.node_debug?"":row.instruction,step_count:Number(row.step_count),checkpoint:publicCheckpoint},
       steps:steps.rows.map(step=>{const metadata=safeRunStepMetadata(step.metadata);if(!observationsCurrent)delete metadata.citations;return {...step,metadata}}),
       steps_truncated:Number(row.step_count)>steps.rows.length,approvals:approvals.rows.slice(0,200).reverse(),approvals_truncated:approvals.rows.length>200,
       pending_effect:!observationsCurrent||["cancelled","failed","succeeded"].includes(row.status)?null:pending,
@@ -409,7 +441,7 @@ export class WorkflowV2RunRepository{
       if(paid&&item.knowledge_query_charge!==KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT)throw new HttpError(409,"knowledge_query_charge_confirmation_required")
       if(!paid&&item.knowledge_query_charge!==undefined)invalid()
       if(item.decision==="approved"){
-        await this.checkMcpAdmission(db,owner,state.graph);await verifyWorkflowV2Snapshot(db,owner,run,state)
+        await this.checkMcpAdmission(db,owner,state.graph,state.role_run);await verifyWorkflowV2Snapshot(db,owner,run,state)
         if(!await currentKnowledgeObservations(db,id,pending.step_key))throw new HttpError(409,"knowledge_observations_unavailable")
       }
       else if(pending.agent_context){

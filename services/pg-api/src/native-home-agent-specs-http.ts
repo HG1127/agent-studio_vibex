@@ -2,11 +2,12 @@ import type {IncomingMessage,ServerResponse} from 'node:http'
 import {HttpError,isUuid,type Identity} from './contracts.ts'
 import {verifyNativeOrigin} from './native-auth-http.mjs'
 import type {NativeHomeAgentSpecsRepository,OriginalHomeAgentWrite} from './native-home-agent-specs-repository.ts'
+import {parseLocalTransportJson} from '../../../shared/native-local-device-contract.mjs'
 import {expectedOriginalUiEmployee} from './native-original-ui-preconditions.ts'
 
 export const originalHomeAgentPrefix='/api/v2/original-ui/agent-specs'
-type Repository=Pick<NativeHomeAgentSpecsRepository,'list'|'get'|'create'|'update'>
-type Dependencies={repository:Repository;authenticateRequest:(req:IncomingMessage)=>Promise<Identity>;allowedOrigin:string;allowWrites:boolean}
+type Repository=Pick<NativeHomeAgentSpecsRepository,'list'|'get'|'create'|'update'|'authorize'>
+type Dependencies={repository:Repository;authenticateRequest:(req:IncomingMessage)=>Promise<Identity>;allowedOrigin:string;allowWrites:boolean;allowOriginalRoleUi?:boolean}
 function reply(res:ServerResponse,status:number,value:unknown):void{
  const encoded=JSON.stringify(value)
  if(Buffer.byteLength(encoded,'utf8')>1048576)throw new HttpError(503,'original_home_response_too_large')
@@ -27,12 +28,12 @@ async function body(req:IncomingMessage):Promise<Record<string,unknown>>{
  for await(const chunk of req){size+=Buffer.byteLength(chunk);if(size>262144)throw new HttpError(413,'request_too_large');chunks.push(Buffer.from(chunk))}
  if(declared!==undefined&&size!==Number(declared))throw new HttpError(400,'invalid_json')
  let value:unknown
- try{value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks)))}catch{throw new HttpError(400,'invalid_json')}
+ try{value=parseLocalTransportJson(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks)),262144)}catch{throw new HttpError(400,'invalid_json')}
  if(!value||typeof value!=='object'||Array.isArray(value))throw new HttpError(400,'invalid_json')
  return value as Record<string,unknown>
 }
 /** Fixed Native-only facade. No caller owner, PB/OIDC fallback or DELETE. */
-export function createNativeHomeAgentSpecsHttp({repository,authenticateRequest,allowedOrigin,allowWrites}:Dependencies){
+export function createNativeHomeAgentSpecsHttp({repository,authenticateRequest,allowedOrigin,allowWrites,allowOriginalRoleUi=false}:Dependencies){
  if(!repository||typeof authenticateRequest!=='function'||typeof allowWrites!=='boolean'||['list','get','create','update'].some(k=>typeof repository[k as keyof Repository]!=='function'))throw Error('invalid_original_home_http_dependencies')
  return async(req:IncomingMessage,res:ServerResponse):Promise<boolean>=>{
   const raw=req.url??''
@@ -42,16 +43,18 @@ export function createNativeHomeAgentSpecsHttp({repository,authenticateRequest,a
    verifyNativeOrigin(req,allowedOrigin,method!=='GET')
    const identity=await authenticateRequest(req)
    if(identity?.issuer!=='urn:agentstudio:local:v1'||typeof identity.subject!=='string'||!identity.subject)throw new HttpError(403,'native_employee_identity_required')
+   const roleEmployee=allowOriginalRoleUi?expectedOriginalUiEmployee(req):undefined
+   if(roleEmployee)await repository.authorize(identity,roleEmployee)
    const url=new URL(raw,'http://127.0.0.1')
    if(raw!==url.pathname+url.search)throw new HttpError(400,'invalid_original_home_path')
    const suffix=url.pathname.slice(originalHomeAgentPrefix.length),id=suffix?suffix.slice(1):null
    if(id!==null&&(!isUuid(id)||suffix!=='/'+id||url.search!==''))throw new HttpError(400,'invalid_spec_id')
    if(method==='GET'){
     await empty(req)
-    if(id!==null){reply(res,200,{item:await repository.get(identity,id.toLowerCase())});return true}
+    if(id!==null){reply(res,200,{item:await repository.get(identity,id.toLowerCase(),roleEmployee)});return true}
     const keys=[...url.searchParams.keys()],rawLimit=url.searchParams.get('limit')??'50'
     if(keys.some(k=>k!=='limit')||keys.length>1||!/^[1-9][0-9]?$/.test(rawLimit)||Number(rawLimit)>50)throw new HttpError(400,'invalid_limit')
-    reply(res,200,{items:await repository.list(identity,Number(rawLimit))});return true
+    reply(res,200,{items:await repository.list(identity,Number(rawLimit),roleEmployee)});return true
    }
    if(!['POST','PATCH'].includes(method)||method==='POST'&&id!==null||method==='PATCH'&&id===null)throw new HttpError(405,'method_not_allowed')
    if(!allowWrites)throw new HttpError(405,'pilot_business_writes_disabled')

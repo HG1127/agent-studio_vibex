@@ -1,10 +1,15 @@
 import { Activity, Check, Copy, PartyPopper, TriangleAlert } from "lucide-react"
 import { RunEvaluationCard } from "@/components/agent-run/RunEvaluationCard"
+import { SpecOptimizeCard } from "@/components/agent-run/SpecOptimizeCard"
+import { ResultDocument } from "@/components/agent-run/ResultDocument"
+import { RunVersionComparisonCard } from "@/components/agent-run/RunVersionComparisonCard"
 import { RunFeedbackBar, type FeedbackDraft } from "@/components/agent-run/RunFeedbackBar"
-import type { AgentRunRow, RunFeedback, RunEvaluation } from "@/pages/AgentRun/useAgentRun"
+import type { AgentRunRow, RunEventRow, RunFeedback, RunEvaluation, SpecOptimizeSuggestion, SavedSpecRow } from "@/pages/AgentRun/useAgentRun"
 
 type RunResultPanelProps = {
   activeRun: AgentRunRow | null
+  runHistory: AgentRunRow[]
+  events: RunEventRow[]
   onCopy: () => void
   copiedFlag: boolean
   harnessLine: string | null
@@ -22,11 +27,25 @@ type RunResultPanelProps = {
   onSubmitFeedback: () => void
   onEditFeedback: () => void
   onCancelFeedbackEdit: () => void
+  optimizationSpec: SavedSpecRow | null
+  isLoggedIn: boolean
+  optimizeSuggestion: SpecOptimizeSuggestion | null
+  optimizeError: string
+  optimizeSuccess: string
+  onOptimize: () => void
+  optimizeBusy: boolean
+  applyBusy: boolean
+  onApplyOptimize: () => void
+  onDiscardOptimize: () => void
+  onDismissOptimizeError: () => void
+  onRetestOptimized: () => void
 }
 
 export function RunResultPanel({
   activeRun,
-  onCopy,
+  onCopy,  runHistory,
+  events,
+
   copiedFlag,
   harnessLine,
   evaluation,
@@ -43,6 +62,18 @@ export function RunResultPanel({
   onSubmitFeedback,
   onEditFeedback,
   onCancelFeedbackEdit,
+  optimizationSpec,
+  isLoggedIn,
+  optimizeSuggestion,
+  optimizeError,
+  optimizeSuccess,
+  onOptimize,
+  optimizeBusy,
+  applyBusy,
+  onApplyOptimize,
+  onDiscardOptimize,
+  onDismissOptimizeError,
+  onRetestOptimized,
 }: RunResultPanelProps) {
   if (!activeRun) return null
   const runState = activeRun.status
@@ -90,9 +121,7 @@ export function RunResultPanel({
         </p>
       )}
       {activeRun.result && (
-        <p className="mt-3 whitespace-pre-wrap rounded-xl bg-secondary/50 px-4 py-3 text-sm leading-relaxed text-card-foreground">
-          {activeRun.result}
-        </p>
+        <ResultDocument text={activeRun.result} className="mt-3 rounded-xl bg-secondary/50 px-4 py-3" />
       )}
       {!activeRun.result && (
         <p className="mt-3 text-sm text-muted-foreground">本次运行没有产出可展示的成果文本。</p>
@@ -124,6 +153,21 @@ export function RunResultPanel({
         onEdit={onEditFeedback}
         onCancelEdit={onCancelFeedbackEdit}
       />
+      <SpecOptimizeCard
+        selectedSpec={optimizationSpec}
+        isLoggedIn={isLoggedIn}
+        optimizeBusy={optimizeBusy}
+        suggestion={optimizeSuggestion}
+        optimizeError={optimizeError}
+        optimizeSuccess={optimizeSuccess}
+        applyBusy={applyBusy}
+        onOptimize={onOptimize}
+        onApply={onApplyOptimize}
+        onDiscard={onDiscardOptimize}
+        onDismissError={onDismissOptimizeError}
+        onRetestOptimized={onRetestOptimized}
+      />
+      <RunVersionComparisonCard run={activeRun} history={runHistory} events={events}/>
     </>
   )
 }

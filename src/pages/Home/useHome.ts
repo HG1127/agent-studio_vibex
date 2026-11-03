@@ -286,7 +286,7 @@ export function useHome() {
         if(!saveAgentDraft(rhUserId,durableDraft)){setDraftPersistError(true);return false}
         draftRef.current=durableDraft;setDraftPersistError(false)
         nativeEditorIntent.current++;nativeOpenSequence.current++
-        setSpec(next);setSpecName(output.name);setNativeDesign(designMetadata)
+        setSpec(previous=>({...next,...(previous?.roles===undefined?{}:{roles:previous.roles}),...(previous?.capability_requirements===undefined?{}:{capability_requirements:previous.capability_requirements}),...(previous?.capture_capability_ids===undefined?{}:{capture_capability_ids:previous.capture_capability_ids})}));setSpecName(output.name);setNativeDesign(designMetadata)
         setSavedMsg('');setSaveConflict(false);markSpecEdited()
         setToolMatchNotice('实际模型结果已载入未保存草稿。工具名称仅作为需求建议；请逐项选择资源并审核后保存。')
         if(value.purpose==='generate'){
@@ -656,7 +656,7 @@ export function useHome() {
         connectedMarketTools.some(tool=>tool.id===name) || connectedTools.some(tool=>tool.name===name))
       const matched=resolveAgentToolRequirements(requirementForTools, parsed.spec,
         connectedTools,connectedMarketTools,explicitlySelected)
-      return {...parsed.spec,_studio_authoring:{request_id:revisionSource},capability_requirements:previous?.capability_requirements, tools:[
+      return {...parsed.spec,_studio_authoring:{request_id:revisionSource},roles:previous?.roles,capability_requirements:previous?.capability_requirements,capture_capability_ids:previous?.capture_capability_ids, tools:[
         ...matched.resolvedTools,
         ...matched.gaps.map(item=>item.name).filter(name=>!matched.resolvedTools.includes(name)),
       ],knowledge_base_ids: previous?.knowledge_base_ids || [],
@@ -1047,6 +1047,7 @@ export function useHome() {
     nativeReviseNotice:nativeApi?(nativeDesignView.preview?.purpose==='revise'&&nativeDesignView.preview.instruction===reviseInput.trim()?`已核对服务器来源版本；模型连接：${nativeDesignView.preview.model_name}，模型：${nativeDesignView.preview.model_id}，最多 ${nativeDesignView.preview.output_token_limit} 输出 token。再次点击确认修改才发起模型请求，可能产生费用。`:'请先保存并重新打开本人方案。预览不调用模型；确认修改会使用明确的本人模型并可能产生费用。'):undefined,
     spec,
     specName,
+    replaceRoleSpec:(next:AgentSpec)=>{markSpecEdited();setSpec(next)},
     setSpecName: (value:string) => {
       setSpecName(value)
       markSpecEdited()

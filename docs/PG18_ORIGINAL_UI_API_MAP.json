@@ -10537,6 +10537,111 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_f0f876d_original_ui_composite_followup": {
+      "base_head": "f0f876d6b161279ae5c8c1be4f6778d02edd1515",
+      "source_reseal_pending": false,
+      "delivery_baseline": "c6237d68a8b3ee2a9b4e54e79d2bcd530f863193 original src/main.tsx -> src/App.tsx; original pages, navigation, layouts and interactions",
+      "reviewed_source_files": 361,
+      "frozen_source_provenance_verified": true,
+      "source_only": true,
+      "source_scope": [
+        "Original Role/Skill immutable versions, owner-scoped resource checks and original Skill A/B page fee/receipt/mTLS backend adapters.",
+        "Original Native device inventory, Cookie/owner/epoch fences, original selector/wizard/IPC pairing and recovery routing.",
+        "Original run model/time budgets and optimization recovery/explicit linkage/retest source proof adapters.",
+        "Optional original quality089/Staff084 contracts and separate synthetic hosted verification sources.",
+        "Equivalent UTF8/string scalar checks reduce allocations; every original fresh read, syscall, metadata/source/catalog/owner/OID/ACL/order/cleanup check and deadline remains."
+      ],
+      "local_evidence": {
+        "actual_frontend_tsc_errors": 0,
+        "actual_API_tsc_errors": 0,
+        "original_employee_Vite_build_pass": true,
+        "original_entry": "/src/main.tsx",
+        "env_files_disabled": true,
+        "Role_AB_pure": 287,
+        "device_pure": 167,
+        "run_budget_optimization_pure": 217,
+        "composed_guided_dispatch_pure": 12,
+        "encoding_and_retained_parser_pure": 42,
+        "counts_are_component_runs_not_a_distinct_total": true,
+        "no_local_SQL_Worker_Native_listener_Electron_browser_or_paid_provider": true
+      },
+      "base_CI": {
+        "workflows": 19,
+        "success": 18,
+        "failure": 1,
+        "quality_each": {
+          "jobs": 51,
+          "pass": 51
+        },
+        "F01": {
+          "jobs": 21,
+          "pass": 21,
+          "RunDetail_five_stages": true,
+          "explicit_negatives": 5,
+          "actual_verified_owner_switch_denials": 1,
+          "unexpected": 0,
+          "cleanup_failures": 0,
+          "final_owner_verified": true
+        },
+        "strict069": {
+          "Legacy_actual_job_pass": true,
+          "Final14_primary": "full069_worker_live_native_heartbeat_unavailable",
+          "phase": "warm_sample",
+          "Native_ms": 8948,
+          "runtime_ms": 32387,
+          "Reader_finish_registry_ms": 5042,
+          "Reader_remaining_ms": -41,
+          "Reader_guard_calls": 120,
+          "Reader_guard_ms": 4691,
+          "stable_guard_calls": 30,
+          "stable_guard_ms": 19682,
+          "node_executable_ms": 6469,
+          "final_sources_ms": 9636,
+          "original_reader_ms": 5000,
+          "original_sample_ms": 15000
+        }
+      },
+      "current_candidate_genuine_acceptance": false,
+      "remaining_original_actions": [
+        "Role-configured optimization retest and original optimization generation/apply/comparison.",
+        "Original device file/permission/application/Office action adapters beyond inventory/pairing/recovery.",
+        "Other original launchers and same-page end-to-end acceptance; optional Role/AB real SQL/mTLS verification."
+      ],
+      "formal_cutover_remaining": [
+        "strict069 qualification with original deadlines and all8 kinds/Final14 serial pool1",
+        "target environment/network/version confirmation",
+        "target backup/restore and rollback rehearsal",
+        "long-running Worker validation",
+        "real employee UAT and signoff"
+      ],
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 28144,
+        "retained_prior_pins": 20469,
+        "retained_last_uncommitted_pins": 27994,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      },
+      "root_followup_verification": {
+        "safe_direct_test_files": 108,
+        "distinct_cases_accounted": 3147,
+        "original_failed_cases_fixed": 34,
+        "skip": 0,
+        "cancel": 0,
+        "Staff_targeted_pure": 112,
+        "Role_AB_SQL_guard_pure": 15,
+        "Role_AB_SQL_story_count_authored": 17,
+        "Role_AB_SQL_executed": false,
+        "default_and_optin_preflight_actual_collector_cases": 6,
+        "default_package_excludes_optional_profile": true,
+        "API_types_exit": 0,
+        "frontend_types_exit": 0,
+        "original_Vite_build_exit": 0,
+        "current_hosted_verification_pending": true,
+        "production_GO": false
+      }
     }
   },
   "qualifying24h_hours": 0,

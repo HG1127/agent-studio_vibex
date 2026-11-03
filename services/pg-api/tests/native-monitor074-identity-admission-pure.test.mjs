@@ -31,7 +31,7 @@ test('duplicate raw header is rejected, even if an upstream normalized it to one
  await http(req(base+'/collector-schedules',{rawHeaders:['X-AgentStudio-Expected-Employee',a,'x-agentstudio-expected-employee',a]}),out);assert.equal(out.status,400)
 })
 test('actual repository maps Native identity to real owner and rejects mismatched employee before catalog/business reads',async()=>{
- const trace=[],db={query:async(sql,params=[])=>{trace.push({sql,params});if(sql.includes('identity_user_id'))return{rows:[{id:b}]};if(sql.startsWith('BEGIN')||sql.startsWith('SET LOCAL')||sql.startsWith('SELECT set_config')||sql==='ROLLBACK')return{rows:[]};assert.fail('unexpected business/catalog query '+sql)},release(){}}
+ const trace=[],db={query:async(sql,params=[])=>{trace.push({sql,params});if(sql==="SELECT to_regnamespace('agentstudio_roles') IS NOT NULL AS installed,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid")return{rows:[{installed:false,database_oid:'16384'}]};if(sql.includes('identity_user_id'))return{rows:[{id:b}]};if(sql.startsWith('BEGIN')||sql.startsWith('SET LOCAL')||sql.startsWith('SELECT set_config')||sql==='ROLLBACK')return{rows:[]};assert.fail('unexpected business/catalog query '+sql)},release(){}}
  const repository=new NativeMonitorLiveRepository({connect:async()=>db})
  await assert.rejects(repository.schedules(identity,a),e=>e.status===409&&e.code==='employee_session_changed')
  assert(trace.some(r=>r.sql.includes('identity_user_id')&&r.params[1]===identity.subject));assert(trace.some(r=>r.sql==='ROLLBACK'))

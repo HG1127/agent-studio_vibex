@@ -84,6 +84,10 @@ export function createPgNativeDurableRunSession<TDraft extends object,TResult ex
     setActive(value:boolean){if(closed)return;active=value;if(value)void refresh();else{++ticket;update({loading:false,detail:null,runs:[]})}},
     refresh,
     poll(){return selected&&!state.busy&&!state.loading&&!state.pendingSubmit&&!state.pendingMutation&&!state.pendingHumanResponse&&!state.pendingRunControl?refresh(selected,true):Promise.resolve()},
+    clearSelection(){
+      if(closed||!active||state.busy||state.loading||state.pendingSubmit||state.pendingMutation||state.pendingHumanResponse||state.pendingRunControl||flight||state.detail&&!terminal.has(state.detail.run.status))return false
+      ++ticket;selected=null;originalTarget=null;update({detail:null,error:'',notice:''});return true
+    },
     select(id:string){if(!uuid.test(id)||state.busy||state.pendingSubmit||state.pendingMutation||state.pendingHumanResponse||state.pendingRunControl)return Promise.resolve();originalTarget=null;return refresh(id)},
     async selectOriginal(target:OwnTaskRunTarget){
       if(closed||!active||!isOwnTaskTarget(target)||state.busy||state.pendingSubmit||state.pendingMutation||state.pendingHumanResponse||state.pendingRunControl)return false

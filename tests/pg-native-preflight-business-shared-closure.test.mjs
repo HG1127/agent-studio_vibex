@@ -27,11 +27,23 @@ test('the actual Native collector resolves original business interaction and opt
   assert(c.included.has('shared/original-staff-contract.mjs'));c.includeSource('shared/original-staff-contract.d.mts');assert(c.included.has('shared/original-staff-contract.d.mts'))
  for(const name of ['008_claim_workflow_v2.sql','009_claim_autonomous_agent.sql'])assert(c.included.has('db/postgres/'+name),name)
  assert.deepEqual([...c.foundExternals].sort(),['ajv','jszip','mammoth','pdfjs-dist','pg'])
+  for(const p of ["shared/native-guided-contract.mjs","shared/original-agent-quality-contract.ts","shared/original-agent-run-options.ts","shared/original-role-execution-contract.mjs","shared/original-skill-ab-contract.ts","shared/original-skill-ab-execution-contract.ts","shared/skill-ab-compare.ts"])assert(c.included.has(p),p)
  assert(!c.visited.has('services/pg-api/src/pg18-employee-ui078-source.mjs'))
 })
 test('the default Native bundle still refuses arbitrary shared files, SQL and traversal',()=>{
  const c=collector()
-  for(const p of ['shared/unreviewed-contract.ts','shared/other-original.ts','shared/original-staff-private.ts','shared/original-staff-contract-private.mjs','shared/../.env','/shared/business-schemas.mjs','db/postgres/001_stage_schema.sql','db/postgres/010_unreviewed.sql','db/postgres/../postgres/008_claim_workflow_v2.sql','db/postgres/migrations/pg_v9_084_original_staff.sql'])assert.throws(()=>c.validatedPath(p),/native_preflight_bundle_refused/)
+  for(const p of ['shared/unreviewed-contract.ts','shared/original-agent-run-options-private.ts','shared/native-guided-private.mjs','shared/other-original.ts','shared/original-staff-private.ts','shared/original-staff-contract-private.mjs','shared/../.env','/shared/business-schemas.mjs','db/postgres/001_stage_schema.sql','db/postgres/010_unreviewed.sql','db/postgres/../postgres/008_claim_workflow_v2.sql','db/postgres/migrations/pg_v9_084_original_staff.sql'])assert.throws(()=>c.validatedPath(p),/native_preflight_bundle_refused/)
+})
+test('the explicitly selected employee bundle includes the real additive profile modules while default remains closed',()=>{
+  const defaultBundle=collector(),employeeBundle=collector()
+  defaultBundle.includeSource('services/pg-api/src/native-server.ts')
+  employeeBundle.includeSource('services/pg-api/src/native-server.ts',true)
+  for(const name of ['pg18-employee-ui078-source.mjs','employee-staff084-source.mjs','employee-staff084-profile.mjs','employee-quality089-source.mjs','employee-quality089-profile.mjs']){
+    assert(!defaultBundle.visited.has('services/pg-api/src/'+name),name+' stays opt-in')
+    assert(employeeBundle.visited.has('services/pg-api/src/'+name),name+' must be packaged after explicit selection')
+  }
+  assert(!defaultBundle.foundExternals.has('typescript'))
+  assert(employeeBundle.foundExternals.has('typescript'))
 })
 test('both existing Worker SQL assets accept their actual committed LF bytes as checked data',()=>{
  for(const name of ['008_claim_workflow_v2.sql','009_claim_autonomous_agent.sql']){

@@ -4,6 +4,7 @@ import path from'node:path'
 import{fileURLToPath}from'node:url'
 import{isBuiltin}from'node:module'
 import{createHash}from'node:crypto'
+import {isUtf8} from 'node:buffer'
 import{captureCompleteProfileSources,assertCompleteProfileSnapshot,assertCompleteProfileDeployment}from'./pg18-complete-profile-source.mjs'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..'),captured=new WeakSet(),sha=b=>createHash('sha256').update(b).digest('hex'),fail=()=>{throw Error('complete069_plan_workflow_source_refused')}
 export const complete069PlanWorkflowModules=Object.freeze(['plan','sources','predecessor-plan','predecessors','catalog','journal','core','cli'].map(n=>'services/pg-api/src/pg18-complete-plan-workflow-'+n+'.mjs'))
@@ -12,7 +13,7 @@ function sourceBytes(name,deployment=false){
  if(typeof name!=='string'||! /^(?:services\/pg-api\/src|shared|docs|ops\/templates)\/[A-Za-z0-9_./-]+$/.test(name)||name.split('/').some(p=>!p||p==='.'||p==='..'))fail()
  let at=root;for(const part of name.split('/')){const parent=fs.lstatSync(at);if(parent.isSymbolicLink()||!parent.isDirectory()||deployment&&(parent.uid!==0||parent.gid!==0||(parent.mode&0o022)!==0))fail();at=path.join(at,part)}
  const s=fs.lstatSync(at);if(!s.isFile()||s.isSymbolicLink()||s.nlink!==1||s.size<1||s.size>16*1024*1024||fs.realpathSync(at)!==at||deployment&&(s.uid!==0||s.gid!==0||(s.mode&0o222)!==0))fail()
- const b=fs.readFileSync(at),t=fs.lstatSync(at);for(const k of['dev','ino','size','mtimeMs','ctimeMs','mode','uid','gid'])if(s[k]!==t[k])fail();if(b.includes(0)||!Buffer.from(b.toString('utf8')).equals(b))fail();return b
+ const b=fs.readFileSync(at),t=fs.lstatSync(at);for(const k of['dev','ino','size','mtimeMs','ctimeMs','mode','uid','gid'])if(s[k]!==t[k])fail();if(b.includes(0)||!isUtf8(b))fail();return b
 }
 const freeze=v=>{if(v&&typeof v==='object'){for(const x of Object.values(v))freeze(x);Object.freeze(v)}return v}
 export async function captureComplete069PlanWorkflowSources(){

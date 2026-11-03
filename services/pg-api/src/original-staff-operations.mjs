@@ -3,7 +3,7 @@
 import {createHash,randomUUID} from 'node:crypto'
 import {staffExpectedOwner,parseOriginalStaffMutation,originalStaffPublicChoice,originalStaffEmployee,originalStaffListResult,originalStaffReceiptResult} from '../../../shared/original-staff-contract.mjs'
 import {NATIVE_LOCAL_ISSUER,hashOpaqueSession,hashEmployeePassword,verifyEmployeePassword} from './native-employee-auth.mjs'
-import {verifyOriginalStaff084Schema} from './original-staff-audit084.mjs'
+import {verifyOriginalStaffCompatible084Schema} from './original-staff-compatible084-audit.mjs'
 const fail=code=>{throw Error(code)},one=rows=>{if(!Array.isArray(rows)||rows.length!==1)fail('original_staff_state_unavailable');return rows[0]}
 export const staffStamp=field=>`to_char(${field} AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
 export const staffProfileColumns=`u.id,a.email,u.display_name,a.is_admin,a.enabled,u.status,a.share_enabled,a.staff_revision,a.governance_revision,${staffStamp('u.created_at')} AS created,${staffStamp('a.updated_at')} AS updated`
@@ -19,7 +19,7 @@ export async function verifyOriginalStaffSession(db,token,expectedOwner,{admin=t
  if(admin&&row.is_admin!==true)fail('admin_required')
  return owner
 }
-export async function authorizeOriginalStaff(db,token,expectedOwner,admin=true){await verifyOriginalStaff084Schema(db);return verifyOriginalStaffSession(db,token,expectedOwner,{admin})}
+export async function authorizeOriginalStaff(db,token,expectedOwner,admin=true){await verifyOriginalStaffCompatible084Schema(db);return verifyOriginalStaffSession(db,token,expectedOwner,{admin})}
 export async function readOriginalStaffSelf(db,token,expectedOwner){const owner=await authorizeOriginalStaff(db,token,expectedOwner,false);const row=one((await db.query(`/* original-staff:self */ SELECT ${staffProfileColumns} FROM agentstudio_auth.accounts a JOIN agentstudio.users u ON u.id=a.user_id WHERE a.user_id=$1::uuid AND u.external_issuer=$2`,[owner,NATIVE_LOCAL_ISSUER])).rows);return{user:readProfile(row)}}
 export const staffListSQL=`/* original-staff:list */ WITH inventory AS MATERIALIZED(
  SELECT u.id,a.email,u.display_name,CASE WHEN a.is_admin THEN 'admin' ELSE 'employee' END AS role,a.enabled AND u.status='active' AS active,a.share_enabled,a.staff_revision AS revision,a.governance_revision,${staffStamp('u.created_at')} AS created,${staffStamp('a.updated_at')} AS updated,u.created_at AS ordered
@@ -44,7 +44,7 @@ async function recordReceipt(db,actor,choice,profile,revoked,passwordRecord,befo
 export async function writeOriginalStaff(db,token,expectedOwner,action,target,raw){
  const choice=parseOriginalStaffMutation(action,target,raw),hash=originalStaffFingerprint(choice)
  await db.query('SELECT pg_advisory_xact_lock(61824,20261048)')
- await verifyOriginalStaff084Schema(db)
+ await verifyOriginalStaffCompatible084Schema(db)
  const actor=await verifyOriginalStaffSession(db,token,expectedOwner,{admin:true,locked:true})
  const prior=(await db.query(staffReceiptSQL,[actor,choice.request_id])).rows;if(!Array.isArray(prior)||prior.length>1)fail('original_staff_state_unavailable')
  if(prior.length){if(prior[0].actor_user_id!==actor)fail('original_staff_state_unavailable');matchesReceipt(prior[0],choice,hash);const secret=(await db.query('/* original-staff:private-repeat */ SELECT password_record FROM agentstudio_auth.original_staff_password_requests WHERE actor_user_id=$1::uuid AND request_id=$2::uuid',[actor,choice.request_id])).rows

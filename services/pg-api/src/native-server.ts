@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import {selectOriginalRunOptions} from './original-agent-run-options-runtime.ts'
+import {inspectNativeEmployeeStaff084Profile,selectNativeEmployeeStaff084Profile,createStaffCompositeNativeAuthRepository,inspectStaffCompositeReleaseSchema} from './native-employee-staff084-profile.mjs'
+import {prepareOriginalRoleExecutionPool} from './original-role-ui-policy.ts'
+import {prepareOriginalRoleUiRuntime} from './original-role-ui-runtime.ts'
 import {prepareOriginalStaffRuntime} from './original-staff-runtime.mjs'
 import {inspectNativeEmployeeUi078Profile} from './native-employee-ui078-profile.ts'
 import {prepareOrdinaryCaseRuntime} from './native-ordinary-case-runtime.ts'
@@ -10,6 +14,8 @@ import {createModelConfigReceiptHttp} from './model-config-receipt-http.ts'
 import {ModelDraftProbeRepository} from './model-draft-probe-repository.ts'
 import {createModelDraftProbeHttp} from './model-draft-probe-http.ts'
 import {createNativeEntryHttpHandler} from './native-entry-http.ts'
+import {prepareOriginalAgentQuality} from './original-agent-quality-runtime.ts'
+import {inspectOriginalQuality089Startup} from './original-quality089-audit.ts'
 import {prepareNativeHomeAgentSpecs} from './native-home-agent-specs-runtime.ts'
 import {inspectOptionalNativeHomeAuthoringSchema} from './native-home-authoring-audit.ts'
 import {prepareNativeAgentCatalog} from './native-agent-catalog-runtime.ts'
@@ -20,6 +26,10 @@ import {selectNativeLocalDevices} from './native-local-device-runtime-policy.ts'
 import {inspectNativeLocalDevicePool} from './native-local-device-audit.ts'
 import {NativeLocalDeviceRepository,NativeLocalExecutorRepository} from './native-local-device-repository.ts'
 import {createNativeLocalDeviceHttp} from './native-local-device-http.ts'
+import {createNativeGuidedHttp} from './native-guided-http.ts'
+import {NativeGuidedOwnerRepository,NativeGuidedExecutorRepository} from './native-guided-repository.ts'
+import {selectNativeGuidedPairing} from './native-guided-runtime-policy.ts'
+
 import {AgentCallerRepository} from './agent-caller-repository.ts'
 import {createAgentCallerOwnerHttp,createAgentCallerPublicHttp} from './agent-caller-http.ts'
 import {selectNativeAgentCallerCapabilities,inspectAgentCallerPool} from './agent-caller-native-policy.ts'
@@ -368,6 +378,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
   const templateMarket=selectNativeAgentTemplateMarketCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
   const internalShare=selectNativeInternalShareCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
   const localDevices=selectNativeLocalDevices(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
+  const guidedPairing=selectNativeGuidedPairing(env,localDevices)
   const approvalDelegation=selectApprovalDelegationCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
   const agentCallers=selectNativeAgentCallerCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites,capabilities.autonomousAgentUat===true)
   const ownerToolHub=selectOwnerToolHubCapabilities(env,{listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,workflowV2ExecutionUat:capabilities.workflowV2ExecutionUat===true})
@@ -407,10 +418,12 @@ export async function startNativePg18Server(env=process.env,listen=true){
   authPool.on("error",()=>{})
   brokerPool?.on("error",()=>{})
   let server:ReturnType<typeof createServer>|undefined
+  let roleUiClose:(()=>void)|undefined
   try{
+    await prepareOriginalRoleExecutionPool(business,env)
     await verifyPgRuntimeTarget(business,cfg.api)
     await verifyDatabaseRole(business)
-    await inspectNativeEmployeeUi078Profile(business,env)
+    if(!await inspectNativeEmployeeStaff084Profile(business,adapter(authPool),env)){if(env.AGENT_STUDIO_PG18_EMPLOYEE_UI_PROFILE==='complete069-employee-ui-quality089'){const {inspectNativeEmployeeQuality089Profile}=await import('./native-employee-quality089-profile.mjs');await inspectNativeEmployeeQuality089Profile(business,env)}else await inspectNativeEmployeeUi078Profile(business,env)}
     if(localDevices.available){if(!localExecutorPool)throw Error("native_local_executor_credentials_required");await inspectNativeLocalDevicePool(business,"agentstudio_api");await inspectNativeLocalDevicePool(adapter(localExecutorPool),"agentstudio_local_executor")}
     const verifiedActiveAdmins=await verifyNativeAuthService(adapter(authPool))
     if(brokerPool){
@@ -468,7 +481,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const originalStaff=await prepareOriginalStaffRuntime({pool:adapter(authPool),env,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,employeeProvisioning:capabilities.employeeProvisioning,listen})
     const employeeGovernanceAvailable=originalStaff!==null||await inspectEmployeeGovernanceSchema(business)
     const collaborationAvailable=await inspectAgentCollaborationSchema(business)
-    const releasesAvailable=await inspectAgentReleaseSchema(business)
+    const releasesAvailable=selectNativeEmployeeStaff084Profile(env)?await inspectStaffCompositeReleaseSchema(business,adapter(authPool),env):env.AGENT_STUDIO_PG18_EMPLOYEE_UI_PROFILE==='complete069-employee-ui-quality089'?await (await import('./native-employee-quality089-profile.mjs')).inspectNativeQuality089ReleaseSchema(business,env):await inspectAgentReleaseSchema(business)
     const humanInputAvailable=await inspectAgentHumanInputSchema(business)
     const memoryAvailable=await inspectAgentMemorySchema(business),memoryContextAvailable=await inspectAgentMemoryContextSchema(business)
     const derivedMemoryAvailable=await inspectAgentMemoryDerivedSchema(business)
@@ -509,6 +522,9 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(agentCallers.available)await inspectAgentCallerPool(business)
     // Optional070 integrity is required before the no-listen preflight return.
     // The HTTP facade is prepared later, after real Native authentication exists.
+    const originalQualityFlag=env.AGENT_STUDIO_PG18_ORIGINAL_QUALITY_ENABLED
+    if(originalQualityFlag!==undefined&&originalQualityFlag!=='true')throw Error('unsafe_original_quality_config')
+    if(originalQualityFlag==='true')await inspectOriginalQuality089Startup(business)
     const originalHomeFlag=env.AGENT_STUDIO_PG18_ORIGINAL_HOME_ENABLED
     if(originalHomeFlag!==undefined&&originalHomeFlag!=='true')throw Error('unsafe_original_home_config')
     const originalHomeSchema=await inspectOptionalNativeHomeAuthoringSchema(business)
@@ -519,6 +535,8 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const agentCatalog=await prepareNativeAgentCatalog({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,allowMonitorBusinessSpecs:monitorLive!==null})
     const originalMonitorInbox=await prepareNativeMonitorInbox({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin})
     await inspectOriginalHomeKnowledgeStatisticsStartup({pool:business,env,allowedOrigin:cfg.allowedOrigin})
+    const originalRunOptionsEnabled=selectOriginalRunOptions(env)
+    if(originalRunOptionsEnabled&&(!capabilities.configurationWrites||!capabilities.autonomousAgentUat))throw Error('original_run_options_runtime_not_approved')
     const modelConnections=new ModelConnectionRepository(business,modelEncryptionKey,brokerPool?adapter(brokerPool):business)
     const modelConfigReceipts=await prepareModelConfigReceipts075After069({models:modelConnections,configurationWrites:capabilities.configurationWrites,env})
     if(!listen){
@@ -529,7 +547,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
         writes_performed:false,port_opened:false,
         workers_started:false,production_cutover_allowed:false}
     }
-    const auth=new NativeAuthRepository(adapter(authPool))
+    const auth=selectNativeEmployeeStaff084Profile(env)?await createStaffCompositeNativeAuthRepository(adapter(authPool),env):new NativeAuthRepository(adapter(authPool))
     // One actual component per Native service; all HTTP reads share its H3
     // guard and capacity reservations. Construction performs no I/O.
     const companyWorkerHeartbeats=new NativeCompanyWorkerHeartbeats(adapter(authPool))
@@ -537,9 +555,10 @@ export async function startNativePg18Server(env=process.env,listen=true){
       component:companyWorkerHeartbeats,allowedOrigin:cfg.allowedOrigin,enabled:companyWorkerHeartbeatsEnabled,
     })
     const modelDraftProbe=new ModelDraftProbeRepository(business,brokerPool?adapter(brokerPool):business,modelEncryptionKey,{configurationWrites:capabilities.configurationWrites,modelProbeUat:capabilities.modelProbeUat})
+    const autonomousAgentRuns=(ordinaryCase?.repository({allowOriginalRunOptions:originalRunOptionsEnabled,allowLocalDevices:localDevices.available,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable,allowMemory:capabilities.agentMemoryUat===true,allowOutcomeMemory:capabilities.configurationWrites===true&&capabilities.agentOutcomeMemoryUat===true,allowOptimizationRetest:optimizationAvailable&&capabilities.configurationWrites===true&&capabilities.agentOptimizationUat===true&&capabilities.autonomousAgentUat===true})??new AutonomousAgentRunRepository(business,{allowOriginalRunOptions:originalRunOptionsEnabled,allowLocalDevices:localDevices.available,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable,allowMemory:capabilities.agentMemoryUat===true,allowOutcomeMemory:capabilities.configurationWrites===true&&capabilities.agentOutcomeMemoryUat===true,allowOptimizationRetest:optimizationAvailable&&capabilities.configurationWrites===true&&capabilities.agentOptimizationUat===true&&capabilities.autonomousAgentUat===true}))
     const originalInteraction=releasesAvailable?new OriginalRunInteractionRepository(business,{writes:capabilities.configurationWrites===true&&capabilities.autonomousAgentUat===true,allowHumanInput:humanInputAvailable,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowMemory:capabilities.agentMemoryUat===true}):null
     let businessHandler:ReturnType<typeof createHandler>|undefined
-    const native=createNativeAuthHttpHandler({auth,allowedOrigin:cfg.allowedOrigin,originalRunInteractionProtocol:originalInteraction?.originalInteractionProtocol,
+    const native=createNativeAuthHttpHandler({auth,allowedOrigin:cfg.allowedOrigin,originalRunOptionsProtocol:Object.getOwnPropertyDescriptor(autonomousAgentRuns,'originalRunOptionsProtocol')?.value,originalRunInteractionProtocol:originalInteraction?.originalInteractionProtocol,
       allowOwnerToolHub:ownerToolHub.available,allowOwnerToolTrials:ownerToolHub.trials,allowPublicMcpRegistry:ownerToolHub.registry,
       allowOwnOperations:ownOperationsAvailable,
       allowCompanyOverview:companyOverviewAvailable,
@@ -630,7 +649,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       // policy independently gates queue submissions behind explicit UAT.
       workflowSafeRunRepository:new WorkflowSafeRunRepository(business),
       ...(originalInteraction?{originalRunInteractionRepository:originalInteraction}:{}),
-      autonomousAgentRunRepository:(ordinaryCase?.repository({allowLocalDevices:localDevices.available,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable,allowMemory:capabilities.agentMemoryUat===true,allowOutcomeMemory:capabilities.configurationWrites===true&&capabilities.agentOutcomeMemoryUat===true,allowOptimizationRetest:optimizationAvailable&&capabilities.configurationWrites===true&&capabilities.agentOptimizationUat===true&&capabilities.autonomousAgentUat===true})??new AutonomousAgentRunRepository(business,{allowLocalDevices:localDevices.available,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable,allowMemory:capabilities.agentMemoryUat===true,allowOutcomeMemory:capabilities.configurationWrites===true&&capabilities.agentOutcomeMemoryUat===true,allowOptimizationRetest:optimizationAvailable&&capabilities.configurationWrites===true&&capabilities.agentOptimizationUat===true&&capabilities.autonomousAgentUat===true})),
+      autonomousAgentRunRepository:autonomousAgentRuns,
       workflowV2RunRepository:originalWorkflowV2Runs,
       ...(humanInputAvailable?{agentHumanInputRepository:new AgentHumanInputRepository(business,"agent_native_v2",{allowResponses:capabilities.configurationWrites===true&&capabilities.autonomousAgentUat===true}),
         workflowHumanInputRepository:new AgentHumanInputRepository(business,"workflow_native_v2",{allowResponses:capabilities.configurationWrites===true&&capabilities.workflowV2ExecutionUat===true})}:{}),
@@ -687,6 +706,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     }):null
     const agentPlanWorkflowHttp=agentPlanWorkflow.createHandler(native.authenticateRequest)
     const localDevicesHttp=localDevices.available&&localExecutorPool?createNativeLocalDeviceHttp({repository:new NativeLocalDeviceRepository(business,{allowWrites:localDevices.writes}),executor:new NativeLocalExecutorRepository(adapter(localExecutorPool)),authenticateRequest:native.authenticateRequest,allowedOrigin:cfg.allowedOrigin,allowWrites:localDevices.writes}):null
+    const guidedHttp=guidedPairing&&localExecutorPool?createNativeGuidedHttp({repository:new NativeGuidedOwnerRepository(business,{allowWrites:localDevices.writes}),executor:new NativeGuidedExecutorRepository(adapter(localExecutorPool)),authenticateRequest:native.authenticateRequest,allowedOrigin:cfg.allowedOrigin,allowWrites:localDevices.writes}):null
     const callerRepository=agentCallers.available?new AgentCallerRepository(business,{enabled:true,allowAdmission:agentCallers.runs,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}):null
     const callerOwnerHttp=callerRepository?createAgentCallerOwnerHttp({repository:callerRepository,authenticateRequest:native.authenticateRequest,allowedOrigin:cfg.allowedOrigin,allowWrites:agentCallers.writes,allowAdmission:agentCallers.runs}):null
     const callerPublicHttp=callerRepository?createAgentCallerPublicHttp({repository:callerRepository}):null
@@ -703,6 +723,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       // The design handler owns fixed routes and repeats Native cookie/Origin/CSRF
       // and original-receipt gates, including recovery after new writes turn off.
       if(localDevicesHttp&&await localDevicesHttp(req,res))return
+      if(guidedHttp&&await guidedHttp(req,res))return
       if(agentPlanWorkflowHttp&&await agentPlanWorkflowHttp(req,res))return
       if(agentDesignHttp&&await agentDesignHttp(req,res))return
       if(templateMarketHttp&&await templateMarketHttp(req,res))return
@@ -712,6 +733,11 @@ export async function startNativePg18Server(env=process.env,listen=true){
       if(await companyWorkerHeartbeatsHttp(req,res))return
       await guardedBusinessHandler(req,res)
     }
+    const originalQualityHttp=await prepareOriginalAgentQuality({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,authenticateRequest:native.authenticateRequest})
+    if(originalQualityHttp){const qualityFallback=businessHandler;businessHandler=async(req,res)=>{if(await originalQualityHttp(req,res))return;await qualityFallback(req,res)}}
+    const roleUi=await prepareOriginalRoleUiRuntime({pool:business,env,listen,configurationWrites:capabilities.configurationWrites,autonomousSubmission:capabilities.autonomousAgentUat===true,humanInput:humanInputAvailable,allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest})
+    roleUiClose=roleUi?.close
+    if(roleUi){const fallback=businessHandler;businessHandler=async(req,res)=>{if(await roleUi.handler(req,res))return;await fallback(req,res)}}
     const originalHomeHttp=await prepareNativeHomeAgentSpecs({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,allowNativeLocalAgentSpecs:localDevices.available,allowMonitorBusinessSpecs:monitorLive!==null,authenticateRequest:native.authenticateRequest})
     if(originalHomeHttp){
       const originalHomeFallback=businessHandler
@@ -764,6 +790,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const shutdown=()=>{
       if(shuttingDown)return
       shuttingDown=true
+      roleUiClose?.()
       localServer.close(()=>{
         void Promise.all([businessPool.end(),authPool.end(),
           ...(brokerPool?[brokerPool.end()]:[]),...(localExecutorPool?[localExecutorPool.end()]:[])])
@@ -774,6 +801,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     process.once("SIGINT",shutdown)
     return {server:localServer,shutdown}
   }catch(error){
+    roleUiClose?.()
     if(server?.listening)server.close()
     await Promise.allSettled([businessPool.end(),authPool.end(),
       ...(brokerPool?[brokerPool.end()]:[]),...(localExecutorPool?[localExecutorPool.end()]:[])])

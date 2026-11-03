@@ -13,10 +13,13 @@ import {checkedWorkflowV2StoredState,verifyWorkflowV2Snapshot,auditWorkflowV2,
 import {inspectWorkflowV2Checkpoint} from "./workflow-v2-machine.ts"
 import {safeWorkflowV2ModelRequest,type WorkflowV2ModelRequest} from "./workflow-v2-model-contract.ts"
 import {currentKnowledgeObservations} from "./knowledge-observation-policy.ts"
+import {originalRoleProfileEnabled} from './original-role-profile.ts'
+import {verifyOriginalRoleState} from './original-role-history.ts'
+import {verifyOriginalRoleReplayOnClient} from './original-role-skill-policy.ts'
 export type WorkflowDispatchKind="model"|"tool"
 const functions={model:"workflow_model_lease_identity",tool:"workflow_tool_lease_identity"} as const
 function changed(kind:WorkflowDispatchKind):never{throw new HttpError(409,"workflow_"+kind+"_state_changed")}
-export async function verifyWorkflowEffectLease(db:SqlClient,owner:string,request:WorkflowV2ModelRequest,kind:WorkflowDispatchKind,allowAgent=false,allowAutonomous=false,allowMemory=false,allowNativeLocal=false,allowCallers=false,allowMonitorBusiness=false,allowOrdinaryCase=false){
+export async function verifyWorkflowEffectLease(db:SqlClient,owner:string,request:WorkflowV2ModelRequest,kind:WorkflowDispatchKind,allowAgent=false,allowAutonomous=false,allowMemory=false,allowNativeLocal=false,allowCallers=false,allowMonitorBusiness=false,allowOrdinaryCase=false,allowOriginalRoles=false){
   const root=durableV2Root(request.execution_mode??"workflow_native_v2")
   if(root.kind==="agent"&&(!allowAutonomous||!request.parent_step_key))changed(kind)
   const c=request.claim
@@ -42,6 +45,13 @@ export async function verifyWorkflowEffectLease(db:SqlClient,owner:string,reques
   if(state.agent_state?.local_device&&(!allowNativeLocal||root.kind!=="agent"))changed(kind)
   if(state.execution_mode!==root.mode||state.stage!==root.stage+"effect_started"||run[root.id]!==job.payload[root.id]||
      state[root.revision]!==Number(job.payload[root.revision])||state.machine.graph_sha256!==job.payload.graph_sha256)changed(kind)
+  // Role profile is independent: existing callers/default Brokers cannot dispatch it.
+  allowOriginalRoles=originalRoleProfileEnabled(db)
+  await verifyOriginalRoleState(db,owner,c.run_id,state.role_run,state.agent_state)
+  if(state.agent_state?.role_pin&&root.kind!=='agent')changed(kind)
+  if(root.kind==='agent'&&(allowOriginalRoles||state.agent_state?.role_pin)){
+    await verifyOriginalRoleReplayOnClient(db,owner,c.run_id,state.agent_state,allowOriginalRoles)
+  }
   await verifyWorkflowV2Snapshot(db,owner,run,state)
   if(state.agent_state?.local_device){
     const row=(await db.query<{value:unknown}>("SELECT agentstudio.native_local_run_binding($1::uuid) AS value",[c.run_id])).rows

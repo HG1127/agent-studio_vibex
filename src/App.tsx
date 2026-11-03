@@ -16,6 +16,7 @@ const PG_NATIVE_LOCAL_ONLY=import.meta.env.DEV &&
   import.meta.env.VITE_AGENT_STUDIO_PG_NATIVE_LOCAL_UI_ENABLED === "true"
 const PgNativePilotRoute=PG_NATIVE_LOCAL_ONLY
   ?lazy(()=>import("./pages/PgNativePilot/PgNativePilotPage.tsx")):null
+const OriginalSkillsRoute=import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED==='true'&&import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_ROLES_UI_ENABLED==='true'?lazy(()=>import('./pages/Skills/SkillsPage.tsx')):null
 const HomeRoute = lazy(() => import("./pages/Home/index.tsx"))
 const AgentCreateRoute = lazy(() => import("./pages/AgentCreate/AgentCreatePage.tsx"))
 const InternalOverviewRoute = lazy(() => import("./pages/InternalOverview/index.tsx"))
@@ -92,6 +93,7 @@ function App() {
       <Route path="/login" element={<LoginRoute />} />
       <Route element={<AuthGate />}>
         <Route path="/" element={<HomeRoute />} />
+        {OriginalSkillsRoute&&<Route path="/skills" element={<OriginalSkillsRoute/>}/>}
         <Route path="/agent-create" element={<AgentCreateRoute />} />
         <Route path="/internal-templates" element={<InternalTemplatesRoute />} />
         <Route path="/agent-collaboration" element={<AgentCollaborationRoute />} />

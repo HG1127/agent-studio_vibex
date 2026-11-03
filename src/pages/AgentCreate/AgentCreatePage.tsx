@@ -173,7 +173,7 @@ export default function AgentCreateRoute() {
 
   const editorProps = p.spec ? {
     spec:p.spec,specName:p.specName,sourceMode:p.sourceMode,
-    onSpecNameChange:p.setSpecName,onTextChange:p.updateSpecText,
+    onSpecChange:p.replaceRoleSpec,onSpecNameChange:p.setSpecName,onTextChange:p.updateSpecText,
     onTogglePlanReview:p.togglePlanReview,
     onListItemChange:p.updateSpecListItem,onListItemAdd:p.addSpecListItem,
     onListItemRemove:p.removeSpecListItem,toolStatusOf:p.toolStatusOf,

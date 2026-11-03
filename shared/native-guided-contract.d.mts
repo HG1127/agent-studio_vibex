@@ -1,0 +1,14 @@
+export const guidedOwnerRoute:string
+export const guidedExecutorRoute:string
+export type GuidedScope={name:string;mode:'files'|'browser'|'both';origins:string[]}
+export type GuidedIntent={action:'create'|'renew';request_id:string;name:string;pairing_code:string;id?:string}
+export type GuidedReply={receipt:{request_id:string;request_sha256:string;action:'create'|'renew';id:string;expires_ms:number};replayed:boolean}
+export type GuidedPair={id:string;owner_request_id:string;request_id:string;pairing_code:string;device_token:string}
+export type GuidedPublicTicket=GuidedScope&{format:'agent-studio-connect-v1';backend:'native_pg';server:string;pairing:{id:string;code:string;expiresAt:number}}
+export function guidedServer(raw:unknown):string
+export function guidedScope(raw:unknown):GuidedScope
+export function guidedIntent(raw:unknown):GuidedIntent
+export function guidedReply(raw:unknown,intent:unknown):Promise<GuidedReply>
+export function guidedPair(raw:unknown):GuidedPair
+export function guidedPublicTicket(raw:unknown,now?:number,options?:{allowExpired?:boolean}):GuidedPublicTicket
+export function publicGuidedTicket(raw:unknown):GuidedPublicTicket

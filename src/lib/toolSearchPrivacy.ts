@@ -36,12 +36,47 @@ export function safeMarketplaceQuery(raw: string):string {
 /** Return context is an opaque, owner-scoped record id, never a raw redirect URL. */
 export function safeAgentSpecId(value:string):string {
   const id=String(value||"").trim()
-  return /^[A-Za-z0-9]{15}$/.test(id)?id:""
+  return /^(?:[A-Za-z0-9]{15}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i.test(id)?id:""
 }
 export function addReturnAgentToUrl(path:string,specId:string):string {
   const id=safeAgentSpecId(specId)
   if(!id)return path
   return path+(path.includes("?")?"&":"?")+"returnSpec="+id
+}
+
+/** Original resource setup preserves only bounded IDs, never requirements. */
+export function safeCapabilityId(value:string):string {
+  const id=String(value||"").trim()
+  return /^[A-Za-z0-9_-]{1,60}$/.test(id)?id:""
+}
+
+export function agentResourceSetupUrl(path:string,specId="",capabilityId=""):string {
+  const internalPath=path.startsWith("/")&&!path.startsWith("//")?path:"/tool-connections"
+  const url=new URL(internalPath,"https://agent-studio.invalid")
+  url.searchParams.set("agentSetup","1")
+  const id=safeAgentSpecId(specId)
+  if(id)url.searchParams.set("returnSpec",id)
+  else url.searchParams.delete("returnSpec")
+  const capability=safeCapabilityId(capabilityId)
+  if(capability)url.searchParams.set("returnCapability",capability)
+  else url.searchParams.delete("returnCapability")
+  return url.pathname+url.search+url.hash
+}
+
+/** A saved-version link is distinct from the unsaved draft in the original tab. */
+export function agentResourceReturnContext(params:URLSearchParams) {
+  const specId=safeAgentSpecId(params.get("returnSpec")||"")
+  const capabilityId=safeCapabilityId(params.get("returnCapability")||"")
+  const fromAgent=params.get("agentSetup")==="1"||Boolean(specId)
+  const query=new URLSearchParams({spec:specId,step:"3"})
+  if(capabilityId)query.set("focusCapability",capabilityId)
+  return {fromAgent,specId,capabilityId,savedAgentUrl:specId?"/agent-create?"+query.toString():""}
+}
+
+/** Preserve setup context between resource pages without inventing it for normal browsing. */
+export function continueAgentResourceSetupUrl(path:string,params:URLSearchParams):string {
+  const context=agentResourceReturnContext(params)
+  return context.fromAgent?agentResourceSetupUrl(path,context.specId,context.capabilityId):path
 }
 
 /** Only a verified catalog item chosen by a human can be linked by exact slug. */

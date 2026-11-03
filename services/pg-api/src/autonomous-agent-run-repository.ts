@@ -1,3 +1,6 @@
+import {originalRunOptionsProtocol} from '../../../shared/original-agent-run-options.ts'
+import {parseOriginalRunOptions} from '../../../shared/original-agent-run-options.ts'
+import {bindOriginalRunAdmission,originalRunAdmissionMatches} from './original-agent-run-options-policy.ts'
 import {safeNativeMonitorBusinessSpec,monitorBusinessTools} from './native-monitor-business-contract.ts'
 import {assertOriginalUiEmployee} from './native-original-ui-preconditions.ts'
 import {hasNativeLocalAgentTool} from './native-local-agent-contract.ts'
@@ -25,34 +28,51 @@ import {AgentMemoryOutcomeRepository} from "./agent-memory-outcome-repository.ts
 import {AgentOptimizationRepository} from "./agent-optimization-repository.ts"
 import {optimizationRetestId,optimizationRetestProof} from "../../../shared/agent-optimization-retest-contract.ts"
 import {storedOptimizationRetest} from "./agent-optimization-retest-policy.ts"
+import {prepareOriginalRolePinOnClient,insertPreparedOriginalRolePinOnClient,saveOriginalRoleExtensionOnClient} from './original-role-skill-policy.ts'
+import {requireOriginalRoleUi,originalRoleUiEnabled} from './original-role-ui-policy.ts'
+import {originalRoleHistoryOnClient} from './original-role-history.ts'
+import {originalRoleOwnerProjection} from './original-role-owner-projection.ts'
+import {originalRoleProfileEnabled} from './original-role-profile.ts'
+import {withOriginalRoleAdmission,verifyOriginalRoleState} from './original-role-history.ts'
 function autonomousRequest(raw:unknown){
   if(!raw||typeof raw!=="object"||Array.isArray(raw))throw new HttpError(400,"invalid_agent_run_request")
-  const {max_steps,require_plan_review,remember_outcome,optimization_lineage_id,local_device_id,...rest}=raw as Record<string,unknown>,request=safeWorkflowV2Request(rest)
+  const {max_steps,require_plan_review,remember_outcome,optimization_lineage_id,local_device_id,task_planning,original_run_options,...rest}=raw as Record<string,unknown>,request=safeWorkflowV2Request(rest)
+  if(Object.hasOwn(raw,'task_planning')&&task_planning!=='reviewed_v1')throw new HttpError(400,'invalid_agent_task_planning')
+  if(task_planning&&require_plan_review===false)throw new HttpError(400,'invalid_agent_plan_review')
+  let runOptions:ReturnType<typeof parseOriginalRunOptions>|undefined
+  if(original_run_options!==undefined)try{runOptions=parseOriginalRunOptions(original_run_options)}catch{throw new HttpError(400,'invalid_original_run_options')}
+  if(runOptions&&(require_plan_review!==undefined&&require_plan_review!==runOptions.require_plan_review||local_device_id!==undefined&&local_device_id!==runOptions.local_device_id||task_planning!==undefined&&task_planning!==(runOptions.structured_planning?'reviewed_v1':undefined)))throw new HttpError(400,'conflicting_original_run_options')
+  const taskPlanning=runOptions?.structured_planning?'reviewed_v1':task_planning as 'reviewed_v1'|undefined
   if(!Number.isSafeInteger(max_steps)||Number(max_steps)<1||Number(max_steps)>30)throw new HttpError(400,"invalid_agent_max_steps")
   if(Object.hasOwn(raw,"require_plan_review")&&typeof require_plan_review!=="boolean")throw new HttpError(400,"invalid_agent_plan_review")
   let lineage:string|undefined
   if(Object.hasOwn(raw,"optimization_lineage_id"))try{lineage=optimizationRetestId(optimization_lineage_id)}catch{throw new HttpError(400,"invalid_optimization_retest")}
   let localDeviceId:string|undefined
   try{localDeviceId=local_device_id===undefined?undefined:localId(local_device_id)}catch{throw new HttpError(400,"invalid_agent_local_device")}
-  return {localDeviceId,request,max_steps:Number(max_steps),require_plan_review:require_plan_review as boolean|undefined,remember_outcome:outcomeMemoryOption(remember_outcome,Object.hasOwn(raw,"remember_outcome")),optimization_lineage_id:lineage}
+  return {runOptions,taskPlanning,localDeviceId:runOptions?runOptions.local_device_id??undefined:localDeviceId,request,max_steps:Number(max_steps),require_plan_review:runOptions?runOptions.require_plan_review:taskPlanning?true:require_plan_review as boolean|undefined,remember_outcome:outcomeMemoryOption(remember_outcome,Object.hasOwn(raw,"remember_outcome")),optimization_lineage_id:lineage}
 }
 export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
+  readonly allowOriginalRunOptions:boolean
+  readonly originalRunOptionsProtocol?:typeof originalRunOptionsProtocol
   readonly allowMonitorBusiness:boolean
   readonly allowLocalDevices:boolean
   readonly allowMemory:boolean
   readonly allowOutcomeMemory:boolean
   readonly allowOptimizationRetest:boolean
-  constructor(pool:SqlPool,options:{allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean;allowHumanInput?:boolean;allowMemory?:boolean;allowOutcomeMemory?:boolean;allowOptimizationRetest?:boolean;allowLocalDevices?:boolean;allowMonitorBusiness?:boolean}={}){super(pool,"agent_native_v2",options);this.allowMonitorBusiness=options.allowMonitorBusiness===true;this.allowLocalDevices=options.allowLocalDevices===true;this.allowMemory=options.allowMemory===true;this.allowOutcomeMemory=options.allowOutcomeMemory===true;this.allowOptimizationRetest=options.allowOptimizationRetest===true}
+  constructor(pool:SqlPool,options:{allowOriginalRunOptions?:boolean;allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean;allowHumanInput?:boolean;allowMemory?:boolean;allowOutcomeMemory?:boolean;allowOptimizationRetest?:boolean;allowLocalDevices?:boolean;allowMonitorBusiness?:boolean}={}){super(pool,"agent_native_v2",options);this.allowOriginalRunOptions=options.allowOriginalRunOptions===true;if(this.allowOriginalRunOptions)Object.defineProperty(this,'originalRunOptionsProtocol',{value:originalRunOptionsProtocol,writable:false,enumerable:true,configurable:false});this.allowMonitorBusiness=options.allowMonitorBusiness===true;this.allowLocalDevices=options.allowLocalDevices===true;this.allowMemory=options.allowMemory===true;this.allowOutcomeMemory=options.allowOutcomeMemory===true;this.allowOptimizationRetest=options.allowOptimizationRetest===true}
   override async submit(identity:Identity,id:string,raw:unknown,expectedEmployee?:string){
-    if((autonomousRequest(raw).optimization_lineage_id||autonomousRequest(raw).localDeviceId)&&identity.issuer!=="urn:agentstudio:local:v1")throw new HttpError(403,"native_employee_identity_required")
+    if((autonomousRequest(raw).runOptions||autonomousRequest(raw).optimization_lineage_id||autonomousRequest(raw).localDeviceId||autonomousRequest(raw).taskPlanning)&&identity.issuer!=="urn:agentstudio:local:v1")throw new HttpError(403,"native_employee_identity_required")
     return withActor(this.pool,identity,(db,owner)=>{assertOriginalUiEmployee(owner,expectedEmployee);return this.admitOwned(db,owner,id,raw)})
   }
   protected override async assemble(db:SqlClient,owner:string,row:WorkflowV2RunRow,replayed:boolean){
-    const result=await super.assemble(db,owner,row,replayed),proof=await storedOptimizationRetest(db,owner,row)
-    if(!this.allowLocalDevices)return {...result,...(proof?{optimization_retest:proof}:{})}
+    let result=await super.assemble(db,owner,row,replayed)
+    if(row.checkpoint.role_run){const {pin}=await originalRoleHistoryOnClient(db,owner,row.id);if(pin.planning_mode)result={...result,run:{...result.run,checkpoint:{...result.run.checkpoint,task_planning:pin.planning_mode}}}}
+    const proof=await storedOptimizationRetest(db,owner,row)
+    const roleProjection=row.checkpoint.role_run&&result.knowledge_outputs_available!==false?await originalRoleOwnerProjection(db,owner,row.id,row.checkpoint):undefined
+    if(!this.allowLocalDevices)return {...result,...(roleProjection?{original_role:roleProjection}:{}),...(proof?{optimization_retest:proof}:{})}
     const local=(await db.query<{device_id:string|null;tasks:unknown}>("SELECT agentstudio.native_local_admission_device($1::uuid) AS device_id,agentstudio.native_local_run_tasks($1::uuid) AS tasks",[row.id])).rows
     if(local.length!==1)throw Error("native_local_invalid_admission_projection")
-    return {...result,...(proof?{optimization_retest:proof}:{}),local_device_id:local[0]!.device_id,local_tasks:local[0]!.tasks}
+    return {...result,...(roleProjection?{original_role:roleProjection}:{}),...(proof?{optimization_retest:proof}:{}),local_device_id:local[0]!.device_id,local_tasks:local[0]!.tasks}
   }
   protected async assertBusinessAdmission(_db:SqlClient,_owner:string,rawSpec:unknown,plannedRunId?:string){
     const spec=rawSpec as {tools?:unknown}|undefined
@@ -60,7 +80,9 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
   }
   override async prepareOwned(db:SqlClient,owner:string,id:string,raw:unknown,modelBinding?:AgentSpecInput["model_binding"]):Promise<WorkflowV2StoredState>{
     if(!isUuid(id))throw new HttpError(400,"invalid_agent_run_request")
-    const {request,max_steps,require_plan_review,remember_outcome,optimization_lineage_id,localDeviceId}=autonomousRequest(raw)
+    const {request,max_steps,require_plan_review,remember_outcome,optimization_lineage_id,localDeviceId,taskPlanning,runOptions}=autonomousRequest(raw)
+    if(runOptions&&!this.allowOriginalRunOptions)throw new HttpError(403,'original_run_options_disabled')
+    if(taskPlanning){requireOriginalRoleUi(db);if(!this.allowHumanInput)throw new HttpError(409,'original_role_human_review_required')}
     if(optimization_lineage_id&&(!this.allowOptimizationRetest||modelBinding!==undefined))throw new HttpError(403,"agent_optimization_retest_disabled")
     if(remember_outcome&&(!this.allowOutcomeMemory||!this.allowHumanInput))throw new HttpError(403,"agent_memory_outcome_admission_disabled")
     await assertOwnedAdmissionContext(db,owner)
@@ -79,7 +101,9 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
   }
   override async admitOwned(db:SqlClient,owner:string,id:string,raw:unknown,plannedRunId?:string,modelBinding?:AgentSpecInput["model_binding"]){
     if(!isUuid(id))throw new HttpError(400,"invalid_agent_spec_id")
-    const {request,max_steps,require_plan_review,remember_outcome,optimization_lineage_id,localDeviceId}=autonomousRequest(raw)
+    const {request,max_steps,require_plan_review,remember_outcome,optimization_lineage_id,localDeviceId,taskPlanning,runOptions}=autonomousRequest(raw)
+    if(runOptions&&!this.allowOriginalRunOptions)throw new HttpError(403,'original_run_options_disabled')
+    if(taskPlanning){requireOriginalRoleUi(db);if(!this.allowHumanInput)throw new HttpError(409,'original_role_human_review_required')}
     if(optimization_lineage_id&&(plannedRunId!==undefined||modelBinding!==undefined))throw new HttpError(403,"agent_optimization_retest_disabled")
     const graph=autonomousAgentGraph(id,request.expected_revision,max_steps,modelBinding,require_plan_review),machine=createWorkflowV2Checkpoint(graph,request.instruction)
     const key=this.root.dedupe+request.idempotency_key
@@ -89,6 +113,10 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
       "ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id WHERE j.owner_user_id=$1::uuid AND j.kind='run_tick' "+
       "AND j.dedupe_key=$2::text AND j.payload->>'phase'='agent_native_v2'",[owner,key])).rows[0]
     if(prior){
+      if(!originalRunAdmissionMatches(prior.checkpoint.original_ui,runOptions))throw new HttpError(409,'idempotency_key_conflict')
+      const priorPin=await verifyOriginalRoleState(db,owner,prior.id,prior.checkpoint.role_run,prior.checkpoint.agent_state)
+      const priorPlanning=priorPin?.planning_mode
+      if(priorPlanning!==taskPlanning)throw new HttpError(409,'idempotency_key_conflict')
       const original=await storedOptimizationRetest(db,owner,prior)
       if(original?.acceptance_request_id!==optimization_lineage_id)throw new HttpError(409,"idempotency_key_conflict")
       if(plannedRunId!==undefined&&prior.id!==plannedRunId)throw new HttpError(409,"idempotency_key_conflict")
@@ -102,14 +130,23 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
     if(remember_outcome&&plannedRunId!==undefined)throw new HttpError(403,"agent_memory_outcome_schedule_scope_required")
     const storedSpec=(await db.query<{spec:{tools?:string[]}}>("SELECT spec FROM agentstudio.agent_specs WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[id,owner])).rows[0]
     await this.assertBusinessAdmission(db,owner,storedSpec?.spec,plannedRunId)
-    const checkpoint=await this.prepareOwned(db,owner,id,raw,modelBinding)
-    const nextRunId=plannedRunId??randomUUID(),memoryScope={owner_user_id:owner,spec_id:id,spec_revision:request.expected_revision,instruction:request.instruction}
+    const nextRunId=plannedRunId??randomUUID()
+    const roleRows=originalRoleProfileEnabled(db)?(await db.query('SELECT spec_revision FROM agentstudio_roles.original_role_extensions WHERE owner_user_id=$1::uuid AND spec_id=$2::uuid ORDER BY spec_revision DESC LIMIT 1',[owner,id])).rows:[]
+    if(taskPlanning&&!roleRows.length)await saveOriginalRoleExtensionOnClient(db,owner,id,request.expected_revision,{protocol:'original_roles_pinned_v1',roles:[],capability_requirements:[]})
+    if((roleRows.length||taskPlanning)&&(!this.allowHumanInput||localDeviceId&&(!originalRoleUiEnabled(db)||!taskPlanning)||optimization_lineage_id||plannedRunId!==undefined||modelBinding!==undefined||remember_outcome))throw new HttpError(409,'original_role_launcher_not_supported')
+    const rolePrepared=roleRows.length||taskPlanning?await prepareOriginalRolePinOnClient(db,owner,{run_id:nextRunId,spec_id:id,spec_revision:request.expected_revision},{taskPlanning,localDeviceId}):undefined
+    const checkpoint=rolePrepared?await withOriginalRoleAdmission(db,owner,id,request.expected_revision,()=>this.prepareOwned(db,owner,id,raw,modelBinding)):await this.prepareOwned(db,owner,id,raw,modelBinding)
+    if(rolePrepared)checkpoint.role_run={profile:'original-roles-v2',run_id:nextRunId,payload_sha256:rolePrepared.payload_sha256}
+    const memoryScope={owner_user_id:owner,spec_id:id,spec_revision:request.expected_revision,instruction:request.instruction}
     const accepted=optimization_lineage_id?await new AgentOptimizationRepository(this.pool).prepareRetestOwned(db,owner,id,request.expected_revision,optimization_lineage_id):undefined
     const retest=accepted?optimizationRetestProof({protocol:'agent_optimization_retest_v1',run_id:nextRunId,acceptance_request_id:accepted.request_id,source_run_id:accepted.run_id,spec_id:id,spec_revision:accepted.after_spec_revision,source_sha256:accepted.after_spec_sha256,feedback_id:accepted.feedback_id,feedback_sha256:accepted.feedback_sha256,after_revision_id:accepted.after_revision_id},{run_id:nextRunId,spec_id:id,spec_revision:request.expected_revision,acceptance_request_id:optimization_lineage_id}):undefined
     if(this.allowMemory)checkpoint.memory_context=await prepareOwnedAgentMemoryContext(db,this.pool,memoryScope,nextRunId)
     const run=(await db.query<WorkflowV2RunRow>("INSERT INTO agentstudio.runs(id,owner_user_id,kind,agent_spec_id,status,instruction,checkpoint) "+
       "VALUES(coalesce($5::uuid,gen_random_uuid()),$1::uuid,'agent',$2::uuid,'queued',$3::text,$4::jsonb) RETURNING "+workflowV2RunColumns,
-      [owner,id,request.instruction,JSON.stringify(checkpoint),nextRunId])).rows[0]!
+      [owner,id,request.instruction,JSON.stringify(checkpoint),nextRunId])).rows[0]
+    if(!run)throw new HttpError(503,'unconfirmed_agent_admission')
+    if(runOptions){checkpoint.original_ui=await bindOriginalRunAdmission(db,run,request.expected_revision,runOptions);run.checkpoint=checkpoint;const updated=await db.query('UPDATE agentstudio.runs SET checkpoint=$3::jsonb WHERE id=$1::uuid AND owner_user_id=$2::uuid RETURNING id',[run.id,owner,JSON.stringify(checkpoint)]);if(updated.rows.length!==1)throw new HttpError(503,'unconfirmed_original_run_admission')}
+    if(rolePrepared)await insertPreparedOriginalRolePinOnClient(db,owner,rolePrepared)
     if(localDeviceId)await db.query("SELECT agentstudio.native_local_bind($1::uuid,$2::uuid,false)",[run.id,localDeviceId])
     if(checkpoint.memory_context)await insertAgentMemoryContextReceipt(db,{...memoryScope,run_id:run.id,graph_sha256:machine.graph_sha256,context:checkpoint.memory_context})
     const consent=remember_outcome?await new AgentMemoryOutcomeRepository(this.pool,{allowAdmission:this.allowOutcomeMemory}).admitOwned(db,owner,{...memoryScope,run_id:run.id,graph_sha256:machine.graph_sha256}):null
@@ -159,7 +196,7 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
         if(job.status!=='queued'||job.lease_token!==null||Number(job.attempts)>=Number(job.max_attempts))throw new HttpError(409,'agent_run_queue_unavailable')
         await requireAgentRunResumeEmployee(db)
         if(state.memory_context&&!this.allowMemory||state.human_agent_keys?.length&&!this.allowHumanInput||await new AgentMemoryOutcomeRepository(this.pool).hasOwned(db,owner,id)&&(!this.allowOutcomeMemory||!this.allowHumanInput))throw new HttpError(409,'agent_run_resume_features_disabled')
-        await this.checkMcpAdmission(db,owner,state.graph)
+        await this.checkMcpAdmission(db,owner,state.graph,state.role_run)
         await verifyWorkflowV2Snapshot(db,owner,row,state)
         if(!await currentKnowledgeObservations(db,id))throw new HttpError(409,'knowledge_observations_unavailable')
         const parent=inspectWorkflowV2Checkpoint(state.graph,state.machine).pending,pending=workflowV2ExecutionRequest(state)

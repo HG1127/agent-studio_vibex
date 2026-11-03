@@ -1,3 +1,4 @@
+import {reserveOriginalRunEffect} from './original-agent-run-options-policy.ts'
 import {assertOrdinaryCaseRunSources} from './native-ordinary-case-source-access.ts'
 import {optionalOrdinaryCaseAgentBinding} from './native-ordinary-case-binding.ts'
 import {monitorBusinessTools,type MonitorBusinessTool} from './native-monitor-business-contract.ts'
@@ -24,6 +25,7 @@ import {recordAgentMemoryFailureSource} from "./agent-memory-failure-source.ts"
 import {AgentMemoryOutcomeRepository} from "./agent-memory-outcome-repository.ts"
 import {createWorkerClaimAdmission,type WorkerClaimAdmission,type WorkerClaimAdmissionView,type WorkerClaimPermit}
   from "./worker-claim-admission.ts"
+import {loadOriginalRoleWorkerPin} from './original-role-history.ts'
 const claimSql=readFileSync(new URL("../../../db/postgres/008_claim_workflow_v2.sql",import.meta.url),"utf8")
 const agentClaimSql=readFileSync(new URL("../../../db/postgres/009_claim_autonomous_agent.sql",import.meta.url),"utf8")
 type Job={id:string;run_id:string;owner_user_id:string;kind:string;payload:{phase:DurableV2Mode;workflow_id?:string;agent_spec_id?:string;workflow_revision?:number;spec_revision?:number;graph_sha256:string};
@@ -83,6 +85,7 @@ type Prepared={tick:WorkflowV2Tick}|{request:WorkflowEffectRequest;job:Job}
 export class WorkflowV2Worker{
   readonly pool:SqlPool;readonly workerId:string;readonly executor?:WorkflowV2EffectExecutor
   readonly timeoutMs:number;readonly batch:number
+  readonly originalRunOptionsEnabled:boolean
   readonly ordinaryCaseEnabled:boolean
   readonly monitorBusinessEnabled:boolean
   readonly localDeviceEnabled:boolean
@@ -96,9 +99,10 @@ export class WorkflowV2Worker{
   readonly #claimAdmission:WorkerClaimAdmission
   readonly #claimLane:DurableV2Mode
   readonly root:ReturnType<typeof durableV2Root>
-  constructor(pool:SqlPool,workerId:string,options:{executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean;agentCallerExecutionApproved?:boolean;scheduleExecutionApproved?:boolean;humanInputApproved?:boolean;memoryExecutionApproved?:boolean;outcomeMemoryApproved?:boolean;executionMode?:DurableV2Mode;localDeviceExecutionApproved?:boolean;monitorBusinessExecutionApproved?:boolean;ordinaryCaseExecutionApproved?:boolean}={}){
+  constructor(pool:SqlPool,workerId:string,options:{originalRunOptionsApproved?:boolean;executor?:WorkflowV2EffectExecutor;effectTimeoutMs?:number;batchSize?:number;agentExecutionApproved?:boolean;agentCallerExecutionApproved?:boolean;scheduleExecutionApproved?:boolean;humanInputApproved?:boolean;memoryExecutionApproved?:boolean;outcomeMemoryApproved?:boolean;executionMode?:DurableV2Mode;localDeviceExecutionApproved?:boolean;monitorBusinessExecutionApproved?:boolean;ordinaryCaseExecutionApproved?:boolean}={}){
     if(!/^[A-Za-z0-9_-]{1,120}$/.test(workerId))throw Error("invalid_worker_id")
     this.pool=pool;this.workerId=workerId;this.executor=options.executor
+    this.originalRunOptionsEnabled=options.originalRunOptionsApproved===true
     this.ordinaryCaseEnabled=options.ordinaryCaseExecutionApproved===true
     this.monitorBusinessEnabled=options.monitorBusinessExecutionApproved===true
     this.localDeviceEnabled=options.localDeviceExecutionApproved===true
@@ -202,10 +206,13 @@ export class WorkflowV2Worker{
       if(!this.localDeviceEnabled||this.root.mode!=="agent_native_v2")throw new HttpError(409,"native_local_device_execution_not_approved")
       await verifyNativeLocalWorkerRole(db,{job_id:job.id,run_id:job.run_id,lease_token:job.lease_token,lease_version:Number(job.lease_version),lease_owner:this.workerId},state.agent_state.local_device)
     }
+    const originalRolePin=await loadOriginalRoleWorkerPin(db,job,state.role_run)
+    if(originalRolePin&&(!this.humanEnabled||this.root.kind!=='agent'))throw new HttpError(409,'original_role_execution_disabled')
     if(state.human_agent_keys?.length&&!this.humanEnabled)throw new HttpError(409,"agent_human_input_execution_disabled")
     if(state.execution_mode!==this.root.mode||row[this.root.id]!==job.payload[this.root.id]||state[this.root.revision]!==Number(job.payload[this.root.revision])||
        state.machine.graph_sha256!==job.payload.graph_sha256)throw new HttpError(409,"workflow_v2_snapshot_changed")
     await verifyWorkflowV2Snapshot(db,job.owner_user_id,row,state)
+    if(state.original_ui&&!this.originalRunOptionsEnabled){await this.persist(db,job,state,'paused','original_run_options_execution_disabled');await acknowledge(db,job,this.workerId,'failed');return {tick:{status:'paused',run_id:job.run_id}}}
     if(state.agent_state?.case_business)await assertOrdinaryCaseRunSources(db,job.owner_user_id,row.id)
     const callerRun=Boolean(state.caller_binding)
     if(callerRun&&!this.callerEnabled){await this.persist(db,job,state,"paused","agent_caller_execution_disabled");await acknowledge(db,job,this.workerId,"failed");return {tick:{status:"paused",run_id:job.run_id}}}
@@ -312,7 +319,7 @@ export class WorkflowV2Worker{
             }
             const monitorBusiness=this.monitorBusinessEnabled&&this.root.mode==="agent_native_v2"?await optionalMonitorAgentBinding(db,job.owner_user_id,job.run_id):undefined
             const caseBusiness=this.ordinaryCaseEnabled&&this.root.mode==="agent_native_v2"?await optionalOrdinaryCaseAgentBinding(db,job.owner_user_id,job.run_id,true):undefined
-            state.agent_state=await initializeWorkflowAgent(db,job.owner_user_id,pending,{...(caseBusiness?{caseBusiness}:{}),...(monitorBusiness?{monitorBusiness}:{}),humanInput:this.humanEnabled,fullDelivery:this.humanEnabled,...(localDevice?{localDevice}:{}),...(state.memory_context?{memoryContext:state.memory_context}:{})})
+            state.agent_state=await initializeWorkflowAgent(db,job.owner_user_id,pending,{...(originalRolePin?{rolePin:originalRolePin}:{}),...(caseBusiness?{caseBusiness}:{}),...(monitorBusiness?{monitorBusiness}:{}),humanInput:this.humanEnabled,fullDelivery:this.humanEnabled,...(localDevice?{localDevice}:{}),...(state.memory_context?{memoryContext:state.memory_context}:{})})
             if(state.agent_state.human_protocol)state.human_agent_keys=[...new Set([...(state.human_agent_keys??[]),pending.step_key])]
             await stepRows(db,job,[{step_key:pending.step_key,node_id:pending.node_id,node_type:"agent",status:"running"}])
             await this.persist(db,job,state,"queued","")
@@ -328,6 +335,7 @@ export class WorkflowV2Worker{
           await this.persist(db,job,state,"paused","workflow_v2_effect_executor_unavailable")
           await acknowledge(db,job,this.workerId,"failed");return {tick:{status:"paused",run_id:job.run_id}}
         }
+        if(state.original_ui){const refusal=await reserveOriginalRunEffect(db,job.owner_user_id,row,Number(state.spec_revision),state.original_ui,pending);if(refusal){await this.persist(db,job,state,'failed',refusal);await acknowledge(db,job,this.workerId,'failed');return {tick:{status:'failed',run_id:job.run_id}}}}
         await db.query("INSERT INTO agentstudio.external_effects(run_id,owner_user_id,step_key,tool_name,arguments_sha256,idempotency_key,status) "+
           "VALUES($1::uuid,$2::uuid,$3::text,$4::text,$5::text,$6::text,'started')",[job.run_id,job.owner_user_id,pending.step_key,
           "workflow:"+pending.kind,pending.input_sha256,"workflow_v2:"+job.run_id+":"+pending.step_key])
@@ -406,6 +414,7 @@ export class WorkflowV2Worker{
     }
     const pending=workflowV2ExecutionRequest(state)
     if(!pending||pending.step_key!==request.step_key||pending.input_sha256!==request.input_sha256)throw new HttpError(409,"workflow_v2_effect_changed")
+    await loadOriginalRoleWorkerPin(db,job,state.role_run)
     const changed=await db.query("UPDATE agentstudio.external_effects SET status=$4::text,result_reference=$5::text,updated_at=clock_timestamp() "+
       "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text AND status='started' AND arguments_sha256=$6::text RETURNING step_key",
       [job.run_id,job.owner_user_id,request.step_key,output===undefined?"unknown":"succeeded",output===undefined?null:JSON.stringify({output}),request.input_sha256])
@@ -449,6 +458,7 @@ export class WorkflowV2Worker{
     }
     const pending=workflowV2ExecutionRequest(state)
     if(!pending||pending.step_key!==request.step_key||pending.input_sha256!==request.input_sha256)throw new HttpError(409,"workflow_v2_effect_changed")
+    await loadOriginalRoleWorkerPin(db,job,state.role_run)
     const changed=await db.query("UPDATE agentstudio.external_effects SET status='failed',updated_at=clock_timestamp() "+
       "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key=$3::text AND status='started' "+
       "AND arguments_sha256=$4::text RETURNING step_key",[job.run_id,job.owner_user_id,request.step_key,request.input_sha256])

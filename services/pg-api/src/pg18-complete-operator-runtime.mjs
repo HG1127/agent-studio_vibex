@@ -69,7 +69,7 @@ function json(raw){
   const str=()=>{const start=i++;for(;;){
     strings.lastIndex=i;const token=strings.exec(text);if(!token)fail();i=strings.lastIndex
     if(token[0]==='\\'){i++;continue}
-    let v;try{v=JSON.parse(text.slice(start,i))}catch{fail()}if(Buffer.from(v).toString('utf8')!==v||v.includes('\0'))fail();return v
+    let v;try{v=JSON.parse(text.slice(start,i))}catch{fail()}if(!v.isWellFormed()||v.includes('\0'))fail();return v
   }}
   const value=depth=>{
     if(depth>32||++nodes>32768)fail();ws();const ch=text[i]

@@ -46,7 +46,7 @@ test('current epoch is checked again after metadata and before dispatching priva
  let f;f=fixture({intercept:(route)=>{if(route.endsWith('/meta')){f.setCurrent(false);return json({protocol:originalStaffProtocol,available:true,writes:true,create:true})}}});await assert.rejects(f.api.resetPassword(profile,password),e=>e.code==='employee_session_changed');assert.equal(f.calls.length,1);assert.equal(f.api.pending(),null)
 })
 test('late committed receipt for an invalidated epoch cannot confirm or clear its old locator',async()=>{
- let resolve;const waiting=new Promise(done=>{resolve=done}),f=fixture({afterCommit:()=>waiting}),pending=f.api.update(profile,form);await settle();await settle();assert(f.receipt());f.setCurrent(false);resolve(json(f.receipt()));await assert.rejects(pending,e=>e.outcomeUnknown);assert(f.api.pending());assert.equal(f.calls.filter(c=>c.init.method==='PATCH').length,1)
+ let resolve,enter;const entered=new Promise(done=>{enter=done}),waiting=new Promise(done=>{resolve=done}),f=fixture({afterCommit:()=>{enter();return waiting}}),pending=f.api.update(profile,form);await entered;assert(f.receipt());f.setCurrent(false);resolve(json(f.receipt()));await assert.rejects(pending,e=>e.outcomeUnknown);assert(f.api.pending());assert.equal(f.calls.filter(c=>c.init.method==='PATCH').length,1)
 })
 test('failed locator persistence prevents a credential-bearing request from being sent',async()=>{
  const f=fixture({onPending:marker=>{if(marker)throw Error('terminal storage quota')}});await assert.rejects(f.api.resetPassword(profile,password),e=>e.code==='original_staff_pending_storage_unavailable');assert.deepEqual(f.calls.map(c=>c.init.method),['GET']);assert.equal(f.api.pending(),null)

@@ -1,3 +1,5 @@
+import {splitOriginalRoleHomeInput,saveOriginalRoleHomeOnClient,originalRoleHomeRowsOnClient} from './original-role-home.ts'
+import {requireOriginalRoleUi} from './original-role-ui-policy.ts'
 import {safeNativeMonitorBusinessSpec} from './native-monitor-business-contract.ts'
 import {createHash} from 'node:crypto'
 import {HttpError,isUuid,safeAgentSpec,safeName,type AgentSpecInput,type Identity,type SqlClient,type SqlPool} from './contracts.ts'
@@ -54,22 +56,26 @@ async function audit(db:SqlClient,owner:string,id:string,operation:'create'|'upd
 
 /** Optional070 Native-only facade. The stored execution spec stays frozen. */
 export class NativeHomeAgentSpecsRepository{
+ readonly allowOriginalRoleUi:boolean
  readonly pool:SqlPool
  readonly allowMonitorBusinessSpecs:boolean
  readonly allowNativeLocalAgentSpecs:boolean
- constructor(pool:SqlPool,options:{allowNativeLocalAgentSpecs?:boolean;allowMonitorBusinessSpecs?:boolean}={}){this.allowMonitorBusinessSpecs=options.allowMonitorBusinessSpecs===true;this.pool=pool;this.allowNativeLocalAgentSpecs=options.allowNativeLocalAgentSpecs===true}
- private execution(raw:unknown):AgentSpecInput{if(this.allowMonitorBusinessSpecs)return safeNativeMonitorBusinessSpec(raw,true,this.allowNativeLocalAgentSpecs);return this.allowNativeLocalAgentSpecs?safeNativeLocalAgentSpec(raw,true):safeAgentSpec(raw)}
- list(identity:Identity,limit=50):Promise<OriginalHomeAgentRow[]>{
+ constructor(pool:SqlPool,options:{allowOriginalRoleUi?:boolean;allowNativeLocalAgentSpecs?:boolean;allowMonitorBusinessSpecs?:boolean}={}){this.allowOriginalRoleUi=options.allowOriginalRoleUi===true;this.allowMonitorBusinessSpecs=options.allowMonitorBusinessSpecs===true;this.pool=pool;this.allowNativeLocalAgentSpecs=options.allowNativeLocalAgentSpecs===true}
+ private execution(raw:unknown):AgentSpecInput{if(this.allowOriginalRoleUi)raw=splitOriginalRoleHomeInput(raw).base;if(this.allowMonitorBusinessSpecs)return safeNativeMonitorBusinessSpec(raw,true,this.allowNativeLocalAgentSpecs);return this.allowNativeLocalAgentSpecs?safeNativeLocalAgentSpec(raw,true):safeAgentSpec(raw)}
+ authorize(identity:Identity,expectedEmployee:string):Promise<void>{native(identity);return withActor(this.pool,identity,async(db,owner)=>{assertOriginalUiEmployee(owner,expectedEmployee);if(this.allowOriginalRoleUi)requireOriginalRoleUi(db)})}
+ list(identity:Identity,limit=50,expectedEmployee?:string):Promise<OriginalHomeAgentRow[]>{
   native(identity)
   if(!Number.isSafeInteger(limit)||limit<1||limit>50)throw new HttpError(400,'invalid_limit')
   return withActor(this.pool,identity,async(db,owner)=>{
+   assertOriginalUiEmployee(owner,expectedEmployee)
    const excluded=await hidden(db)
-   return(await db.query<StoredRow>('SELECT '+fields+join+'WHERE s.owner_user_id=$1::uuid AND NOT(s.id=ANY($3::uuid[])) ORDER BY s.updated_at DESC,s.id LIMIT $2::int',[owner,limit,excluded])).rows.map(row)
+   const rows=(await db.query<StoredRow>('SELECT '+fields+join+'WHERE s.owner_user_id=$1::uuid AND NOT(s.id=ANY($3::uuid[])) ORDER BY s.updated_at DESC,s.id LIMIT $2::int',[owner,limit,excluded])).rows.map(row)
+   return this.allowOriginalRoleUi?originalRoleHomeRowsOnClient(db,owner,rows):rows
   })
  }
- get(identity:Identity,id:string):Promise<OriginalHomeAgentRow>{
+ get(identity:Identity,id:string,expectedEmployee?:string):Promise<OriginalHomeAgentRow>{
   native(identity);if(!isUuid(id))throw new HttpError(400,'invalid_spec_id')
-  return withActor(this.pool,identity,async(db,owner)=>{if((await hidden(db)).includes(id.toLowerCase()))throw new HttpError(404,'spec_not_found');return load(db,owner,id)})
+  return withActor(this.pool,identity,async(db,owner)=>{assertOriginalUiEmployee(owner,expectedEmployee);if((await hidden(db)).includes(id.toLowerCase()))throw new HttpError(404,'spec_not_found');const saved=await load(db,owner,id);return this.allowOriginalRoleUi?(await originalRoleHomeRowsOnClient(db,owner,[saved]))[0]!:saved})
  }
  create(identity:Identity,input:OriginalHomeAgentWrite,expectedEmployee?:string):Promise<OriginalHomeAgentRow>{
   native(identity)
@@ -80,7 +86,8 @@ export class NativeHomeAgentSpecsRepository{
    const created=(await db.query<{id:string}>('INSERT INTO agentstudio.agent_specs(owner_user_id,name,spec,requires_approval) VALUES($1::uuid,$2::text,$3::jsonb,true) RETURNING id',[owner,name,JSON.stringify(spec)])).rows[0]
    if(!created||!isUuid(created.id))throw new HttpError(503,'original_home_save_unconfirmed')
    await saveAuthoring(db,owner,created.id,authoring)
-   const saved=await load(db,owner,created.id)
+   let saved=await load(db,owner,created.id)
+   if(this.allowOriginalRoleUi)saved=await saveOriginalRoleHomeOnClient(db,owner,saved,input.spec)
    if(JSON.stringify(saved.authoring)!==JSON.stringify(authoring))throw new HttpError(503,'original_home_save_unconfirmed')
    await audit(db,owner,created.id,'create',saved)
    return saved
@@ -100,7 +107,8 @@ export class NativeHomeAgentSpecsRepository{
    const changed=(await db.query<{id:string}>('UPDATE agentstudio.agent_specs SET name=$3::text,spec=$4::jsonb,requires_approval=true,revision=revision+1,updated_at=clock_timestamp() WHERE id=$1::uuid AND owner_user_id=$2::uuid AND revision=$5::bigint RETURNING id',[id,owner,name,JSON.stringify(spec),expected])).rows[0]
    if(!changed)throw new HttpError(409,'revision_conflict')
    if(authoring!==undefined)await saveAuthoring(db,owner,id,authoring)
-   const saved=await load(db,owner,id)
+   let saved=await load(db,owner,id)
+   if(this.allowOriginalRoleUi)saved=await saveOriginalRoleHomeOnClient(db,owner,saved,input.spec,expected)
    if(saved.revision!==expected+1||authoring!==undefined&&JSON.stringify(saved.authoring)!==JSON.stringify(authoring))throw new HttpError(503,'original_home_save_unconfirmed')
    await audit(db,owner,id,'update',saved)
    return saved

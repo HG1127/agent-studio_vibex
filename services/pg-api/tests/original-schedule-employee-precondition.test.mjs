@@ -15,7 +15,7 @@ const identity=who=>({issuer:'urn:agentstudio:local:v1',subject:who}),input={nam
 function memory(){
  const state={business:[],queries:[],releases:0,rollbacks:0,identityReads:0},reached=Error('closed_business_boundary')
  const pool={connect:async()=>({release(){state.releases++},async query(sql,args=[]){
-  state.queries.push({sql,args});const empty={rows:[]}
+  state.queries.push({sql,args});if(sql==="SELECT to_regnamespace('agentstudio_roles') IS NOT NULL AS installed,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid")return{rows:[{installed:false,database_oid:'16384'}]};const empty={rows:[]}
   if(sql==='BEGIN'||sql==='COMMIT'||sql==='SET LOCAL ROLE agentstudio_api'||sql.startsWith('SELECT set_config('))return empty
   if(sql==='ROLLBACK'){state.rollbacks++;return empty}
   if(sql.startsWith('SELECT agentstudio.identity_user_id(')){state.identityReads++;return{rows:[{id:args[1]==='alice'?alice:args[1]==='bob'?bob:null}]}}

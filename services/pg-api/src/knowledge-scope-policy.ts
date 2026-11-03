@@ -1,3 +1,5 @@
+import {applyOriginalRoleScope} from './original-role-profile.ts'
+import {applyOriginalRoleUiScope} from './original-role-ui-policy.ts'
 import {applyOrdinaryCaseObservationScope} from './native-ordinary-case-observation-policy.ts'
 // Transaction-local capability context. No environment/credential I/O or DB DML.
 import type {SqlClient,SqlPool} from "./contracts.ts"
@@ -6,6 +8,8 @@ export function scopedKnowledgePool(pool:SqlPool,enabled:boolean):SqlPool{
   return Object.freeze({knowledgeSharing:enabled,connect:()=>pool.connect()})
 }
 export async function applyKnowledgeScope(db:SqlClient,pool:SqlPool):Promise<void>{
+  await applyOriginalRoleScope(db,pool)
+  applyOriginalRoleUiScope(db,pool)
   applyOrdinaryCaseObservationScope(db,pool)
   await db.query("SELECT set_config('agentstudio.knowledge_sharing_enabled',$1::text,true)",[pool.knowledgeSharing===true?"true":"false"])
   await db.query("SELECT set_config('agentstudio.knowledge_embedding_settings_enabled',$1::text,true)",[pool.knowledgeEmbeddingSettings===true?"true":"false"])

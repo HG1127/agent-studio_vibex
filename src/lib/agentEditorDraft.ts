@@ -1,4 +1,5 @@
 import type { AgentSpec } from "../pages/Home/presets"
+import {parseOriginalRoleUiExtension} from "../../shared/original-role-execution-contract.mjs"
 import { normalizeAgentQualityChecks, QUALITY_CHECK_LIMIT } from "./agentQualityChecks.ts"
 import {normalizeNativeHomeEditingContext,normalizeOriginalHomeBuiltinSelections,type NativeHomeEditingContext} from './originalHomeAgentEditor.ts'
 import {normalizeOriginalHomeBindingOptions,type OriginalHomeBindingOptions} from './originalHomeResources.ts'
@@ -92,7 +93,19 @@ export function sanitizeAgentDraftSpec(input: unknown, nativePg = false): AgentS
     if (checks.length !== raw.quality_checks.length) return null
     result.quality_checks = checks
   }
-  if(raw.capability_requirements!==undefined){if(!fitsDraftList(raw.capability_requirements,30,100))return null;result.capability_requirements=[...(raw.capability_requirements as string[])]}
+  // Old employee-capture IDs are retained separately. They cannot become
+  // structured capabilities, disappear in a mixed list, or grant any tool.
+  const legacy=Array.isArray(raw.capability_requirements)&&raw.capability_requirements.length>0&&raw.capability_requirements.every(v=>typeof v==='string')
+  if(raw.capture_capability_ids!==undefined||legacy){
+    if(legacy&&raw.capture_capability_ids!==undefined||!fitsDraftList(legacy?raw.capability_requirements:raw.capture_capability_ids,30,100))return null
+    result.capture_capability_ids=texts(legacy?raw.capability_requirements:raw.capture_capability_ids,30,100)
+  }
+  if(raw.roles!==undefined||raw.capability_requirements!==undefined&&!legacy){
+    try{const ext=parseOriginalRoleUiExtension({roles:raw.roles??[],capability_requirements:legacy?[]:raw.capability_requirements??[]},result.tools)
+      if(raw.roles!==undefined)result.roles=ext.roles
+      if(raw.capability_requirements!==undefined&&!legacy)result.capability_requirements=ext.capability_requirements
+    }catch{return null}
+  }
   if(raw._studio_authoring!==undefined){const ref=raw._studio_authoring as {request_id?:unknown};if(!ref||typeof ref!=='object'||Array.isArray(ref)||Object.keys(ref).length!==1||typeof ref.request_id!=='string'||!/^[A-Za-z0-9]{20}$/.test(ref.request_id))return null;result._studio_authoring={request_id:ref.request_id}}
   return result
 }

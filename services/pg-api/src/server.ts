@@ -72,7 +72,7 @@ async function main(){
           const result=await client.query(sql,values)
           return {rows:result.rows as Row[]}
         },
-        release(){client.release()},
+        release(destroy?:boolean){client.release(destroy)},
       }
     },
   }

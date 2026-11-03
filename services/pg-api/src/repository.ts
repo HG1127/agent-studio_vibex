@@ -1,3 +1,4 @@
+import {carryOriginalRoleRevisionOnClient} from './original-role-revision.ts'
 import { HttpError, isUuid, type Identity, type SqlPool, type SqlClient,
   type AgentSpecInput } from "./contracts.ts"
 import {exactProviderEndpoint} from "./model-connection-probe.ts"
@@ -203,7 +204,9 @@ export class AgentSpecRepository {
         "RETURNING id,owner_user_id,name,spec,revision,created_at,updated_at",
         [id,actor,name,JSON.stringify(spec),revision],
       )
-      return result.rows[0]?toSpecRow(result.rows[0]):null
+      const saved=result.rows[0]?toSpecRow(result.rows[0]):null
+      if(saved)await carryOriginalRoleRevisionOnClient(db,actor,id,revision,saved.revision)
+      return saved
     })
   }
 }

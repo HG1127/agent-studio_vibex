@@ -1,0 +1,326 @@
+import type {OriginalRoleUiSpec as AgentSpec} from '@/lib/originalRoleUiTypes'
+import type {ConnectedToolOption} from "../pages/Home/presets"
+import type { ToolResolution } from "./agentToolMatcher"
+import type { VerifiedMarketTool } from "./marketToolSelection"
+import { safeMarketplaceQuery } from "./toolSearchPrivacy.ts"
+import {toolLooksMutating} from './toolAutoSelection.ts'
+import {localDeviceSupports,type ReadyLocalDevice} from './localDeviceReadiness.ts'
+import type {OriginalRoleCapability} from '../../shared/original-role-execution-contract.mjs'
+
+export type CapabilityKind = OriginalRoleCapability['kind']
+export type AgentCapabilityRequirement = OriginalRoleCapability
+export type CapabilityCandidate = {
+  id: string
+  label: string
+  source: "builtin" | "http" | "market" | "local"
+  tested: boolean
+  selected: boolean
+  readOnly: boolean
+  description?: string
+  /** A real, compatible connection that still needs an explicit capability mapping. */
+  needsMapping?: boolean
+  /** Whether the named roles (or an existing responsible role) already hold this tool. */
+  roleAssigned?: boolean
+}
+export type CapabilityPlanRow = AgentCapabilityRequirement & {
+  candidates: CapabilityCandidate[]
+  state: "selected" | "available" | "needs_test" | "needs_role" | "missing"
+  searchTerm: string
+  roleNames: string[]
+}
+
+export const MAX_AGENT_CAPABILITIES = 20
+export type CapabilityRequirementChanges = Partial<Pick<AgentCapabilityRequirement,
+  "title" | "purpose" | "kind" | "access" | "required" | "role_ids">>
+export type RemovedAgentCapability = { requirement: AgentCapabilityRequirement; index: number }
+
+const KINDS: CapabilityKind[] = ["web_search", "web_fetch", "knowledge", "calculate",
+  "text", "document", "browser", "desktop", "integration", "custom"]
+const string = (value: unknown, limit = 300): string =>
+  typeof value === "string" ? value.trim().slice(0, limit) : ""
+const strings = (value: unknown, limit = 12): string[] => Array.isArray(value)
+  ? [...new Set(value.slice(0, limit).map(item => string(item, 180)).filter(Boolean))] : []
+
+/** Bounded allowlist, also used by tab recovery. Unknown prompt fields are discarded. */
+export function normalizeCapabilityRequirements(value: unknown): AgentCapabilityRequirement[] {
+  if (!Array.isArray(value)) return []
+  const ids = new Set<string>()
+  return value.slice(0, MAX_AGENT_CAPABILITIES).flatMap((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return []
+    const raw = item as Record<string, unknown>
+    const title = string(raw.title, 100)
+    if (!title) return []
+    const proposedId = string(raw.id, 60)
+    const id = /^[a-zA-Z0-9_-]{1,60}$/.test(proposedId) ? proposedId : `capability_${index + 1}`
+    if (ids.has(id)) return []
+    ids.add(id)
+    return [{
+      id, title, purpose: string(raw.purpose, 600),
+      kind: KINDS.includes(raw.kind as CapabilityKind) ? raw.kind as CapabilityKind : "custom",
+      access: raw.access === "write" ? "write" as const : "read" as const,
+      required: raw.required !== false,
+      role_ids: strings(raw.role_ids, 12),
+      search_terms: strings(raw.search_terms, 4).map(safeMarketplaceQuery).filter(Boolean),
+      suggested_tool_ids: strings(raw.suggested_tool_ids, 8),
+    }]
+  })
+}
+
+const BUILTINS: Record<string, { title: string; kind: CapabilityKind }> = {
+  web_search: {title: "检索公开资料", kind: "web_search"},
+  web_fetch: {title: "读取网页正文", kind: "web_fetch"},
+  knowledge_search: {title: "检索授权知识库", kind: "knowledge"},
+  calculate: {title: "数值计算", kind: "calculate"},
+  summarize: {title: "整理与总结文本", kind: "text"},
+}
+const fold = (text: string) => text.normalize("NFKC").toLowerCase().replace(/[\s_.:、—\-]+/g, "")
+const deny = (text: string, topic: RegExp) => text.split(/[。；;\n]/).some(part =>
+  /(?:不需要|无需|禁止|不要|不能|不使用|无须|不允许)/.test(part) && topic.test(part))
+
+export function inferCapabilityKind(title: string): CapabilityKind {
+  if (/(?:browser|playwright|puppeteer|浏览器|点击网页|填写表单)/i.test(title)) return "browser"
+  if (/(?:desktop|local_computer|computer.?use|本地软件|电脑软件|桌面软件|操作电脑)/i.test(title)) return "desktop"
+  if (/(?:网络搜索|网页搜索|web.?search|公开资料)/i.test(title)) return "web_search"
+  if (/(?:网页正文|web.?fetch|网页抓取|网页内容提取)/i.test(title)) return "web_fetch"
+  if (/(?:knowledge.?search|知识库|内部资料)/i.test(title)) return "knowledge"
+  if (/(?:calculate|计算器|数值计算)/i.test(title)) return "calculate"
+  if (/(?:summarize|摘要|长文写作|多轮对话|文本整理)/i.test(title)) return "text"
+  if (/(?:pdf|excel|xlsx|word|文档|文件|电子表格)/i.test(title)) return "document"
+  return "custom"
+}
+
+/** Old saved Agents remain usable; new structured needs come from the design model. */
+export function agentCapabilityRequirements(spec: AgentSpec, resolution?: ToolResolution | null): AgentCapabilityRequirement[] {
+  // An explicit list is the employee's current configuration, including an
+  // intentionally empty one. Only old Agents without the field use inference.
+  if (Array.isArray(spec.capability_requirements)) return normalizeCapabilityRequirements(spec.capability_requirements)
+  const needs: AgentCapabilityRequirement[] = []
+  const add = (title: string, kind: CapabilityKind, tools: string[] = [], purpose = "由当前方案中的任务和工具整理", access: "read"|"write" = writing.test(title)?"write":"read") => {
+    if (needs.some(need => fold(need.title) === fold(title) ||
+      tools.some(id => need.suggested_tool_ids.includes(id)) ||
+      (kind !== "custom" && kind !== "integration" && need.kind === kind))) return
+    needs.push({id: `inferred_${needs.length + 1}`, title, kind, purpose, access, required: true,
+      role_ids: [], search_terms: [safeMarketplaceQuery(title)].filter(Boolean), suggested_tool_ids: tools})
+  }
+  for (const rec of resolution?.recommendations || []) {
+    const builtin = BUILTINS[rec.id]
+    // A connection's display title is not an execution contract. A document
+    // lookup named "Browser plugin" must not require browser-control tools.
+    const runtimeName=/^mkt__[A-Za-z0-9]{15}__(.+)$/.exec(rec.id)?.[1]||rec.id
+    add(builtin?.title || rec.label, builtin?.kind || inferCapabilityKind(runtimeName), [rec.id])
+  }
+  for (const gap of resolution?.gaps || []) {
+    const represented=resolution?.recommendations.some(rec=>fold(rec.id)===fold(gap.name)||fold(/^mkt__[A-Za-z0-9]{15}__(.+)$/.exec(rec.id)?.[1]||'')===fold(gap.name))
+    if(!represented)add(gap.name, inferCapabilityKind(gap.name))
+  }
+  const context = [spec.goal, spec.task_scope, ...spec.task_plan,
+    ...(spec.roles || []).flatMap(role => [role.responsibility, ...role.tasks])].join("；")
+  if (/(?:浏览器|browser|playwright|点击网页|填写表单)/i.test(context) &&
+    !deny(context, /浏览器|browser|网页操作/i)) add("浏览器操作", "browser", [], "任务需要打开、读取或操作页面，请连接真实浏览器执行工具", writing.test(context)?"write":"read")
+  if (/(?:本地软件|电脑软件|桌面软件|操作电脑|desktop|computer.?use)/i.test(context) &&
+    !deny(context, /电脑|软件|desktop/i)) add("电脑软件操作", "desktop", [], "任务需要本地执行器或软件接口；网页本身无法直接调度电脑", writing.test(context)?"write":"read")
+  return needs.slice(0, MAX_AGENT_CAPABILITIES)
+}
+
+/** Editing a requirement never changes global or role tool permissions. */
+export function updateAgentCapability(spec: AgentSpec, needId: string,
+  changes: CapabilityRequirementChanges, resolution: ToolResolution | null = null): AgentSpec {
+  const requirements = agentCapabilityRequirements(spec, resolution)
+  const previous = requirements.find(row => row.id === needId)
+  if (!previous) return spec
+  const currentRoleIds = new Set((spec.roles || []).map(role => role.id))
+  const next = normalizeCapabilityRequirements([{
+    ...previous,
+    title: changes.title ?? previous.title,
+    purpose: changes.purpose ?? previous.purpose,
+    kind: changes.kind ?? previous.kind,
+    access: changes.access ?? previous.access,
+    required: changes.required ?? previous.required,
+    role_ids: changes.role_ids === undefined ? previous.role_ids
+      : changes.role_ids.filter(id => currentRoleIds.has(id)),
+  }])[0]
+  if (!next) return spec
+  if (["title", "purpose", "kind", "access"].some(key =>
+    next[key as keyof AgentCapabilityRequirement] !== previous[key as keyof AgentCapabilityRequirement])) {
+    // A prior suggestion/mapping does not establish that the revised operation
+    // has the same inputs or effects. Recheck it against the current catalog.
+    next.suggested_tool_ids = []
+    next.search_terms = [safeMarketplaceQuery(`${next.title} ${next.purpose}`) ||
+      safeMarketplaceQuery(next.kind)].filter(Boolean)
+  }
+  return {...spec, capability_requirements: requirements.map(row => row.id === needId ? next : row)}
+}
+
+export function addAgentCapability(spec: AgentSpec, requirement: AgentCapabilityRequirement,
+  resolution: ToolResolution | null = null): AgentSpec {
+  const requirements = agentCapabilityRequirements(spec, resolution)
+  const next = normalizeCapabilityRequirements([requirement])[0]
+  if (!next || requirements.length >= MAX_AGENT_CAPABILITIES || requirements.some(row => row.id === next.id)) return spec
+  const roleIds = new Set((spec.roles || []).map(role => role.id))
+  return {...spec, capability_requirements: [...requirements,
+    {...next, role_ids: next.role_ids.filter(id => roleIds.has(id)), suggested_tool_ids: []}]}
+}
+
+/** Remove only this requirement; another task may still need its permissions. */
+export function removeAgentCapability(spec: AgentSpec, needId: string,
+  resolution: ToolResolution | null = null): { spec: AgentSpec; removed: RemovedAgentCapability | null } {
+  const requirements = agentCapabilityRequirements(spec, resolution)
+  const index = requirements.findIndex(row => row.id === needId)
+  if (index < 0) return {spec, removed: null}
+  return {spec: {...spec, capability_requirements: requirements.filter(row => row.id !== needId)},
+    removed: {requirement: requirements[index], index}}
+}
+
+/** Undo inserts one requirement into the current draft, preserving later edits. */
+export function restoreAgentCapability(spec: AgentSpec, removed: RemovedAgentCapability,
+  resolution: ToolResolution | null = null): AgentSpec {
+  const requirements = agentCapabilityRequirements(spec, resolution)
+  const restored = normalizeCapabilityRequirements([removed.requirement])[0]
+  if (!restored || requirements.length >= MAX_AGENT_CAPABILITIES || requirements.some(row => row.id === restored.id)) return spec
+  const roleIds = new Set((spec.roles || []).map(role => role.id))
+  restored.role_ids = restored.role_ids.filter(id => roleIds.has(id))
+  requirements.splice(Math.max(0, Math.min(removed.index, requirements.length)), 0, restored)
+  return {...spec, capability_requirements: requirements}
+}
+
+const domainMatch = (kind: CapabilityKind, text: string): boolean => {
+  if (kind === "browser") return /browser|playwright|puppeteer|浏览器/i.test(text)
+  if (kind === "desktop") return /desktop|computer.?use|本地软件|桌面|电脑操作/i.test(text)
+  if (kind === "document") return /document|pdf|spreadsheet|excel|xlsx|docx|文档|电子表格/i.test(text)
+  return false
+}
+const writing = /(?:\b(?:write|create|update|delete|send|submit|fill|click|type|press|upload|remove|edit|execute|export)\b|(?:^|_)(?:write|create|update|delete|send|submit|fill|click|type|press|upload|remove|edit|execute|export)(?:_|$)|写入|创建|修改|删除|发送|提交|填写|点击|上传|生成文件|导出)/i
+
+function specificDomainMatches(need:AgentCapabilityRequirement,text:string):boolean {
+  if(need.kind!=="document")return domainMatch(need.kind,text)
+  const request=[need.title,need.purpose,...need.search_terms].join(" ")
+  const groups=[/pdf/i,/(?:excel|xlsx|电子表格|spreadsheet)/i,/(?:word|docx|文字文档)/i,/(?:pptx|powerpoint|幻灯片)/i]
+  const requested=groups.filter(group=>group.test(request))
+  return domainMatch(need.kind,text) && (!requested.length || requested.every(group=>group.test(text)))
+}
+
+function compatibleCandidate(need:AgentCapabilityRequirement,tool:CapabilityCandidate,text:string):boolean {
+  const mutating=toolLooksMutating(tool.id,text)||writing.test(text)
+  if(need.access==="write" && (tool.readOnly || !mutating))return false
+  if(need.access==="read" && mutating)return false
+  if(tool.source==="builtin")return BUILTINS[tool.id].kind===need.kind && need.access==="read"
+  const domainSpecific=["document","browser","desktop"].includes(need.kind)
+  const explicitIntegration=need.kind==="integration"||need.kind==="custom"
+  if(domainSpecific || explicitIntegration) {
+    if(domainSpecific && !specificDomainMatches(need,text))return false
+    // A click action cannot stand in for uploading a file, nor can a writer
+    // automatically fulfil an export task. Match declared operation metadata.
+    const actions:readonly [RegExp,RegExp][]=[
+      [/(?:上传|upload|attach.*file)/i,/(?:上传|upload|attach.*file|file.*attach)/i],
+      [/(?:下载|download)/i,/(?:下载|download)/i],
+      [/(?:点击|click)/i,/(?:点击|click)/i],
+      [/(?:填写|填入|fill.*form|type.*text)/i,/(?:填写|填入|fill|type|input|form)/i],
+      [/(?:导出|export)/i,/(?:导出|export|generate|create|生成|创建)/i],
+      [/(?:删除|delete|remove)/i,/(?:删除|delete|remove)/i],
+      [/(?:发送|发邮件|send)/i,/(?:发送|发邮件|send)/i],
+      [/(?:更新|修改|update|edit)/i,/(?:更新|修改|update|edit)/i],
+      [/(?:创建|新增|create)/i,/(?:创建|新增|create)/i],
+    ]
+    const requestedAction = `${need.title} ${need.purpose}`
+    if(!actions.every(([request,capability])=>!request.test(requestedAction)||capability.test(text)))return false
+    if(explicitIntegration) {
+      // Known domains narrow the manual picker too: sending a chat message is
+      // not evidence that a connection can send email. Unrecognized business
+      // operations remain an explicit employee mapping, never an auto match.
+      const domains=[/(?:mail|outlook|邮件|邮箱)/i,
+        /(?:calendar|日历|日程)/i,/(?:slack)/i,/(?:salesforce)/i,/(?:notion)/i]
+      if(!domains.every(domain=>!domain.test(need.title)||domain.test(text)))return false
+    }
+    return true
+  }
+  // For an integration, a real catalog id is only a visible candidate. The
+  // employee still selects it; suggestions never mutate global/role grants.
+  return need.suggested_tool_ids.includes(tool.id)
+}
+
+export function buildAgentCapabilityPlan(spec: AgentSpec, resolution: ToolResolution | null,
+  connections: ConnectedToolOption[] = [], market: VerifiedMarketTool[] = [], localDevice?:ReadyLocalDevice|null): CapabilityPlanRow[] {
+  const selected = new Set(spec.tools || [])
+  const catalog: CapabilityCandidate[] = [
+    ...Object.entries(BUILTINS).map(([id, item]) => ({id, label: item.title,
+      source: "builtin" as const, tested: true, selected: selected.has(id), readOnly: true})),
+    ...connections.map(item => ({id: item.name, label: item.name, description: item.description, source: "http" as const,
+      tested: ["ok", "success", "connected"].includes(String(item.status || "").toLowerCase()),
+      selected: selected.has(item.name), readOnly: item.method === "GET"&&!toolLooksMutating(item.name,item.description)})),
+    ...market.map(item => ({id: item.id, label: item.label, description: item.description, source: "market" as const,
+      tested: true, selected: selected.has(item.id), readOnly: item.readOnly && !item.destructive&&!toolLooksMutating(item.name,item.description)})),
+  ]
+  const metadata = new Map<string, string>([
+    ...connections.map(item => [item.name, item.name + " " + item.description] as const),
+    ...market.map(item => [item.id, item.name + " " + item.description] as const),
+  ])
+  return agentCapabilityRequirements(spec, resolution).map(need => {
+    // Probe physical capability independently of role assignment. This temporary
+    // value is never saved; only bindAgentCapability's explicit choice grants it.
+    const probe={...spec,tools:[...new Set([...spec.tools,'local_computer'])],roles:spec.roles?.map(role=>({...role,tools:[...new Set([...role.tools,'local_computer'])]}))}
+    const localCandidate:CapabilityCandidate[]=localDeviceSupports(probe,need,localDevice)?[{
+      id:'local_computer',label:'所选电脑的已授权能力',source:'local',tested:true,
+      selected:spec.tools.includes('local_computer'),readOnly:need.access==='read',
+    }]:[]
+    const candidates = [...catalog.filter(tool => !resolution?.excluded?.some(row=>row.id===tool.id)&&compatibleCandidate(need,tool,metadata.get(tool.id)||"")),...localCandidate]
+      .map(tool=>({...tool,needsMapping:(need.kind==="integration"||need.kind==="custom") && !need.suggested_tool_ids.includes(tool.id)}))
+    const roleAssignmentsValid = (toolId:string) => need.role_ids.length
+      ? need.role_ids.every(id => spec.roles?.some(role => role.id===id && role.tools.includes(toolId)))
+      : !spec.roles?.length || spec.roles.some(role=>role.tools.includes(toolId))
+    const isBound = (tool:CapabilityCandidate) => tool.selected && !tool.needsMapping && roleAssignmentsValid(tool.id)
+    const chosen = candidates.filter(isBound)
+    const roleMissing = Boolean(spec.roles?.length) && candidates.length > 0 && (
+      need.role_ids.some(id => !spec.roles?.some(role => role.id === id)) ||
+      (!need.role_ids.length && !candidates.some(tool => tool.selected && roleAssignmentsValid(tool.id))) ||
+      candidates.some(tool => tool.selected && !tool.needsMapping && !roleAssignmentsValid(tool.id))
+    )
+    const state = chosen.some(tool => tool.tested) ? "selected" : chosen.length ? "needs_test"
+      : roleMissing ? "needs_role" : candidates.some(tool => tool.tested) ? "available" : candidates.length ? "needs_test" : "missing"
+    return {...need, candidates:candidates.map(tool=>({...tool,selected:isBound(tool),roleAssigned:roleAssignmentsValid(tool.id)})), state,
+      searchTerm: need.search_terms.map(safeMarketplaceQuery).find(Boolean) ||
+        safeMarketplaceQuery(need.kind + " " + need.title),
+      roleNames: (spec.roles || []).filter(role => need.role_ids.includes(role.id)).map(role => role.name),
+    }
+  })
+}
+
+export function agentCapabilityReadiness(spec:AgentSpec, resolution:ToolResolution|null,
+  connections:ConnectedToolOption[]=[],market:VerifiedMarketTool[]=[],localDevice?:ReadyLocalDevice|null):string[] {
+  return buildAgentCapabilityPlan(spec,resolution,connections,market,localDevice)
+    .filter(row=>row.required&&row.state!=="selected")
+    .map(row=>`${row.title}：${row.state==="needs_test"?"请先测试连接":
+      row.state==="needs_role"?"请选择负责角色，再选用并分配工具":
+      row.state==="available"?spec.roles?.length?"请选用工具并分配给负责角色":"请选择已连接工具":"请连接工具或调整能力需求"}`)
+}
+
+/** Exact human choice, used by UI and regression tests. No broad role grants. */
+export function bindAgentCapability(spec:AgentSpec, needId:string, toolId:string,
+  resolution:ToolResolution|null, connections:ConnectedToolOption[]=[], market:VerifiedMarketTool[]=[],localDevice?:ReadyLocalDevice|null):AgentSpec {
+  const need=buildAgentCapabilityPlan(spec,resolution,connections,market,localDevice).find(row=>row.id===needId)
+  const candidate=need?.candidates.find(candidate=>candidate.id===toolId)
+  if(!need || !candidate)return spec
+  if(spec.roles?.length && (need.role_ids.length
+    ? need.role_ids.some(id=>!spec.roles?.some(role=>role.id===id))
+    : !(candidate.roleAssigned && spec.tools.includes(toolId))))return spec
+  const chosenMarket=market.find(tool=>tool.id===toolId)
+  const aliases=new Set([need.title,...(chosenMarket?[chosenMarket.name]:[])])
+  const retain=(name:string)=>!aliases.has(name)||!!BUILTINS[name]||connections.some(tool=>tool.name===name)||!!spec.roles?.some(role=>!need.role_ids.includes(role.id)&&role.tools.includes(name))
+  return {...spec,
+    capability_requirements:agentCapabilityRequirements(spec,resolution)
+      .map(row=>row.id===needId?{...row,suggested_tool_ids:[toolId]}:row),
+    tools:[...new Set([...spec.tools.filter(retain),toolId])],
+    roles:spec.roles?.map(role=>need.role_ids.includes(role.id)
+      ? {...role,tools:[...new Set([...role.tools.filter(tool=>!aliases.has(tool)||!!BUILTINS[tool]),toolId])]}:role),
+  }
+}
+
+/** Catalog metadata only: credentials, URLs and employee records never enter the prompt. */
+export function toolCatalogForDesign(connections: ConnectedToolOption[], market: VerifiedMarketTool[]) {
+  return [
+    ...Object.entries(BUILTINS).map(([id, item]) => ({id, description: item.title, readOnly: true, source: "builtin"})),
+    ...connections.slice(0, 30).map(item => ({id: item.name, description: item.description.slice(0, 220),
+      readOnly: item.method === "GET"&&!toolLooksMutating(item.name,item.description), tested: ["ok", "success", "connected"].includes(item.status || ""), source: "http"})),
+    ...market.slice(0, 45).map(item => ({id: item.id, description: item.description.slice(0, 220),
+      readOnly: item.readOnly && !item.destructive&&!toolLooksMutating(item.name,item.description), tested: true, source: "market"})),
+  ]
+}

@@ -27,7 +27,7 @@ export function HomePage(p: ReturnType<typeof useHome>) {
         description="此处直接编辑当前工作台草稿。修改与原页面实时同步，保存后可以试跑；未保存的草稿不会被静默覆盖。">
         {p.spec ? <SpecEditorCard
           spec={p.spec} specName={p.specName} sourceMode={p.sourceMode}
-          onSpecNameChange={p.setSpecName} onTextChange={p.updateSpecText}
+          onSpecChange={p.replaceRoleSpec} onSpecNameChange={p.setSpecName} onTextChange={p.updateSpecText}
           onTogglePlanReview={p.togglePlanReview}
           onListItemChange={p.updateSpecListItem} onListItemAdd={p.addSpecListItem}
           onListItemRemove={p.removeSpecListItem} toolStatusOf={p.toolStatusOf}
@@ -109,7 +109,7 @@ export function HomePage(p: ReturnType<typeof useHome>) {
             spec={p.spec}
             specName={p.specName}
             sourceMode={p.sourceMode}
-            onSpecNameChange={p.setSpecName}
+            onSpecChange={p.replaceRoleSpec} onSpecNameChange={p.setSpecName}
             onTextChange={p.updateSpecText}
             onTogglePlanReview={p.togglePlanReview}
             onListItemChange={p.updateSpecListItem}

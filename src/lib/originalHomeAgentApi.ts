@@ -1,6 +1,7 @@
 import {parseOriginalHomeAuthoring,type OriginalHomeAuthoring} from '../../shared/original-home-authoring.ts'
 import {safeNativeLocalAgentSpec} from '../../services/pg-api/src/native-local-agent-contract.ts'
 import {parseOriginalHomeResources} from './originalHomeResources.ts'
+import {parseOriginalRoleUiExtension} from '../../shared/original-role-execution-contract.mjs'
 
 /** Backend DTO for the existing Home page, not a replacement page. */
 export type OriginalHomeAgent={
@@ -17,7 +18,7 @@ export class OriginalHomeApiError extends Error{
   constructor(status:number,code:string){super(code);this.status=status;this.code=code;this.name='OriginalHomeApiError'}
 }
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const fields=['goal','task_scope','deliverables','task_plan','done_criteria','tools','knowledge_base_ids','knowledge_retrieval','model_binding','http_tools','mcp_tools','require_plan_review']
+const fields=['goal','task_scope','deliverables','task_plan','done_criteria','tools','knowledge_base_ids','knowledge_retrieval','model_binding','http_tools','mcp_tools','require_plan_review','roles','capability_requirements']
 function sameJson(left:unknown,right:unknown):boolean{
   if(left===right)return true
   if(Array.isArray(left)||Array.isArray(right))return Array.isArray(left)&&Array.isArray(right)&&left.length===right.length&&left.every((v,i)=>sameJson(v,right[i]))
@@ -25,7 +26,7 @@ function sameJson(left:unknown,right:unknown):boolean{
   const a=Object.keys(left).sort(),b=Object.keys(right).sort()
   return a.length===b.length&&a.every((k,i)=>k===b[i]&&sameJson((left as Record<string,unknown>)[k],(right as Record<string,unknown>)[k]))
 }
-const refuse=(status:number,code:string):never=>{throw new OriginalHomeApiError(status,code)}
+function refuse(status:number,code:string):never{throw new OriginalHomeApiError(status,code)}
 function object(raw:unknown){
   if(!raw||typeof raw!=='object'||![Object.prototype,null].includes(Object.getPrototypeOf(raw)))return refuse(503,'invalid_original_home_response')
   return raw as Record<string,unknown>
@@ -52,7 +53,7 @@ export function normalizeOriginalHomeExecutionSpec(raw:unknown):Record<string,un
   if(Object.hasOwn(visibleSpec,'require_approval')&&visibleSpec.require_approval!==true)return refuse(400,'original_home_approval_required')
   // GET exposes the server's mandatory approval status. It is not a writable
   // permission field in the frozen API; retain that policy while editing.
-  const {require_approval:_visibleApproval,...rawSpec}=visibleSpec
+  const {require_approval:_visibleApproval,roles,capability_requirements,...rawSpec}=visibleSpec
   if(Object.keys(rawSpec).some(k=>!fields.includes(k))||typeof rawSpec.goal!=='string'||!rawSpec.goal.trim())return refuse(400,'invalid_original_home_input')
   let spec:Record<string,unknown>
   try{
@@ -61,6 +62,12 @@ export function normalizeOriginalHomeExecutionSpec(raw:unknown):Record<string,un
     const {require_approval:_approval,...normalized}=safeNativeLocalAgentSpec(rawSpec,true)
     spec=normalized
   }catch{return refuse(400,'invalid_original_home_input')}
+  if(Object.hasOwn(visibleSpec,'roles')||Object.hasOwn(visibleSpec,'capability_requirements')){
+    try{const ext=parseOriginalRoleUiExtension({roles:roles??[],capability_requirements:capability_requirements??[]},spec.tools as string[])
+      if(Object.hasOwn(visibleSpec,'roles'))spec.roles=ext.roles
+      if(Object.hasOwn(visibleSpec,'capability_requirements'))spec.capability_requirements=ext.capability_requirements
+    }catch{return refuse(400,'invalid_original_home_role_extension')}
+  }
   return spec
 }
 function input(raw:OriginalHomeAgentUpdate,requireAuthoring=true){
@@ -77,10 +84,11 @@ function revision(raw:number){if(!Number.isSafeInteger(raw)||raw<1)return refuse
 function row(raw:unknown,employee:string,expectedId?:string):OriginalHomeAgent{
   const r=object(raw),keys=['id','owner_user_id','name','spec','revision','created_at','updated_at','authoring']
   if(Object.keys(r).sort().join(',')!==keys.sort().join(',')||typeof r.id!=='string'||!uuid.test(r.id)||r.owner_user_id!==employee||expectedId!==undefined&&r.id!==expectedId||typeof r.name!=='string'||!r.name.trim()||r.name.length>120||!Number.isSafeInteger(r.revision)||Number(r.revision)<1)return refuse(503,'invalid_original_home_response')
-  for(const key of['created_at','updated_at'])if(typeof r[key]!=='string'||!Number.isFinite(Date.parse(r[key] as string)))return refuse(503,'invalid_original_home_response')
+  const timestamp=(raw:unknown):string=>{if(typeof raw!=='string'||!Number.isFinite(Date.parse(raw)))return refuse(503,'invalid_original_home_response');return raw}
+  const created_at=timestamp(r.created_at),updated_at=timestamp(r.updated_at)
   const spec=object(r.spec)
   if(Object.keys(spec).some(k=>![...fields,'require_approval'].includes(k))||typeof spec.goal!=='string'||!spec.goal.trim()||spec.require_approval!==true)return refuse(503,'invalid_original_home_response')
-  try{return {...r,spec:object(jsonData(spec)),authoring:r.authoring===null?null:parseOriginalHomeAuthoring(r.authoring)} as OriginalHomeAgent}catch{return refuse(503,'invalid_original_home_response')}
+  try{return {id:r.id,owner_user_id:employee,name:r.name,revision:Number(r.revision),created_at,updated_at,spec:{...normalizeOriginalHomeExecutionSpec(spec),require_approval:true},authoring:r.authoring===null?null:parseOriginalHomeAuthoring(r.authoring)}}catch{return refuse(503,'invalid_original_home_response')}
 }
 export function createOriginalHomeAgentApi(config:{employeeId:string;transport?:typeof fetch;rootPath?:''|'/__pg_native';timeoutMs?:number}){
   const employee=id(config.employeeId),send=config.transport??fetch,root=config.rootPath??'/__pg_native',budget=config.timeoutMs??8000
@@ -95,7 +103,7 @@ export function createOriginalHomeAgentApi(config:{employeeId:string;transport?:
     signal?.addEventListener('abort',cancel,{once:true})
     const deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(unavailable())},budget)})
     const perform=async()=>{
-      const response=await send(route,{method,body:bytes,credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',signal:controller.signal,headers:{Accept:'application/json',...(method==='GET'?{}:{'Content-Type':'application/json','X-AgentStudio-Request':'1','X-AgentStudio-Expected-Employee':employee})}})
+      const response=await send(route,{method,body:bytes,credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',signal:controller.signal,headers:{Accept:'application/json','X-AgentStudio-Expected-Employee':employee,...(method==='GET'?{}:{'Content-Type':'application/json','X-AgentStudio-Request':'1'})}})
       if(!(response instanceof Response)||response.redirected||!/^application\/json(?:;\s*charset=utf-8)?$/i.test(response.headers.get('content-type')??'')||!response.body)return refuse(503,'invalid_original_home_response')
       const declared=response.headers.get('content-length')
       if(declared!==null&&(!/^(0|[1-9][0-9]*)$/.test(declared)||Number(declared)>1048576))return refuse(503,'invalid_original_home_response')

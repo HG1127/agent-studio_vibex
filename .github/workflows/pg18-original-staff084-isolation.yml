@@ -1,0 +1,52 @@
+name: Agent Studio original staff084 isolated verification
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: staff084-isolation-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  staff084-isolation:
+    name: PG18 original Staff084 / ${{ matrix.suite }}
+    if: github.repository == 'HG1127/agent-studio_vibex' && startsWith(github.ref, 'refs/heads/codex/pg18-')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [staff084-http, staff084-browser, staff084-quality089-http, staff084-quality089-browser]
+    env:
+      AGENT_STUDIO_STAFF084_EXPECTED_HEAD: '${{ github.sha }}'
+      AGENT_STUDIO_STAFF084_PURPOSE: YES_NEW_OWNED_DISPOSABLE_ORIGINAL_STAFF084_ONLY
+      AGENT_STUDIO_STAFF084_SUITE: '${{ matrix.suite }}'
+      AGENT_STUDIO_STAFF084_TARGET: 127.0.0.1:5333/agent_studio/postgres
+      AGENT_STUDIO_STAFF084_WRITE_APPROVED: YES_SYNTHETIC_SAME_RUN_ONLY
+      AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED: 'true'
+      AGENT_STUDIO_PG18_EMPLOYEE_UAT_ENABLED: 'true'
+      AGENT_STUDIO_PG18_UAT_APPROVAL: APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Locked source dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual API compiler and ordinary-host/profile guards
+        run: |
+          pnpm --dir services/pg-api check
+          node --experimental-strip-types --test tests/staff084-hosted-guard.test.mjs tests/staff084-composite-contract.test.mjs tests/staff084-audit-cleanup.test.mjs
+      - name: Build actual original employee index and install Chromium
+        if: endsWith(matrix.suite, '-browser')
+        run: |
+          node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
+          node node_modules/@playwright/test/cli.js install --with-deps chromium
+      - name: Real owned5333 original14 LOGINs and selected complete source story
+        run: node --experimental-strip-types ops/pg18-staff084-hosted-entry.mjs

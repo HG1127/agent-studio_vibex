@@ -1,3 +1,5 @@
+import {selectOriginalRunOptions} from './original-agent-run-options-runtime.ts'
+import {prepareOriginalRoleExecutionPool,selectOriginalRoleUi} from './original-role-ui-policy.ts'
 import {prepareOrdinaryCaseRuntime,selectOrdinaryCaseRuntime} from './native-ordinary-case-runtime.ts'
 import {NativeOrdinaryCaseExecutor} from './native-ordinary-case-executor.ts'
 import {reportWorkerStartupFailure} from './pg18-full069-worker-startup-observation.mjs'
@@ -45,6 +47,7 @@ export function runV2WorkerCli(autonomous=false){
   const marker="APPROVE_ISOLATED_PG_WORKFLOW_V2_RUNTIME_ONLY"
   function required(name:string){const value=process.env[name]?.trim();if(!value)throw Error("missing_"+name);return value}
   async function main(mode:"serve"|"preflight"){
+    if(selectOriginalRoleUi(process.env)&&!autonomous)throw Error('original_role_ui_requires_autonomous_worker')
     startupStage='activation';const localDeviceExecutionApproved=selectNativeLocalDeviceExecution(process.env)
     if(localDeviceExecutionApproved&&!autonomous)throw Error("native_local_autonomous_worker_required")
     const ordinarySelection=selectOrdinaryCaseRuntime(process.env)
@@ -57,6 +60,8 @@ export function runV2WorkerCli(autonomous=false){
     if(knowledgeToolsEnabled&&!toolsEnabled)throw Error("workflow_knowledge_tool_adapter_disabled")
     const callerApproved=selectAgentCallerExecution(process.env)
     if(callerApproved&&!autonomous)throw Error("agent_caller_autonomous_worker_required")
+    const originalRunOptionsApproved=selectOriginalRunOptions(process.env)
+    if(originalRunOptionsApproved&&!autonomous)throw Error('original_run_options_requires_autonomous_worker')
     const agentsEnabled=autonomous?selectAutonomousAgentExecution(process.env):selectWorkflowAgentExecution(process.env)
     const memoryApproved=selectAgentMemoryRuntime(process.env)
     const outcomeApproved=selectAgentOutcomeMemoryWrites(process.env)
@@ -91,6 +96,7 @@ export function runV2WorkerCli(autonomous=false){
       async query<Row>(sql:string,values:unknown[]=[]){return {rows:(await db.query(sql,values)).rows as Row[]}},release(destroy?:boolean){db.release(destroy)}}}}
     const adapter=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(rawAdapter,knowledgeToolsEnabled),knowledgeToolsEnabled),knowledgeToolsEnabled),knowledgeToolsEnabled)
     try{
+      startupStage='original_role_audit';await prepareOriginalRoleExecutionPool(adapter,process.env)
       startupStage='target_audit';await verifyPgRuntimeTarget(adapter,target);startupStage='worker_role_audit';await verifyPgWorkerRoleBoundary(adapter,target)
       if(localDeviceExecutionApproved){const db=await adapter.connect();try{await db.query("BEGIN READ ONLY");await db.query("SET LOCAL ROLE agentstudio_api");await verifyNativeLocalDeviceSchema(db)}finally{try{await db.query("ROLLBACK")}finally{db.release()}}}
       startupStage='workflow_lineage_audit';await verifyWorkflowSampleLineageSchema(adapter)
@@ -98,6 +104,7 @@ export function runV2WorkerCli(autonomous=false){
       startupStage='knowledge_runtime_audit';if(adapter.knowledgeSharing||modelEnabled||toolsEnabled)await verifyKnowledgeRuntimeSchema(adapter,true)
       startupStage='knowledge_tool_audit';if(knowledgeToolsEnabled)await verifyKnowledgeToolSchema(adapter)
       startupStage='human_input_audit';const humanInputAvailable=await inspectAgentHumanInputSchema(adapter)
+      if(selectOriginalRoleUi(process.env)&&!humanInputAvailable)throw Error('original_role_human_review_required')
       startupStage='memory_schema_audit';const memoryAvailable=await inspectAgentMemorySchema(adapter),memoryContextAvailable=await inspectAgentMemoryContextSchema(adapter)
       if(memoryApproved&&(!memoryAvailable||!memoryContextAvailable||!humanInputAvailable))throw Error("agent_memory_runtime_required")
       startupStage='outcome_schema_audit';const outcomeAvailable=await inspectAgentMemoryOutcomeSchema(adapter)
@@ -127,7 +134,7 @@ export function runV2WorkerCli(autonomous=false){
       // Preflight never loads either execution Worker or its claim SQL.
       startupStage='worker_import';const {WorkflowV2Worker}=await import("./workflow-v2-worker.ts")
       const scheduleRuntime=scheduleEnabled?await import("./schedule-runtime-worker.ts"):undefined
-      startupStage='worker_construct';const worker=new WorkflowV2Worker(adapter,(autonomous?"pg-agent-v2-":"pg-workflow-v2-")+randomUUID().slice(0,8),{executor,ordinaryCaseExecutionApproved:ordinaryCase?.execution===true,localDeviceExecutionApproved,agentExecutionApproved:agentsEnabled,agentCallerExecutionApproved:callerApproved,scheduleExecutionApproved:scheduleApproved,humanInputApproved:humanInputAvailable,memoryExecutionApproved:autonomous&&memoryApproved,outcomeMemoryApproved:autonomous&&outcomeApproved,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"})
+      startupStage='worker_construct';const worker=new WorkflowV2Worker(adapter,(autonomous?"pg-agent-v2-":"pg-workflow-v2-")+randomUUID().slice(0,8),{executor,originalRunOptionsApproved,ordinaryCaseExecutionApproved:ordinaryCase?.execution===true,localDeviceExecutionApproved,agentExecutionApproved:agentsEnabled,agentCallerExecutionApproved:callerApproved,scheduleExecutionApproved:scheduleApproved,humanInputApproved:humanInputAvailable,memoryExecutionApproved:autonomous&&memoryApproved,outcomeMemoryApproved:autonomous&&outcomeApproved,executionMode:autonomous?"agent_native_v2":"workflow_native_v2"})
       closeWorkerClaims=()=>worker.closeNewClaims()
       claimsClosed=()=>worker.claimAdmissionSnapshot().closed
       if(stop){closeWorkerClaims();if(claimsClosed())heartbeat?.newClaimsClosed();return}

@@ -11,9 +11,14 @@ import {verifyAgentHttpTools} from "./repository.ts"
 import {resolveAgentMcpTools} from "./mcp-binding-resources.ts"
 import {requireHumanInputSchema} from "./agent-human-input-policy.ts"
 import type {AgentMemoryContext} from "./agent-memory-context.ts"
+import {roleHistoricalSpec,withOriginalRoleHistory} from './original-role-history.ts'
+import {originalRoleHash} from './original-role-execution.mjs'
+import type {OriginalRolePin} from '../../../shared/original-role-execution-contract.mjs'
 async function currentSpec(db:SqlClient,owner:string,parent:WorkflowEffectRequest,allowNativeLocal=false,allowMonitorBusiness=false){
   const ref=parent.configuration.agent_binding
   if(parent.kind!=="agent"||!ref)throw new HttpError(409,"workflow_agent_binding_missing")
+  const historical=roleHistoricalSpec(db,owner,ref.spec_id,ref.spec_revision)
+  if(historical)return historical
   const row=(await db.query<{revision:number|string;spec:unknown}>("SELECT revision,spec FROM agentstudio.agent_specs "+
     "WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[ref.spec_id,owner])).rows[0]
   if(!row)throw new HttpError(404,"workflow_resource_not_found")
@@ -40,8 +45,13 @@ export async function verifyWorkflowAgentResources(db:SqlClient,owner:string,par
   if(state&&workflowAgentJson(definitions)!==workflowAgentJson(state.mcp_tool_definitions??[]))throw new HttpError(409,"workflow_agent_snapshot_changed")
   return {spec,definitions}
 }
-export async function initializeWorkflowAgent(db:SqlClient,owner:string,parent:WorkflowEffectRequest,options:{humanInput?:boolean;fullDelivery?:boolean;memoryContext?:AgentMemoryContext;localDevice?:import("../../../shared/native-local-device-contract.mjs").LocalBinding;monitorBusiness?:MonitorAgentBinding;caseBusiness?:OrdinaryCaseRunBinding}={}){
+async function initializeWorkflowAgentCore(db:SqlClient,owner:string,parent:WorkflowEffectRequest,options:{rolePin?:OriginalRolePin;humanInput?:boolean;fullDelivery?:boolean;memoryContext?:AgentMemoryContext;localDevice?:import("../../../shared/native-local-device-contract.mjs").LocalBinding;monitorBusiness?:MonitorAgentBinding;caseBusiness?:OrdinaryCaseRunBinding}={}){
   const {spec,definitions}=await verifyWorkflowAgentResources(db,owner,parent,undefined,options.localDevice!==undefined,options.monitorBusiness,false,options.caseBusiness)
   if(options.humanInput===true)await requireHumanInputSchema(db)
   return createWorkflowAgentState(parent,spec,definitions,options)
+}
+export async function initializeWorkflowAgent(...args:Parameters<typeof initializeWorkflowAgentCore>){
+ const [db,owner,,options]=args
+ if(options?.rolePin)return withOriginalRoleHistory(db,owner,options.rolePin.run_id,originalRoleHash(options.rolePin),()=>initializeWorkflowAgentCore(...args))
+ return initializeWorkflowAgentCore(...args)
 }

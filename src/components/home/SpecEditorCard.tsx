@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import {lazy,Suspense,type ReactNode} from "react"
 import { Link } from "react-router-dom"
 import {
   ArrowRight,
@@ -27,7 +27,9 @@ import { safeMarketplaceQuery, addReturnAgentToUrl } from "@/lib/toolSearchPriva
 import { AgentToolAutoConnect } from "@/components/home/AgentToolAutoConnect"
 import {AuthoringRequirements} from './AuthoringRequirements'
 
+const OriginalRoleEditor=import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED==='true'&&import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_ROLES_UI_ENABLED==='true'?lazy(()=>import('./OriginalRoleEditor')):null
 type SpecEditorCardProps = {
+  onSpecChange?:(spec:AgentSpec)=>void
   spec: AgentSpec
   specName: string
   sourceMode: "create" | "template"
@@ -301,6 +303,7 @@ function ToolPickerBlock({
 export function SpecEditorCard(p: SpecEditorCardProps) {
   return (
     <div className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      {OriginalRoleEditor&&p.onSpecChange&&<Suspense fallback={<p role="status">正在打开角色与能力配置…</p>}><OriginalRoleEditor spec={p.spec} onChange={p.onSpecChange} builtinTools={p.builtinTools} connectedTools={p.connectedTools} marketTools={p.connectedMarketTools} analysis={p.toolAnalysis} notice={p.toolMatchNotice} onRematch={p.onRematchTools} onToggleTool={p.onToggleTool} returnSpecId={p.savedSpecId} disabled={p.isSaving||p.isRevising}/></Suspense>}
       <AuthoringRequirements spec={p.spec}/>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-secondary/25 px-4 py-4 sm:px-6">
         <div className="flex min-w-0 flex-1 items-center gap-3">
