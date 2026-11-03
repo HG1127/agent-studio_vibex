@@ -1,0 +1,53 @@
+// Review candidate source closure. Original Native and original employee UI
+// key sets are retained. These literal deltas need Root's final composed-source
+// review after A's PG ToolHub adapter; canonical hook currently refuses CI.
+import {nativeLocalDeviceGenuineFrozenSources} from './native-local-device-genuine-fixture.mjs'
+import {originalLoginReviewedSources} from '../../../../tests/helpers/pg-original-login-reviewed-sources.mjs'
+export const nativeOriginalDirectoryReviewedSources=Object.freeze({...nativeLocalDeviceGenuineFrozenSources,...originalLoginReviewedSources,...{
+  ".github/workflows/pg18-original-computer-directory-ci.yml": "89c9022bfc6535a57fe1d867da40454185f2ed11716073d7883f82161b218864",
+  "services/pg-api/src/native-local-device-http.ts": "5e4bbf72f71a2d51d3c9d46695afc59d0183ec152fe224ec69c38c3bc2235ca2",
+  "services/pg-api/src/native-local-device-repository.ts": "32c682cd5c33267dde43535f589e31fe9dc213aee76cf4b84de5c603c0a2f37c",
+  "services/pg-api/tests/helpers/native-local-device-genuine-fixture.mjs": "917215dfd4016abd9cf962ea1c71213664dcfd24651a2d2840dbfabbe6eafe61",
+  "services/pg-api/tests/helpers/native-local-device-genuine-guard.mjs": "94a2b49d9af8f6e1a4c6d94b5fcd8b08f597c497e9218639daed1f546441a8db",
+  "services/pg-api/tests/helpers/native-original-directory-executor.mjs": "8d2f18efd09cc681a9d8ef9b51b2593807ff26d3c6c729792af6f77438be7c2e",
+  "services/pg-api/tests/helpers/native-original-directory-fixture.mjs": "525fd0f5b6f755faf33ca58bb6cdaafe7c66e06d6a9eb193a1d335996acd663f",
+  "services/pg-api/tests/helpers/native-original-directory-network.mjs": "71379f0a753754029ec80d2eec4a7eb8ea3b99516b27485e721129d0dbe3854f",
+  "services/pg-api/tests/helpers/native-original-directory-policy.mjs": "5a0692c89918fb9a201972c464638e939b1fe865e099ff68c04f61d3979f27bd",
+  "services/pg-api/tests/helpers/native-original-directory-source-preflight.mjs": "180c6384d5c03a7fd5faad024a7eb104cb3a82c60a7d8fa75d3551197f893fa8",
+  "services/pg-api/tests/native-original-directory-source-pure.test.mjs": "24836af1c087863ca5c01bd3c03a2080db91765568becac659e88b794ac04976",
+  "shared/native-directory-jobs.d.mts": "e12c7e79f16b5bee3a1145f8baa02e3018df7c22afaeaf3e9e1f46303d51bdc6",
+  "shared/native-directory-jobs.mjs": "104aba68fe7139b9b389573dc2b0fc0d03bac0e60b4249cf9fd9ae66a573c049",
+  "src/App.tsx": "a3b452e96f14107af889970da4fb007ffe8a77c1f70a4d9f68d4f3fb434136b4",
+  "src/components/home/AgentRevisionPreview.tsx": "0c884d55244c3aca170227c2764841aa7e478c3ea42c90bf3fda937d09707dd0",
+  "src/components/site/AgentResourceReminder.tsx": "3886311d2c8c3eabd73e67446a1b73f2a7dac70cbfd02a4747d16e876f1642d9",
+  "src/components/site/ExecutionWorkspaceNav.tsx": "5e4918fe3b32911ea8d17fd1afc0a9d2ee0d58d0c13d93a482b1c170c645799b",
+  "src/components/site/SiteShell.tsx": "aa66d95eae70209138d5aa1261ad9dbad6f4576efd25b09f7160ebe6bdf5d413",
+  "src/components/site/StudioSettingsDialog.tsx": "9e119c7e5947a653028767e7bc33e750264654c7f6af69e4ff431599c8bcb528",
+  "src/components/tool-hub/ComputerFileWorkspace.tsx": "a4a02051fac4077ea8e47870975a7d64ef84000c32940bfcdd22a7e31e48f5f4",
+  "src/components/tool-hub/DesktopApplications.tsx": "f04642e03a4b5364695864c340b2c1a6686059a478b1c3a2b11364e1c6c56809",
+  "src/components/tool-hub/DesktopComputerCenter.tsx": "710bb45a637b1eb3a19eaa371ae53e32eab22ef2366e7721a469c7b4f2c5a662",
+  "src/components/tool-hub/DesktopPermissions.tsx": "e59e0b56d33fcf32d7e03aa5fb461d7d3f4010eb4048d00a073f996f3f08bc5d",
+  "src/lib/agentDesignModelSelection.ts": "0b2ccb2c2247e72ef33dbcc2c77d1c0a261977c7726a75c492118482cd678227",
+  "src/lib/agentDesignProtocol.ts": "73d7bd72c7f73ce8f05d71e60054b59e6be7bc8fe7e094220e96e5d0db7bc458",
+  "src/lib/invocationViewKey.ts": "bddc002ed60ae971d545fc5293e8309f4079e7b22974fd103bb41bffed72b73f",
+  "src/lib/nativeDirectoryJobs.ts": "e59487bc80381b432b6b6c7f04731e562192b722faa5f6a9ba5ac164018de80d",
+  "src/lib/smitheryAutoDiscovery.ts": "328c6179418c1b8d2b8bd1a8a4514925055ea1c2ec23bc004eff1becd01cbb98",
+  "src/lib/studioAuthStore.ts": "e4eb62900e029e5308610f3092a8c041fefa05e70050ef445d6edc723b8d0d0c",
+  "src/lib/toolHubView.ts": "a4fd31cfedafd8f4f538e79c6f5f0b412d850d81c7d5857570a0a0dd22d365cd",
+  "src/lib/useAgentResourceReminder.ts": "a8f33adb6e54443852c2c4719e3b1e45fb037287837bbd64fd87da49344c1acd",
+  "src/pages/ToolHub/ToolHubPage.tsx": "163a4be41f21c64b4450e3b9d63b3db4231856f42838f520e61dd01ab05c785f",
+  "src/pages/ToolHub/useToolHub.ts": "f2cc4954b2339ea2ba8c37abdaa1fbfc6b6a2e1fb4f7b204618366da1a756f4e",
+  "tests/pg-native-browser/original-computer-directory-pg18.spec.mjs": "374d2a40c305df31e0639bfe049a4afdd9781fe45de0b9da5b221bc33e885bb4",
+  "tests/pg-native-browser/original-computer-directory.config.mjs": "cf291056fecb09e01a56009de814c3407ec098922597c55669d6fe9608ed8e2e",
+  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "f11fe3075026c641646203999d3bcbe5b9a91fc6006b2672747716aa8b471c54",
+  "services/pg-api/src/original-role-catalog.mjs": "292c68bc41254d81264845474036312867887c8e4b4e80c6ec5e438e5c7e7daa",
+  ".github/workflows/pg18-original-role-ab-sql-ci.yml": "a3c5d4e275db2d7570e4b6a615f17ddad9a28aad0062dde79ed16f36fe480ead",
+  "services/pg-api/tests/helpers/original-role-ab-sql-sources.json": "c1d65faf507fe858b77cda3eaa1f9b0229a0862c8303f3b7510f10958526d845",
+  "tests/original-role-catalog-query-source-pure.test.mjs": "fdaa132f161b43233ef15172271419fabab9a510209523dcd6370f06726903e1",
+  "services/pg-api/src/original-role-constraint-diagnostic.mjs": "6bfee223cd037dfe2ef5da57e7840d056f70400c6085522b9b328020d51dd7bc"
+,
+  "services/pg-api/tests/helpers/tool-hub-original-home-reviewed-sources.json": "5c2a66d58ba9656dd125f9a130ffd0c2bb276339d7011e78e0536d5569be4c4d",
+  "tests/helpers/pg-original-login-reviewed-sources.mjs": "c2b2e4925018cf31a2b05e0ad7c7d6364ed394ce0cc740eac1e488d0f45e374c",
+  "services/pg-api/tests/helpers/native-original-directory-ui-source.mjs": "5b01f72d20e8cefe68f379cd8a3520f41ba800acd6240cd206ee49cb60ac93f3",
+  "services/pg-api/tests/native-original-directory-ui-source.test.mjs": "506686aa00ee1ff5c661c6de7a5ec12f9251312fb3b9eda6ebbcd29860e1c57d"
+}})

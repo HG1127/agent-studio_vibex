@@ -2,13 +2,16 @@ import {useEffect,useLayoutEffect,useRef,useState} from 'react'
 import {ArrowUp,Check,Copy,FilePlus2,FolderOpen,FolderPlus,History,Loader2,RefreshCw,RotateCcw,Save,Search,ShieldCheck,Square,Trash2} from 'lucide-react'
 import {confirmInStudio} from '@/lib/studioDialogs'
 import {decodeRhToken} from '@/lib/studioAuth'
+import {ORIGINAL_PG_UI_ENABLED} from '@/lib/studioBackend'
+import {getLocalDeviceSessionScope,sameLocalDeviceSessionScope,subscribeLocalDeviceSessionPrivacy} from '@/lib/nativeLocalEmployeeApi'
+import {nativeDirectoryJobs,nativeFileJobPresentation,type NativeDirectoryHandle,type NativeFileJobPresentation} from '@/lib/nativeDirectoryJobs'
 import {deviceConnectionState} from '@/lib/localConnectionSetup'
 import {localApi,LocalApiError,deviceTools,type LocalDevice,type LocalJob} from '@/lib/localDevices'
 import {localChildPath,localRelativePath,localParentPath,localRootOptions,localTextPreviewable,localToolCatalogKey} from '@/lib/localDeviceActions'
 import {localDirectorySnapshot,visibleLocalFiles,type LocalDirectorySnapshot} from '@/lib/localFileBrowser'
 import {WORKSPACE_ACTIONS,WORKSPACE_EDIT_BYTES,workspaceActionAvailability,workspaceAllows,workspaceError,workspaceFileOpenSupported,workspaceFileApplicationFeedback,workspaceStat,workspaceTextPayload,workspaceTextVerified,workspaceTrash,type WorkspaceStat,type WorkspaceTrash} from '@/lib/computerWorkspace'
 
-type Intent={requestId:string;jobId:string;tool:string;args:Record<string,string>;root:string;catalog:string;apply?:(result:string)=>Promise<void>|void}
+type Intent={requestId:string;jobId:string;tool:string;args:Record<string,string>;root:string;catalog:string;native?:NativeDirectoryHandle;apply?:(result:string)=>Promise<void>|void}
 type DocumentState={path:string;original:string;stat:WorkspaceStat|null;verified:boolean;catalog:string}
 type RecordItem={id:string;name:string;path:string;status:string;at:number}
 const btn='inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-medium hover:bg-secondary disabled:opacity-40'
@@ -19,17 +22,24 @@ const textFile=(name:string)=>localTextPreviewable(name)||/\.(tsx?|jsx?|py|sh|ps
 /** The workbench owns interaction; the connected PC only performs scoped jobs.
  * Receipt loss retains the SAME request ID. Tab switches and filtering are
  * local views; an unverifiable/truncated preview can never be saved. */
-export function ComputerFileWorkspace({device,statusVerified=true,onBusyChange,onRequestPermissions}:{device:LocalDevice;statusVerified?:boolean;onBusyChange?:(value:boolean)=>void;onRequestPermissions?:()=>void}){
+type Props={device:LocalDevice;statusVerified?:boolean;onBusyChange?:(value:boolean)=>void;onRequestPermissions?:()=>void}
+export function ComputerFileWorkspace(props:Props){
+ const [,privacyRevision]=useState(0),scope=getLocalDeviceSessionScope()
+ useEffect(()=>ORIGINAL_PG_UI_ENABLED?subscribeLocalDeviceSessionPrivacy(()=>privacyRevision(n=>n+1)):undefined,[])
+ return <ScopedComputerFileWorkspace key={ORIGINAL_PG_UI_ENABLED?scope.owner+':'+scope.epoch+':'+props.device.id:props.device.id} {...props}/>
+}
+function ScopedComputerFileWorkspace({device,statusVerified=true,onBusyChange,onRequestPermissions}:Props){
  const tools=deviceTools(device),catalog=localToolCatalogKey(tools),roots=localRootOptions(tools.find(t=>t.name==='files.list'))
  const [root,setRoot]=useState(roots[0]?.id||''),[path,setPath]=useState('.'),[query,setQuery]=useState('')
  const [directory,setDirectory]=useState<LocalDirectorySnapshot|null>(null),[selected,setSelected]=useState<{path:string;directory:boolean}|null>(null)
  const [doc,setDoc]=useState<DocumentState|null>(null),[text,setText]=useState(''),[diff,setDiff]=useState(false)
  const [form,setForm]=useState<''|'file'|'folder'|'copy'|'move'>(''),[target,setTarget]=useState(''),[newText,setNewText]=useState('')
- const [busy,setBusy]=useState(false),[job,setJob]=useState<LocalJob|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState('')
+ const [busy,setBusy]=useState(false),[job,setJob]=useState<LocalJob|NativeFileJobPresentation|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState('')
  const [applicationAction,setApplicationAction]=useState('')
  const [recover,setRecover]=useState(false),[pane,setPane]=useState<'workspace'|'trash'|'history'>('workspace'),[history,setHistory]=useState<RecordItem[]>([])
  const [trash,setTrash]=useState<{entries:WorkspaceTrash[];truncated:boolean}|null>(null),[stale,setStale]=useState(false)
  const intent=useRef<Intent|null>(null),mutex=useRef(false),alive=useRef(true),controller=useRef<AbortController|null>(null),owner=useRef(decodeRhToken()?.sub||'')
+ const operation=useRef(0),observation=useRef<Intent|null>(null),originalScope=useRef(getLocalDeviceSessionScope()).current
  const live=useRef({device,statusVerified,catalog})
   useLayoutEffect(()=>{live.current={device,statusVerified,catalog}},[device,statusVerified,catalog])
  const dirty=!!doc&&text!==doc.original||form==='file'&&!!newText,blocked=busy||recover,online=statusVerified&&deviceConnectionState(device)==='online'
@@ -37,11 +47,11 @@ export function ComputerFileWorkspace({device,statusVerified=true,onBusyChange,o
  const notepadText=!!selected&&/\.(txt|md|csv|tsv|json|log)$/i.test(selected.path)&&tools.find(t=>t.name==='files.open')?.inputSchema['x-studio-text-handler']==='notepad'
  const may=(tool:string)=>workspaceAllows(tools,tool,root)
   const missingPermissions=workspaceActionAvailability(tools,root).filter(action=>!action.available&&action.reason==='permission')
- const valid=()=>alive.current&&!!owner.current&&decodeRhToken()?.sub===owner.current
+ const valid=()=>alive.current&&!!owner.current&&decodeRhToken()?.sub===owner.current&&(!ORIGINAL_PG_UI_ENABLED||sameLocalDeviceSessionScope(originalScope))
  const ready=()=>{if(!valid()||!live.current.statusVerified||deviceConnectionState(live.current.device)!=='online')throw Error('设备离线或身份尚未核实，未发送新操作。');if(live.current.catalog!==catalog)throw Error('授权能力已变化，请核对当前范围。')}
  const visible=visibleLocalFiles(directory,root,path,query)
  const edited=!!doc&&doc.verified&&doc.catalog===catalog&&may('files.update')&&doc.path===selected?.path
- useEffect(()=>{alive.current=true;return()=>{alive.current=false;controller.current?.abort()}},[])
+ useEffect(()=>{alive.current=true;return()=>{alive.current=false;operation.current++;controller.current?.abort()}},[])
  useEffect(()=>{onBusyChange?.(busy||recover||dirty);return()=>onBusyChange?.(false)},[busy,recover,dirty,onBusyChange])
  useEffect(()=>{
   const ids=rootIds.split(',').filter(Boolean)
@@ -50,7 +60,33 @@ export function ComputerFileWorkspace({device,statusVerified=true,onBusyChange,o
  },[rootIds,root,dirty,blocked])
  useEffect(()=>{const warn=(e:BeforeUnloadEvent)=>{if(dirty||recover||busy){e.preventDefault();e.returnValue=''}};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn)},[dirty,recover,busy])
  const addHistory=(entry:Intent,result:LocalJob)=>setHistory(rows=>[{id:result.id,name:WORKSPACE_ACTIONS[entry.tool]||entry.tool,path:entry.args.path||entry.args.trash_id||'.',status:result.status,at:Date.now()},...rows.filter(r=>r.id!==result.id)].slice(0,20))
+ const observeNativeDirectory=async(entry:Intent,signal:AbortSignal):Promise<string>=>{
+  ready();const token=operation.current;observation.current=entry
+  const current=()=>valid()&&!signal.aborted&&operation.current===token&&observation.current===entry&&live.current.device.id===device.id&&live.current.catalog===entry.catalog
+  if(!entry.native)entry.native=nativeDirectoryJobs.begin({deviceId:device.id,requestId:entry.requestId,root:entry.args.root,path:entry.args.path},originalScope)
+  if(!entry.jobId){const id=await nativeDirectoryJobs.submit(entry.native,signal);if(!current())throw Error('当前身份或授权范围已变化，未采用原目录回执。');entry.jobId=id}
+  for(let n=0;n<140;n++){
+   signal.throwIfAborted();if(!current())throw Error('当前身份或授权范围已变化。')
+   const value=await nativeDirectoryJobs.get(entry.native,signal);if(!current())throw Error('当前身份或授权范围已变化。')
+   const presentation=nativeFileJobPresentation(value);setJob(previous=>current()?presentation:previous)
+   if(!['queued','running'].includes(value.status)){
+    setHistory(rows=>current()?[{id:value.id,name:WORKSPACE_ACTIONS[entry.tool]||entry.tool,path:entry.args.path||'.',status:value.status,at:Date.now()},...rows.filter(r=>r.id!==value.id)].slice(0,20):rows)
+    if(value.status==='unknown')throw Error('目录操作结果待核实，只会查询原任务，不会重新提交。')
+    intent.current=null;setRecover(previous=>current()?false:previous)
+    if(value.status!=='succeeded'||!value.result)throw Error(workspaceError(value.result?.text||value.error||statusNames[value.status]))
+    await entry.apply?.(value.result.text);return value.result.text
+   }
+   await new Promise<void>((resolve,reject)=>{const done=()=>{clearTimeout(timer);signal.removeEventListener('abort',abort);resolve()},abort=()=>{clearTimeout(timer);signal.removeEventListener('abort',abort);reject(Error('已停止等待，请核实原目录操作。'))},timer=setTimeout(done,800);signal.addEventListener('abort',abort,{once:true})})
+  }
+  throw Error('尚未收到目录操作最终回执，请核实同一操作。')
+ }
+ const stopCurrentFileJob=async(id:string)=>{
+  if(!valid())throw Error('当前账号已变化。')
+  if(ORIGINAL_PG_UI_ENABLED){const entry=observation.current;if(!entry?.native||entry.jobId!==id)throw Error('无法确认这条原始目录操作。');await nativeDirectoryJobs.cancel(entry.native,controller.current?.signal);return}
+  await localApi('/api/local-jobs/'+id+'/cancel',{})
+ }
  const observe=async(entry:Intent,signal:AbortSignal):Promise<string>=>{
+  if(ORIGINAL_PG_UI_ENABLED&&entry.tool==='files.list')return observeNativeDirectory(entry,signal)
   if(!entry.jobId){
    ready()
    let reply:{id:string}
@@ -96,21 +132,23 @@ export function ComputerFileWorkspace({device,statusVerified=true,onBusyChange,o
  }
  const perform=async(explanation:string,work:()=>Promise<unknown>,destructive=false,ask=true,application='')=>{
   if(mutex.current||intent.current||!online)return
-  mutex.current=true;setBusy(true);setError('');setNotice('');setJob(null);setApplicationAction(application)
+  const ownOperation=++operation.current,current=()=>valid()&&operation.current===ownOperation
+  mutex.current=true;setBusy(previous=>current()?true:previous);setError(previous=>current()?'':previous);setNotice(previous=>current()?'':previous);setJob(previous=>current()?null:previous);setApplicationAction(previous=>current()?application:previous)
   try{
    ready()
    if(ask&&!await confirmInStudio(explanation,{title:destructive?'确认文件变更':'确认本次电脑操作',confirmLabel:destructive?'确认执行变更':'批准本次操作',destructive}))return
    ready();controller.current=new AbortController()
    await work()
-  }catch(e){if(valid()){setError(workspaceError(e));setRecover(!!intent.current)}}
-  finally{mutex.current=false;if(alive.current)setBusy(false)}
+  }catch(e){setError(previous=>current()?workspaceError(e):previous);setRecover(previous=>current()?!!intent.current:previous)}
+  finally{if(operation.current===ownOperation)mutex.current=false;setBusy(previous=>current()?false:previous)}
  }
  const recheck=async()=>{
   if(mutex.current||!intent.current||!valid())return
-  mutex.current=true;setBusy(true);setError('');controller.current=new AbortController()
-  try{await observe(intent.current,controller.current.signal);setNotice('原操作结果已核实，没有创建另一条任务。')}
-  catch(e){if(valid()){setError(workspaceError(e));setRecover(!!intent.current)}}
-  finally{mutex.current=false;if(alive.current)setBusy(false)}
+  const ownOperation=++operation.current,current=()=>valid()&&operation.current===ownOperation
+  mutex.current=true;setBusy(previous=>current()?true:previous);setError(previous=>current()?'':previous);controller.current=new AbortController()
+  try{await observe(intent.current,controller.current.signal);setNotice(previous=>current()?'原操作结果已核实，没有创建另一条任务。':previous)}
+  catch(e){setError(previous=>current()?workspaceError(e):previous);setRecover(previous=>current()?!!intent.current:previous)}
+  finally{if(operation.current===ownOperation)mutex.current=false;setBusy(previous=>current()?false:previous)}
  }
  const abandonDraft=async()=>!dirty||await confirmInStudio('当前文本修改尚未保存。放弃草稿继续？',{title:'保留未保存的修改',confirmLabel:'放弃草稿',cancelLabel:'继续编辑',destructive:true})
  const choose=async(value:{path:string;directory:boolean})=>{if(blocked||!await abandonDraft())return;setSelected(value);setDoc(null);setText('');setForm('');setDiff(false);setError('');setNotice('');setApplicationAction('')}
@@ -120,7 +158,8 @@ export function ComputerFileWorkspace({device,statusVerified=true,onBusyChange,o
   await send('files.list',{root,path:targetPath},result=>{
    const snapshot=localDirectorySnapshot(result,root,targetPath)
    if(!snapshot)throw Error('目录回执无法核实，未当作空目录。')
-   setDirectory(snapshot);setPath(targetPath);setSelected(null);setDoc(null);setText('');setQuery('');setStale(false)
+   const token=operation.current,current=()=>valid()&&operation.current===token&&live.current.device.id===device.id&&live.current.catalog===catalog
+   setDirectory(previous=>current()?snapshot:previous);setPath(previous=>current()?targetPath:previous);setSelected(previous=>current()?null:previous);setDoc(previous=>current()?null:previous);setText(previous=>current()?'':previous);setQuery(previous=>current()?'':previous);setStale(previous=>current()?false:previous)
   })
  },false,false)
  const stat=async(file:string)=>workspaceStat(await send('files.stat',{root,path:file}),root,file)
@@ -205,7 +244,7 @@ export function ComputerFileWorkspace({device,statusVerified=true,onBusyChange,o
   <section hidden={pane!=='trash'} aria-label="可恢复回收区" className="space-y-3 rounded-xl border border-border p-4"><p className="text-sm">这是连接器在当前授权目录内保存的恢复区，不是 Windows 回收站。恢复不会覆盖同名文件。</p><button type="button" className={btn} disabled={disable('files.trash_list')} onClick={loadTrash}><RefreshCw className="h-3.5 w-3.5"/>读取回收记录</button>{!may('files.trash_list')&&<p className="text-xs text-muted-foreground">当前版本或权限尚未开放回收能力，请在授权管理核对。</p>}{trash?.entries.map(entry=><div key={entry.trash_id} className="flex min-w-0 items-center gap-3 rounded-lg border border-border p-3"><div className="min-w-0 flex-1"><p className="break-all text-sm">{entry.path}</p><p className="text-xs text-muted-foreground">{entry.size.toLocaleString()} 字节 · {String(entry.created_at)}</p></div><button type="button" className={btn} disabled={disable('files.restore')} onClick={()=>void restore(entry)}><RotateCcw className="h-3.5 w-3.5"/>恢复</button></div>)}{trash&&!trash.entries.length&&<p className="text-xs text-muted-foreground">本次读取没有回收记录。</p>}{trash?.truncated&&<p className="text-xs text-muted-foreground">仅显示部分回收记录。</p>}</section>
   <section hidden={pane!=='history'} aria-label="本次文件操作记录" className="rounded-xl border border-border p-4"><p className="mb-3 text-xs text-muted-foreground">本次打开工作区的最近 20 条回执。未知结果不代表失败，不要重复提交。</p>{history.map(row=><div key={row.id} className="grid min-w-0 grid-cols-[1fr_auto] gap-2 border-b border-border py-3 text-xs"><div className="min-w-0"><strong>{row.name}</strong><p className="mt-1 break-all text-muted-foreground">{row.path}</p><p className="mt-1 break-all font-mono text-[10px] text-muted-foreground">{row.id}</p></div><span>{statusNames[row.status]||row.status}<br/>{new Date(row.at).toLocaleTimeString()}</span></div>)}{!history.length&&<p className="text-sm text-muted-foreground">还没有本次操作记录。</p>}</section>
   {!online&&<p role="status" className="rounded-lg bg-secondary p-3 text-sm">设备离线或状态待核实。草稿和旧结果保留，但不会发送新的文件操作。</p>}
-  {(busy||job)&&<div role="status" className="flex flex-wrap items-center gap-2 rounded-lg bg-secondary/40 p-3 text-xs">{busy?<Loader2 className="h-4 w-4 animate-spin"/>:job?.status==='succeeded'?<Check className="h-4 w-4"/>:null}<span>{busy&&!job?'等待本人确认':job?statusNames[job.status]||job.status:'正在核实'}</span>{job&&<code className="break-all text-[10px]">{job.id}</code>}{job&&['queued','running'].includes(job.status)&&<button type="button" className={btn} onClick={async()=>{try{if(!valid())return;await localApi('/api/local-jobs/'+job.id+'/cancel',{});if(valid())setNotice('停止请求已提交。已完成的文件变更不会因此撤销，请核对最终回执。')}catch(e){if(valid())setError(workspaceError(e))}}}><Square className="h-3.5 w-3.5"/>请求停止</button>}</div>}
+  {(busy||job)&&<div role="status" className="flex flex-wrap items-center gap-2 rounded-lg bg-secondary/40 p-3 text-xs">{busy?<Loader2 className="h-4 w-4 animate-spin"/>:job?.status==='succeeded'?<Check className="h-4 w-4"/>:null}<span>{busy&&!job?'等待本人确认':job?statusNames[job.status]||job.status:'正在核实'}</span>{job&&<code className="break-all text-[10px]">{job.id}</code>}{job&&['queued','running'].includes(job.status)&&<button type="button" className={btn} onClick={async()=>{const token=operation.current,current=()=>valid()&&operation.current===token;try{if(!current())return;await stopCurrentFileJob(job.id);setNotice(previous=>current()?'停止请求已提交。已完成的文件变更不会因此撤销，请核对最终回执。':previous)}catch(e){setError(previous=>current()?workspaceError(e):previous)}}}><Square className="h-3.5 w-3.5"/>请求停止</button>}</div>}
   {notice&&<p role="status" className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs leading-6">{notice}</p>}
   {error&&<p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs leading-6 text-destructive">{error}</p>}
   {recover&&<div className="rounded-lg border border-amber-300/50 p-3"><p className="text-xs leading-6">保留了原操作标识，暂不允许发送另一条操作。重新核实只查询原任务；丢失接收回执时只使用原请求编号。</p><button type="button" className={btn+' mt-2'} disabled={busy||!online} onClick={()=>void recheck()}>核实同一操作</button>{job?.status==='unknown'&&<button type="button" className={btn+' ml-2 mt-2'} disabled={busy} onClick={async()=>{if(await confirmInStudio('未知结果不代表没有执行。结束等待不会重新执行或撤销原操作，记录保留在本次操作记录。请先读取目录核对实际结果。',{title:'保留未知结果，返回核对文件',confirmLabel:'我已知悉，结束等待'})){intent.current=null;setRecover(false);setStale(true);setDoc(null);setText('');setNotice('原操作仍为结果未知，没有重复执行。请先核查文件，不要直接重新提交。')}}}>保留记录并结束等待</button>}</div>}

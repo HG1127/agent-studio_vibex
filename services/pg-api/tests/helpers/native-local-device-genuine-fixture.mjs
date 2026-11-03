@@ -29,8 +29,8 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/native-local-device-audit-manifest.ts": "854bf8a9f7634763335d9d0f9613d71d6ec32dc2653264f4d76c087fd3c4d2c3",
   "services/pg-api/src/native-local-device-audit.ts": "b001feede675315f6d216c3d3d7c21bdaf66f125a6ab8f43980f59dbdb408d9a",
   "services/pg-api/src/native-local-device-execution.ts": "75f462fb932f8d9b177c5b01ab7c971f630a5247f144995126954bf060f6345e",
-  "services/pg-api/src/native-local-device-http.ts": "30c7ecd224ad47b1bf20e8aa6aa72d14e96ebb44a327b75fedaa5545f6ad4582",
-  "services/pg-api/src/native-local-device-repository.ts": "7be89686eae69ee74628f5b3b00a134780c007ad60e454b310e586ffff564653",
+  "services/pg-api/src/native-local-device-http.ts": "5e4bbf72f71a2d51d3c9d46695afc59d0183ec152fe224ec69c38c3bc2235ca2",
+  "services/pg-api/src/native-local-device-repository.ts": "32c682cd5c33267dde43535f589e31fe9dc213aee76cf4b84de5c603c0a2f37c",
   "services/pg-api/src/native-local-device-runtime-policy.ts": "a021e1d4668ad38de0131b714f85586e37370c1be8380b5ab63ba861bcb081f9",
   "services/pg-api/src/native-local-device-validation.ts": "95ef9a26fe938d262e6d66e81a50265dd919419ab832ca748716387002b223ae",
   "services/pg-api/src/native-server.ts": "088dd648527dd1183a925c82a828034cc87147ff067350add9a4f7952170558c",
@@ -52,7 +52,7 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/workflow-v2-tool-plan.ts": "196b47614e73d5421a6ebe08a29f89372fd07f4a98ff38f5921d7eea9bab012a",
   "services/pg-api/src/workflow-v2-worker-loop.ts": "44e8568deb7e820622e7df1aded98a690e2bd091d3cb693c5c91053b924c2cb4",
   "services/pg-api/src/workflow-v2-worker.ts": "e541917e70bb1f2dde4a8027ac432012f514b946f88d1cfe022217e6c920427e",
-  "services/pg-api/tests/helpers/native-local-device-genuine-guard.mjs": "59aa2268542b7b854e2e04e1821680bdb226b12308df2b7c3f91ba726a89bac4",
+  "services/pg-api/tests/helpers/native-local-device-genuine-guard.mjs": "94a2b49d9af8f6e1a4c6d94b5fcd8b08f597c497e9218639daed1f546441a8db",
   "shared/native-local-device-contract.d.mts": "bd0789512bb20b9bc4405f4b2ad9c8790e23b0cc0a5b970cbd065953479a55c1",
   "shared/native-local-device-contract.mjs": "1354c302ee2127a613b39f8f4df7d18051757a4b878b162557e59f8af586a928",
   "src/lib/pgNativeAutonomousAgentSession.ts": "4bab8c65c818949808e0c626e0d2fe921f50f863a5cd6777c418d9cfa717c031",
@@ -90,9 +90,9 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/public-mcp-registry-network.ts": "d67e6cd485d51edfa94d9401d6c79481a3c8d966a7ffdbf00a4227e6f6f40c52",
   "services/pg-api/src/public-mcp-registry.ts": "7a4f484a0a5226fcc89010807fa78e1c9be1b3581690efaad727742ba13a23f8",
   "services/pg-api/src/registry-translation-trial.ts": "e7fec25833d5618e7fbad49381e4454a9d78a7ef4e6442c4f2a9c50e5a7dcad9",
-  "services/pg-api/src/tool-hub-http.ts": "98e5e35aff1534a8db17f6e95403689ed387b34ab319d7c21f0ae92108eed81b",
+  "services/pg-api/src/tool-hub-http.ts": "43b15eefa1cd6640e4d60a53b021ca749148b4f0dfc71f4a3c25120b2cc2ef6a",
   "services/pg-api/src/tool-hub-runtime-policy.ts": "376222bd27c80d3ccef1d09903c321568526aba033ef3c34c0c1a03bf383e6b3",
-  "services/pg-api/src/tool-invocation-projection.ts": "f4121c65e330e8def262d9521266e292aa44b013ac15f26f5ba629f07bc7e1ea",
+  "services/pg-api/src/tool-invocation-projection.ts": "d737ea03947a9ae9a7aa3b1a9ac50dd588f817c91a6ecb8147a2b94254e94a51",
   "services/pg-api/src/tool-trial-check-expression.ts": "3f7d120b0dc82d48b1aed79e8f79ab42ef2645fc9abbc831459b4c9b39ee8bae",
   "services/pg-api/src/tool-trial-contract.ts": "ffd8cd57690df5c1844b69516f1b38afce8341bbb34e22778001d81e41aae3ac",
   "services/pg-api/src/tool-trial-repository.ts": "7e7327e992f7805f2879d0ba9df6bfc40f86d35da727051252ce893f5720301f",
@@ -371,7 +371,7 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "services/pg-api/tests/helpers/monitor074-definition-fixture.mjs": "28799c066ca5df32fcc16384baa57cb6033c86b4047ff801f1e444049874bf99",
   "services/pg-api/tests/helpers/monitor074-original-pb-semantics-reference.cjs": "a40efb70300d9259e3560250aba04a856f756e88a35e6a6cd24b4e13fc6af2e7",
   "services/pg-api/tests/helpers/native-monitor074-ci-guard.mjs": "f04a8fb69412f70f37668057110b7581652f6bc8f6113d91428bc6f900df7fb7",
-  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "7dd26266195db6552bc0f3bce14b713cbaf3d9ee2acfbbae79f281f555a6324d",
+  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "f11fe3075026c641646203999d3bcbe5b9a91fc6006b2672747716aa8b471c54",
   "services/pg-api/tests/helpers/native-monitor074-row-lock-genuine.mjs": "525b12d40e0574656b1c7c9bca4c55bfa296b81eb17475cbe963237eb086090d",
   "services/pg-api/tests/helpers/ordinary077-catalog-data.mjs": "c1fdde5c290ddc4a6f577d0028aecf47264cf21b0d108cf1a54f5784e2bb3b5f",
   "services/pg-api/tests/native-monitor-author-pure.test.mjs": "041de254cc584d30b58a8188c83faffd928a2356e7717e5393fdc716ee2cf6c7",
@@ -633,10 +633,10 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/original-role-reviewed-plan.mjs": "8736e85df91bc0c3d046ab2ae208bdb227bf72e79b5bb485594d54c381403a5d",
   "services/pg-api/src/original-role-revision.ts": "1950a7df3152666613ddc92a412e1845f53bf4102b61b5ee5d9cc8911bb1fbde",
   "services/pg-api/src/original-role-schema.mjs": "cde16e407dbc13d5de7430388e9c2fc37e8caf217010573a30786c1d02e8e56c",
-  "services/pg-api/src/original-role-skill-policy.ts": "86ef4a6d35fec89be00cdee17639020957868e6926fc18a1030d9050dd1d5c19",
+  "services/pg-api/src/original-role-skill-policy.ts": "5152943b058cf8cf1ad41aa6ca8c9bbd8e5b94bdb1f5fd3c947e13c8d110fee3",
   "services/pg-api/src/original-role-ui-http.ts": "2542323737674f94671b17fe5bcb2a4f8339b0d4f493eea1ca53d7cc7f2b43a3",
   "services/pg-api/src/original-role-ui-policy.ts": "b4f1b6d7be9b3d4cb80929e1518029071d96f29e719c84cbf5e85b596ee46e18",
-  "services/pg-api/src/original-role-ui-repository.ts": "e2ce878a18528890c402230960aadd7e0fc72cc057d2f45e48563adde90b7a96",
+  "services/pg-api/src/original-role-ui-repository.ts": "9cb079aa80cab00f986aeb7852c20c94ce3574286bdb2ae96b5472de2af7d30a",
   "services/pg-api/src/original-role-ui-runtime.ts": "e761d035753bd364ab8edd1561da1a7fb46ac917797a90853369112ee7e151ea",
   "services/pg-api/src/original-skill-ab-broker.ts": "1ca4589a7bc2d092012ca53df9b5f7ec606f48ebd0691fc0691bb35ae4f16a4b",
   "services/pg-api/src/original-skill-ab-catalog.d.mts": "2c477e3ffb445041100d8c680f11fdd0d10cdcb2211a4d18eff6174fbe5e7963",
@@ -650,7 +650,7 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/original-skill-ab-runtime.ts": "aabf0b0e1c7c37fd1a1bffd141a0863bdc1411f63ae470e07d1ffea45f708e79",
   "services/pg-api/src/original-skill-ab-schema.mjs": "fc46c86cfe9a5763aa2d9a8c52de27515410b73bb30d7cc876235fdfb0970dfc",
   "services/pg-api/src/original-skill-ab-service.ts": "d5f0317097562679b55103deccbd2dcfd4262197a5e4d6ffd7a52bdcdd4ee6df",
-  "services/pg-api/src/original-skill-ab-source.ts": "b6ed04fca48a498952a871e8d110df7acb724259868b33f1c96c78cbaf32b7f3",
+  "services/pg-api/src/original-skill-ab-source.ts": "7e6858309e44031acab3181ae40a9afcdc8753deb1de0472802a88a3b6848a36",
   "services/pg-api/src/original-staff-compatible084-audit.mjs": "d2582356fd9f34fb04ab078d98cb685f485389f86bcee94d7fa22c47f481b156",
   "services/pg-api/src/staff084-quality089-auth-audit.mjs": "ec9b0e73397d26772c50b3faa19ae3ef00a18de80ebcd3ed79a7a44febb8e72a",
   "services/pg-api/src/staff084-quality089-auth-catalog.mjs": "2718248d514f98b7f9f2f713e511ccd10e40138ce0fb6428e437324c704fa947",
@@ -699,7 +699,7 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "src/components/skills/SkillABReview.tsx": "69759d8bf2b934e0f8f8a43ef6c2b3d842ed7690cd40fd62b62733cef464f3cb",
   "src/components/tool-hub/ApplicationTaskLauncher.tsx": "63ed3ccb9b1497d8a1e67cab80b2378ccd5f39bb28a5f4ff21c35eb9f9af3934",
   "src/components/tool-hub/ApplicationWorkspace.tsx": "5d09cbaf5e0b3df6932717068cef2f228e615897eecb59099866433d432df2a9",
-  "src/components/tool-hub/ComputerFileWorkspace.tsx": "c07641196b46f57a068880a7a830fa4dd261ff2a385c96e96826f8357796d3a0",
+  "src/components/tool-hub/ComputerFileWorkspace.tsx": "a4a02051fac4077ea8e47870975a7d64ef84000c32940bfcdd22a7e31e48f5f4",
   "src/components/tool-hub/ComputerWorkspace.tsx": "d1ac498ed496dcc5c1d113b918d43544023635cf35b00f0380b1b9e4830c5cf6",
   "src/components/tool-hub/ConnectComputerButton.tsx": "7641b9f477383ed7ffe15c862da3174e261e9ca39a9d3be20208f3ac29d240c0",
   "src/components/tool-hub/ConnectorDownload.tsx": "c902c2985314da5183566b9f056bd3a28e8822c8ef79cd3220f1be91b692bc2a",
@@ -806,9 +806,9 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "tests/original-quality089-transport-pure.mjs": "1c9b29b6a873554448de7aa33db8fd760c0c968f8d39c9eef929ad80bd9d8cc4",
   "tests/original-role-capabilities-pure.test.mjs": "dd05f34efe4decefb4347f5d3397a10f20feff4d0e49fe1338ed05ee6f3abd3d",
   "tests/original-role-evidence-pure.test.mjs": "2396b493f23b5efd3924762906a58669554848cb86f69cc32ecaa44f95312923",
-  "tests/original-role-integration-pure.test.mjs": "32ba8696ace1162bea2487f549c8ce2e8491c312e1aa06d965837e4a51896581",
-  "tests/original-role-kernel-pure.test.mjs": "d88ac440d3acb3bfaaeaa55d451860b25ad3df2304d0ceafece755f01453e765",
-  "tests/original-role-locking-detail-pure.test.mjs": "6030e9aa6e6f465a58d0739d767aec386bf99014ed5328fbb284121997016980",
+  "tests/original-role-integration-pure.test.mjs": "5561491f9909c98b5762157e77643ec620da1ec2e1af4bce2e0f78f0261e7150",
+  "tests/original-role-kernel-pure.test.mjs": "6885b44ec4f3a28626e482fe03a792c3b95017acf79cf9b7f9946aeaec3dcf5a",
+  "tests/original-role-locking-detail-pure.test.mjs": "e361c0c10e2087cec27b25c307eb1582db59f4f044d2bb3d97dd3b23efd21ac1",
   "tests/original-role-machine-pure.test.mjs": "d555b0cc1f439a463ebbdc9c8e3d9183ccd5a6d2b545f152d8ad75863a92662e",
   "tests/original-role-planning-projection-pure.test.mjs": "125471329db246e348a5ecd269fae6788f3181f8a0c8080da67a8a04eabbcf44",
   "tests/original-role-reviewed-plan-pure.test.mjs": "6c2ac22e0cf313713aeb7fd65deb5a7c32b322d786606ea037d774c96e8785e0",
@@ -828,9 +828,9 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "tests/original-run-optimization-hook-pure.test.mjs": "410b8974ab9877504ea184681db608fc5ec3b9cd31075c4361570295a3107d38",
   "tests/original-run-optimization-recovery-pure.test.mjs": "a7e55063be5b00504fb295b79b727051a80a760d4a25d3bb28c167c9f0c23588",
   "tests/original-run-optimization-sdk-pure.test.mjs": "928688d927ca5ea2c21a019d7ae1ca0efbeb32c09187409580503ba8427c1017",
-  "tests/original-skill-ab-execution-pure.test.mjs": "967ee021fc7b5352631a19070074131fae172bf1508b666b5b2c718b08792226",
+  "tests/original-skill-ab-execution-pure.test.mjs": "20cd7c754d5c42218f92375288636a3bb8e9aa80c1330653e42c190ee2f6e7a6",
   "tests/original-skill-ab-page-repository-pure.test.mjs": "77b87cde0ded5dc26130187229d77341293d3398596533ef78cd6d863f54a467",
-  "tests/original-skill-ab-preview-pure.test.mjs": "e1c38a3612de8bf9fa66f1c171d02136f24e5eb2b3b5e7eaac9e0340fe61dc88",
+  "tests/original-skill-ab-preview-pure.test.mjs": "710d72b4d333e49624f41b0be275bbad1ccea18eb691d29725056462ce10d7a9",
   "tests/original-skill-ab-session-pure.test.mjs": "589caebe55c791eb5e2b6106441a188b014bfccc8d36c91caa5f8d585ef5538d",
   "tests/quality089-hosted-guard.test.mjs": "03bda860a890387310ab99f99798dd034f553a65626ddef3e24ee885095fdf90",
   "tests/quality089-profile-contract.test.mjs": "039e485c6df0bccb8a226cd2083af31d988cafb9054aafac877739476524bad3",
@@ -838,10 +838,10 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "tests/staff084-audit-cleanup.test.mjs": "af39cbcb8cd43a3a042d0f0d0199bee2b46aacb8c212a7dfafecf37badcb577a",
   "tests/staff084-composite-contract.test.mjs": "59fbbe4a24541d6f7c08000ff7bbd1acf929e64c065ba56ac802a80ec0863036",
   "tests/staff084-hosted-guard.test.mjs": "710afbd28e9e74da3f39f26376b3ecc90b61f01956c409aaedfb872de9bc9496",
-  ".github/workflows/pg18-original-role-ab-sql-ci.yml": "954aef8ed49cf9c2e358738cdc39007df9d2a666ef49d425da8bae508f4f5596",
+  ".github/workflows/pg18-original-role-ab-sql-ci.yml": "a3c5d4e275db2d7570e4b6a615f17ddad9a28aad0062dde79ed16f36fe480ead",
   "services/pg-api/tests/helpers/original-role-ab-sql-ci-fixture.mjs": "5402fc0ec20c12470205915926c6eb85b029b9283c28061179ad5e50ba65b6ff",
   "services/pg-api/tests/helpers/original-role-ab-sql-ci-guard.mjs": "f2e39ef6e02916f55db766f6151d115a94f9b10277d9b12b3ca79313c34b2fe9",
-  "services/pg-api/tests/helpers/original-role-ab-sql-sources.json": "e2294c84c5df564862d41a6c7c486083db1fa100e93ed1e6877666e2044139d4",
+  "services/pg-api/tests/helpers/original-role-ab-sql-sources.json": "c1d65faf507fe858b77cda3eaa1f9b0229a0862c8303f3b7510f10958526d845",
   "services/pg-api/tests/original-role-ab-genuine-pg18.test.mjs": "4eb9bcf08d5ec16cfdd1744d29452745074375fb44cb011dfe8f8afc5df85d87",
   "services/pg-api/tests/original-role-ab-sql-ci-guard.test.mjs": "2087b99ab5c4fe6d435309dcf4646bb609b0b8a0c88c5240402ed42b72325e0a",
   "tests/original-skill-ab-sql-condition-source-pure.test.mjs": "2f89f574447e341608b981ee280de1230dcc633b2ede1f13f44ea2cf9294874c",
@@ -858,17 +858,28 @@ export const nativeLocalDeviceGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/hosted-profile-diagnostic.d.mts": "5560bb6de7fe4a94efed745e326decb583cacbf912fa5e3c78e5c0dc2bb90b2e",
   "tests/quality089-schema-refusal-diagnostic.test.mjs": "23db1403042fd1fc40e8a8a11ea36459f052e8fdc69fdb53f33326917450a9bb",
   "tests/staff084-acl-identity-hash-diagnostic.test.mjs": "695feced99e315e9c99eae0a9108e632c2eb33bd32e2c57f2d3b89d3f967f1eb"
+,
+  "shared/native-directory-jobs.mjs": "104aba68fe7139b9b389573dc2b0fc0d03bac0e60b4249cf9fd9ae66a573c049",
+  "shared/native-directory-jobs.d.mts": "e12c7e79f16b5bee3a1145f8baa02e3018df7c22afaeaf3e9e1f46303d51bdc6",
+  "src/lib/nativeDirectoryJobs.ts": "e59487bc80381b432b6b6c7f04731e562192b722faa5f6a9ba5ac164018de80d",
+  "services/pg-api/tests/native-directory-employee.test.mjs": "95bb05d9af26dfcd0a60b147f786395525f8c7f9ca22f0fe61db1f97757df4c1",
+  "services/pg-api/tests/native-directory-workspace.test.mjs": "04616b691cfd39478deaa0b2a5529ffb939ba32fa3f9671ec0a591b09817f417",
+  "services/pg-api/tests/fixtures/native-directory-test-harness.mjs": "6607b6c93c88a6d0cceb647650bba9a4282256c505f7579ef9ce7e19e28c66fd",
+  "services/pg-api/tests/fixtures/native-directory-source-classes.json": "3ea1ab9bdbf25f390f54fbc1aa78ae97104b5f63c8281d8a40cd867ef78daacf",
+  "tests/original-role-skill-read-privilege-pure.test.mjs": "cb44c537b11ebee008d119f4164ad95bba971b90d2f4d85ee4ae50e0ce37c674"
 })
 export async function nativeLocalDeviceGenuineFixture(env=process.env,{browserMode=false,chainSupport=false}={}){
  const target=requireNativeLocalDeviceGenuineCi(env)
  if(typeof chainSupport!=="boolean")throw Error("native_chain_fixture_option_required")
+ if(env.GITHUB_JOB==="pg18-original-directory-browser"&&chainSupport)throw Error("original_directory_chain_support_forbidden")
  const [sourceFs,sourcePath,sourceUrl,sourceCrypto]=await Promise.all([import('node:fs'),import('node:path'),import('node:url'),import('node:crypto')])
  const sourceRoot=sourcePath.resolve(sourceUrl.fileURLToPath(new URL('../../../../',import.meta.url)))
- for(const [relative,expected] of Object.entries(nativeLocalDeviceGenuineFrozenSources)){
+ const reviewedSources=env.GITHUB_JOB==='pg18-original-directory-browser'?(await import('./native-original-directory-reviewed-sources.mjs')).nativeOriginalDirectoryReviewedSources:nativeLocalDeviceGenuineFrozenSources
+ for(const [relative,expected] of Object.entries(reviewedSources)){
   const actual=sourceCrypto.createHash('sha256').update(sourceFs.readFileSync(sourcePath.join(sourceRoot,relative))).digest('hex')
   if(actual!==expected)throw Error('native_local_reviewed_source_changed:'+relative)
  }
- if(browserMode!==(env.GITHUB_JOB==='pg18-local-device-browser'))throw Error('native_local_genuine_job_mode_required')
+ if(browserMode!==(['pg18-local-device-browser','pg18-original-directory-browser'].includes(env.GITHUB_JOB)))throw Error('native_local_genuine_job_mode_required')
  const [{default:assert},crypto,https,pgModule,baseModule,tlsModule,authModule,nativeModule,cookiesModule,repoModule,httpModule,auditModule,contractsModule,genericModule,runModule,toolsModule,businessRouteModule]=await Promise.all([
   import('node:assert/strict'),import('node:crypto'),import('node:https'),import('pg'),import('./agent-assessment-fixture.mjs'),import('./bound-model-loopback-tls.mjs'),import('../../src/native-auth-repository.mjs'),import('../../src/native-auth-http.mjs'),import('../../src/native-employee-auth.mjs'),import('../../src/native-local-device-repository.ts'),import('../../src/native-local-device-http.ts'),import('../../src/native-local-device-audit.ts'),import('../../src/contracts.ts'),import('../../src/http.ts'),import('../../src/autonomous-agent-run-repository.ts'),import('../../src/tool-connection-repository.ts'),import('./native-local-device-business-route.mjs')])
  const chainModules=chainSupport?await Promise.all([import('../../src/agent-human-input-repository.ts'),import('../../src/workflow-repository.ts'),import('../../src/knowledge-repository.ts'),import('../../src/agent-human-input-policy.ts')]):null

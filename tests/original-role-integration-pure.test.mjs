@@ -26,7 +26,7 @@ function terminal(frames){const calls=[],released=[];return {calls,released,asyn
 const catalog=()=>({match:/original-roles-v2:complete-catalog/,rows:[{value:originalRoleCatalogFrame()}]})
 const actor=()=>({match:/current_user='agentstudio_api' AND agentstudio.actor_id/,rows:[{ok:true}]})
 const tx=()=>({match:/pg_current_xact_id/,rows:[{transaction_id:'9001'}]})
-const library=()=>({match:/original_skill_reviews.*s.active.*FOR SHARE OF s,v,r/,rows:[{name:'old-method',description:'reviewed synthetic method',content,content_sha256:hash}]})
+const library=()=>({match:/original_skill_reviews.*s.active.*FOR SHARE OF s$/,rows:[{name:'old-method',description:'reviewed synthetic method',content,content_sha256:hash}]})
 const base=()=>({match:/JOIN agentstudio_roles.original_role_extensions.*FOR SHARE OF s,e/,rows:[{revision:1,spec,extension,base_spec_sha256:originalRoleHash(spec)}]})
 const history=(pin=makePin())=>({match:/original_role_run_pins p JOIN agentstudio_roles.original_role_specs h/,rows:[{payload:pin,payload_sha256:originalRoleHash(pin),spec,spec_sha256:originalRoleHash(spec)}]})
 const snapshot=()=>[{match:/INSERT INTO agentstudio_roles.original_role_specs/},{match:/SELECT spec,spec_sha256 FROM agentstudio_roles.original_role_specs/,rows:[{spec,spec_sha256:originalRoleHash(spec)}]}]

@@ -12,3 +12,45 @@ test('ordinary, root, Windows, reused-purpose, arbitrary DB, company5333 and inj
 test('new genuine fixture checks purpose and reviewed pins before creating the actual original fresh TCP fixture, without PGlite or schema authority callbacks',()=>{
  const text=fs.readFileSync(new URL('./helpers/tool-hub-genuine-fixture.mjs',import.meta.url),'utf8');assert.ok(text.indexOf('const target=requireToolHubGenuineCi(env)')<text.indexOf("import('pg')"));assert.ok(text.indexOf('tool_hub_reviewed_source_changed')<text.indexOf('agentAssessmentTcpFixture(env)'));assert.equal(text.includes('PGlite.create'),false);assert.equal(text.includes('verifyCredentials:'),false);assert.equal(text.includes('verifySchema:async()=>true'),false);assert.ok(text.includes('selectNativePg18UatCapabilities'));assert.ok(text.includes('verifiedWorkflowV2ToolDispatch'));assert.ok(text.includes('verifiedWorkflowV2ModelDispatch'));assert.ok(text.includes('workflowV2ToolEffectExecutor'));assert.ok(text.includes('workflowV2ModelEffectExecutor'))
 })
+
+// Dedicated original main/App workflow; never rewrites GitHub-owned fields.
+const originalWorkflowValid=()=>({...valid(),GITHUB_WORKFLOW:'Agent Studio original ToolHub and Home PG18 isolated verification',GITHUB_JOB:'pg18-tool-hub-browser',GITHUB_SHA:'a'.repeat(40),AGENT_STUDIO_TOOL_HUB_GENUINE_SUITE:'browser',AGENT_STUDIO_ORIGINAL_TOOL_HUB_WORKFLOW_CI:'YES_DISPOSABLE_ORIGINAL_TOOLHUB_HOME_BROWSER_ONLY',AGENT_STUDIO_ORIGINAL_TOOL_HUB_CI:'YES_DISPOSABLE_ORIGINAL_TOOL_HUB_ONLY',AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_CI:'YES_DISPOSABLE_ORIGINAL_TOOL_HUB_HOME_READ_ONLY',AGENT_STUDIO_ORIGINAL_TOOL_HUB_EXPECTED_HEAD:'a'.repeat(40),AGENT_STUDIO_ORIGINAL_TOOL_HUB_SOURCES_SHA256:'b'.repeat(64),AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_SOURCES_SHA256:'c'.repeat(64)})
+test('new original workflow requires its exact dedicated purpose head and both source hashes',()=>{const target=requireToolHubGenuineCi(originalWorkflowValid(),'linux',1001);assert.equal(target.host,'127.0.0.1');assert.equal(target.database,'agentstudio_pg18_ci')})
+const originalWorkflowRefusals=[
+ ['old workflow cannot masquerade as new purpose',{GITHUB_WORKFLOW:toolHubGenuineWorkflow}],
+ ['different workflow',{GITHUB_WORKFLOW:'other'}],
+ ['missing dedicated purpose',{AGENT_STUDIO_ORIGINAL_TOOL_HUB_WORKFLOW_CI:undefined}],
+ ['empty dedicated purpose',{AGENT_STUDIO_ORIGINAL_TOOL_HUB_WORKFLOW_CI:''}],
+ ['wrong dedicated purpose',{AGENT_STUDIO_ORIGINAL_TOOL_HUB_WORKFLOW_CI:'YES'}],
+ ['missing original purpose',{AGENT_STUDIO_ORIGINAL_TOOL_HUB_CI:undefined}],
+ ['wrong original purpose',{AGENT_STUDIO_ORIGINAL_TOOL_HUB_CI:'YES'}],
+ ['missing Home purpose',{AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_CI:undefined}],
+ ['wrong Home purpose',{AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_CI:'YES'}],
+ ['missing expected head',{AGENT_STUDIO_ORIGINAL_TOOL_HUB_EXPECTED_HEAD:undefined}],
+ ['short expected head',{AGENT_STUDIO_ORIGINAL_TOOL_HUB_EXPECTED_HEAD:'a'.repeat(39)}],
+ ['long expected head',{AGENT_STUDIO_ORIGINAL_TOOL_HUB_EXPECTED_HEAD:'a'.repeat(41)}],
+ ['uppercase expected head',{AGENT_STUDIO_ORIGINAL_TOOL_HUB_EXPECTED_HEAD:'A'.repeat(40)}],
+ ['head differs from GitHub SHA',{AGENT_STUDIO_ORIGINAL_TOOL_HUB_EXPECTED_HEAD:'d'.repeat(40)}],
+ ['missing GitHub SHA',{GITHUB_SHA:undefined}],
+ ['missing App hash',{AGENT_STUDIO_ORIGINAL_TOOL_HUB_SOURCES_SHA256:undefined}],
+ ['short App hash',{AGENT_STUDIO_ORIGINAL_TOOL_HUB_SOURCES_SHA256:'b'.repeat(63)}],
+ ['uppercase App hash',{AGENT_STUDIO_ORIGINAL_TOOL_HUB_SOURCES_SHA256:'B'.repeat(64)}],
+ ['missing Home hash',{AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_SOURCES_SHA256:undefined}],
+ ['long Home hash',{AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_SOURCES_SHA256:'c'.repeat(65)}],
+ ['uppercase Home hash',{AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_SOURCES_SHA256:'C'.repeat(64)}],
+ ['API flow cannot use browser purpose',{GITHUB_JOB:'pg18-tool-hub-genuine',AGENT_STUDIO_TOOL_HUB_GENUINE_SUITE:'flow'}],
+ ['API database cannot use browser purpose',{GITHUB_JOB:'pg18-tool-hub-genuine',AGENT_STUDIO_TOOL_HUB_GENUINE_SUITE:'database'}],
+ ['different browser job',{GITHUB_JOB:'other-browser'}],
+ ['wrong browser suite',{AGENT_STUDIO_TOOL_HUB_GENUINE_SUITE:'flow'}],
+ ['missing old F16 explicit approval',{AGENT_STUDIO_TOOL_HUB_GENUINE_CI:undefined}],
+ ['self hosted runner',{RUNNER_ENVIRONMENT:'self-hosted'}],
+ ['wrong repository',{GITHUB_REPOSITORY:'other/repo'}],
+ ['company port',{AGENT_STUDIO_PG18_CI_PORT:'5333'}],
+ ['non disposable DB',{AGENT_STUDIO_PG18_CI_DATABASE:'agent_studio'}],
+ ['DATABASE_URL supplied',{DATABASE_URL:'postgres://company/private'}],
+ ['loader injection',{NODE_OPTIONS:'--import=untrusted'}],
+ ['TLS bypass',{NODE_TLS_REJECT_UNAUTHORIZED:'0'}],
+ ['network proxy',{HTTPS_PROXY:'http://proxy.invalid'}],
+]
+for(const[label,change]of originalWorkflowRefusals)test('dedicated original workflow refuses '+label,()=>assert.throws(()=>requireToolHubGenuineCi({...originalWorkflowValid(),...change},'linux',1001)))
+test('dedicated original workflow still refuses root and non Linux execution',()=>{for(const[platform,uid]of[['win32',1001],['linux',0],['linux',-1]])assert.throws(()=>requireToolHubGenuineCi(originalWorkflowValid(),platform,uid))})

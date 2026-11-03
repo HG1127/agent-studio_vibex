@@ -16,7 +16,7 @@ const library=()=>({owner_user_id:owner,id:'abc123abc123abc',version:'1',name:'a
 const model=()=>({owner_user_id:owner,revision:'3',enabled:true,status:'ok',provider:'openai',base_url:'https://api.openai.com/v1',models:['literal-model']})
 function entry(){const frames=actor(owner);frames[0]=frame(/^BEGIN$/);return [...startup(),...frames,owned(),owned(),frame(/SELECT agentstudio.agent_memory_outcome_epoch/,[{epoch:'8'}])]}
 async function execute(frames,raw=selection(),expected=owner){const db=literalConnection(frames),pool=literalSupplier(db);await prepareOriginalRoleUiPool(pool,roleEnv);const repo=new OriginalRoleUiRepository(pool,false);return {db,run:()=>repo.previewSkillAB(identity,expected,raw)}}
-async function actualPreview(){const x=await execute([...entry(),frame(/original_skill_reviews.*s.active.*FOR SHARE OF s,v,r/,[library()]),frame(/SELECT owner_user_id,revision,enabled,status,provider,base_url,models FROM agentstudio.model_connections/,[model()]),frame(/^COMMIT$/)]);const value=await x.run();x.db.done();return {value,db:x.db}}
+async function actualPreview(){const x=await execute([...entry(),frame(/original_skill_reviews.*s.active.*FOR SHARE OF s$/,[library()]),frame(/SELECT owner_user_id,revision,enabled,status,provider,base_url,models FROM agentstudio.model_connections/,[model()]),frame(/^COMMIT$/)]);const value=await x.run();x.db.done();return {value,db:x.db}}
 test('actual UI repository locking read transaction produces exact approved Skill/model fee preview without writes or provider effects',async()=>{
  const {value,db}=await actualPreview(),p=value.preview;assert.equal(value.employee_id,owner);assert.equal(p.owner_epoch,8);assert.deepEqual(p.skill,{...selection().skill_ref,name:'analysis-method'});assert.deepEqual(p.model_binding,selection().model_binding)
  assert.equal(p.scenario,SKILL_AB_SCENARIO);assert.equal(p.input_characters.with_skill,skillAbMessages('with_skill',content)[1].content.length);assert.equal(p.input_characters.baseline,skillAbMessages('baseline',content)[1].content.length)
@@ -34,15 +34,15 @@ test('unselected role profile and foreign identity cannot use preview as a new a
  const repo=new OriginalRoleUiRepository(undefined,false);await assert.rejects(()=>repo.previewSkillAB({issuer:'unverified',subject:'arbitrary'},owner,selection()),/native_employee_identity_required/)
 })
 for(const [name,change]of Object.entries({foreignOwner:s=>s.owner_user_id=other,wrongVersion:s=>s.version='2',wrongHash:s=>s.content_sha256='f'.repeat(64),changedContent:s=>s.content+=' changed',wrongName:s=>s.name='other-method'}))test('actual owned Skill source refuses '+name+' before any model read',async()=>{
- const s=library();change(s);const x=await execute([...entry(),frame(/original_skill_reviews.*FOR SHARE OF s,v,r/,[s]),frame(/^ROLLBACK$/)])
+ const s=library();change(s);const x=await execute([...entry(),frame(/original_skill_reviews.*FOR SHARE OF s$/,[s]),frame(/^ROLLBACK$/)])
  await assert.rejects(x.run,/original_skill_ab_skill_unavailable/);assert.ok(!x.db.calls.some(c=>/FROM agentstudio.model_connections/.test(c.sql)));x.db.done()
 })
 test('missing actual active/reviewed exact Skill cannot be replaced by latest or browser text',async()=>{
- const x=await execute([...entry(),frame(/original_skill_reviews.*FOR SHARE OF s,v,r/),frame(/^ROLLBACK$/)])
+ const x=await execute([...entry(),frame(/original_skill_reviews.*FOR SHARE OF s$/),frame(/^ROLLBACK$/)])
  await assert.rejects(x.run,/original_skill_ab_skill_unavailable/);x.db.done()
 })
 for(const [name,change]of Object.entries({owner:m=>m.owner_user_id=other,revision:m=>m.revision='4',disabled:m=>m.enabled=false,untested:m=>m.status='untested',missingModel:m=>m.models=['other'],unsafeEndpoint:m=>m.base_url='https://127.0.0.1/v1'}))test('actual exact owner model selection refuses '+name,async()=>{
- const m=model();change(m);const x=await execute([...entry(),frame(/original_skill_reviews.*FOR SHARE OF s,v,r/,[library()]),frame(/FROM agentstudio.model_connections/,[m]),frame(/^ROLLBACK$/)])
+ const m=model();change(m);const x=await execute([...entry(),frame(/original_skill_reviews.*FOR SHARE OF s$/,[library()]),frame(/FROM agentstudio.model_connections/,[m]),frame(/^ROLLBACK$/)])
  await assert.rejects(x.run,/original_skill_ab_model_unavailable/);x.db.done()
 })
 test('real employee mapping fails before Skill/model source data when expected owner changed',async()=>{

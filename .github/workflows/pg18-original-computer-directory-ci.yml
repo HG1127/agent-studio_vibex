@@ -1,0 +1,82 @@
+name: Agent Studio original Computer directory isolated browser verification
+on:
+  push:
+    branches:
+      - 'codex/pg18-worker-heartbeat-20261028'
+  workflow_dispatch:
+    inputs:
+      run_directory_browser:
+        description: Run only original ComputerFileWorkspace directory tasks on fresh synthetic Native067 data
+        required: true
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: original-computer-directory-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  pg18-original-directory-browser:
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/codex/pg18-worker-heartbeat-20261028') || (github.event_name == 'workflow_dispatch' && inputs.run_directory_browser == true)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: synthetic-agentstudio-pg18-ci-${{ github.run_id }}
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    env:
+      VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED: 'true'
+      AGENT_STUDIO_F20_F21_GENUINE_CI: YES_DISPOSABLE_F20_F21_ONLY
+      AGENT_STUDIO_F20_F21_GENUINE_SUITE: original-directory
+      AGENT_STUDIO_ORIGINAL_DIRECTORY_APPROVED: YES_DISPOSABLE_ORIGINAL_DIRECTORY_ONLY
+      AGENT_STUDIO_PG18_LOCAL_DEVICES_AVAILABLE: 'true'
+      AGENT_STUDIO_PG18_LOCAL_DEVICES_WRITES_ENABLED: 'true'
+      AGENT_STUDIO_PG18_LOCAL_DEVICES_APPROVED: APPROVE_DISPOSABLE_PG18_NATIVE_LOCAL_DEVICES_ONLY
+      AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+      AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+      AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+      AGENT_STUDIO_PG18_CI_PORT: '5432'
+      AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+      AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+      AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: synthetic-agentstudio-pg18-ci-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Locked frontend and API dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Original guards and closed directory contracts
+        run: node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/native-original-directory-source-pure.test.mjs services/pg-api/tests/native-directory-employee.test.mjs services/pg-api/tests/native-directory-workspace.test.mjs
+      - name: Refuse missing canonical shell, PG adapter, or reviewed exact source
+        run: node --experimental-strip-types services/pg-api/tests/helpers/native-original-directory-source-preflight.mjs --check
+      - name: Build the actual unchanged index and main App entry
+        env:
+          VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED: 'true'
+        run: pnpm exec vite build --manifest --outDir .tmp/original-directory-build
+      - name: Install the exact locked employee-test Chromium
+        run: node node_modules/@playwright/test/cli.js install chromium
+      - name: Actual original ComputerFileWorkspace employee journey
+        run: node node_modules/@playwright/test/cli.js test --config tests/pg-native-browser/original-computer-directory.config.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: original-computer-directory-${{ github.run_id }}
+          path: .tmp/ci-original-directory-results
+          if-no-files-found: ignore
+          retention-days: 7

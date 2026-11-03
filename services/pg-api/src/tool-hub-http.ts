@@ -35,6 +35,10 @@ export async function handleOwnerToolHubHttp(req:IncomingMessage,res:ServerRespo
   return reply(res,{...page,chinese})
  }
  if(path==='/api/v2/tool-hub/invocations'&&method==='GET'){
+  if(url.searchParams.has('view')){
+   const params=query(url,['view','page','tool','q','status','source','run_id']),page=params.get('page')??'1';if(params.get('view')!=='original_page_v1'||!/^[1-9][0-9]?$/.test(page)||Number(page)>25)invalid()
+   return reply(res,await ctx.invocations.originalPage(identity,{page:Number(page),tool:params.get('tool')??'',q:params.get('q')??'',status:params.get('status')??'',source:params.get('source')??'',run_id:params.get('run_id')??''}))
+  }
   const params=query(url,['kind','status','tool','after','limit']),limit=params.get('limit');if(limit!==null&&!/^[1-9][0-9]?$/.test(limit))invalid()
   return reply(res,await ctx.invocations.list(identity,{...(params.has('kind')?{kind:params.get('kind')}:{}),...(params.has('status')?{status:params.get('status')}:{}),...(params.has('tool')?{tool:params.get('tool')}:{}),...(params.has('after')?{after:params.get('after')}:{}),...(limit!==null?{limit:Number(limit)}:{})}))
  }

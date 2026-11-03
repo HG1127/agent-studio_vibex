@@ -59,7 +59,7 @@ export async function reviewOriginalSkillOnClient(db:SqlClient,owner:string,raw:
   const r=roleObject(raw,['id','version','hash','confirm_review'])
   if(r.confirm_review!==true||typeof r.id!=='string'||!/^[A-Za-z0-9]{15}$/.test(r.id)||!Number.isSafeInteger(r.version)||Number(r.version)<1||Number(r.version)>100||typeof r.hash!=='string'||!/^[a-f0-9]{64}$/.test(r.hash))deny('skill_review_invalid')
   await assertOwnedAdmissionContext(db,owner)
-  const rows=(await db.query<{content:string;content_sha256:string}>('SELECT content,content_sha256 FROM agentstudio_roles.original_skill_versions WHERE owner_user_id=$1::uuid AND skill_id=$2::text AND version=$3::integer FOR SHARE',[owner,r.id,r.version])).rows
+  const rows=(await db.query<{content:string;content_sha256:string}>('SELECT content,content_sha256 FROM agentstudio_roles.original_skill_versions WHERE owner_user_id=$1::uuid AND skill_id=$2::text AND version=$3::integer',[owner,r.id,r.version])).rows
   if(rows.length!==1||rows[0]!.content_sha256!==r.hash||originalSkillHash(rows[0]!.content)!==r.hash)deny('skill_version_unavailable')
   await db.query('INSERT INTO agentstudio_roles.original_skill_reviews(owner_user_id,skill_id,version,content_sha256,reviewed_by) VALUES($1::uuid,$2::text,$3::integer,$4::text,$1::uuid) ON CONFLICT DO NOTHING',[owner,r.id,r.version,r.hash])
   await audit(db,owner,'agent.skill_review',r.id as string,{version:r.version,content_sha256:r.hash})
@@ -89,7 +89,7 @@ export async function prepareOriginalRolePinOnClient(db:SqlClient,owner:string,s
   const capabilityBindings=options.taskPlanning?await originalRoleCapabilitiesOnClient(db,owner,spec,extension,options.localDeviceId):undefined
   await recordOriginalRoleSpecSnapshot(db,owner,scope.spec_id,scope.spec_revision,spec)
   for(const role of extension.roles)for(const ref of role.skill_refs){
-    const rows=(await db.query<{name:string;description:string;content:string;content_sha256:string}>('SELECT v.name,v.description,v.content,v.content_sha256 FROM agentstudio_roles.original_skills s JOIN agentstudio_roles.original_skill_versions v ON v.owner_user_id=s.owner_user_id AND v.skill_id=s.id JOIN agentstudio_roles.original_skill_reviews r ON r.owner_user_id=v.owner_user_id AND r.skill_id=v.skill_id AND r.version=v.version AND r.content_sha256=v.content_sha256 WHERE s.owner_user_id=$1::uuid AND s.id=$2::text AND s.active AND v.version=$3::integer AND v.content_sha256=$4::text FOR SHARE OF s,v,r',[owner,ref.id,ref.version,ref.hash])).rows
+    const rows=(await db.query<{name:string;description:string;content:string;content_sha256:string}>('SELECT v.name,v.description,v.content,v.content_sha256 FROM agentstudio_roles.original_skills s JOIN agentstudio_roles.original_skill_versions v ON v.owner_user_id=s.owner_user_id AND v.skill_id=s.id JOIN agentstudio_roles.original_skill_reviews r ON r.owner_user_id=v.owner_user_id AND r.skill_id=v.skill_id AND r.version=v.version AND r.content_sha256=v.content_sha256 WHERE s.owner_user_id=$1::uuid AND s.id=$2::text AND s.active AND v.version=$3::integer AND v.content_sha256=$4::text FOR SHARE OF s',[owner,ref.id,ref.version,ref.hash])).rows
     if(rows.length!==1||rows[0]!.content_sha256!==ref.hash||originalSkillHash(rows[0]!.content)!==ref.hash)deny('original_role_skill_unavailable')
     const s=rows[0]!;skills.push({role_id:role.id,...ref,name:s.name,description:s.description,content:s.content})
   }

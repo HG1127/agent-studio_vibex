@@ -43,10 +43,11 @@ export function createNativeLocalDeviceHttp(d:Dependencies){return async(req:Inc
   try{verifyNativeOrigin(req,d.allowedOrigin,req.method!=='GET')}catch{throw new HttpError(403,'native_request_origin_denied')}
   if(req.headers.authorization!==undefined||req.headers['x-studio-device-token']!==undefined||!nativeSessionToken(req))throw new HttpError(401,'session_required')
   let identity:Identity;try{identity=await d.authenticateRequest(req)}catch(error){throw nativeLocalAuthenticationError(error)}if(identity.issuer!=='urn:agentstudio:local:v1')throw new HttpError(403,'native_employee_identity_required')
+  const expectedOwner=req.headers['x-agentstudio-expected-owner']===undefined?undefined:input(()=>localId(req.headers['x-agentstudio-expected-owner']))
   const route=u.pathname.slice(ownerRoute.length);let result:unknown
-  if(req.method==='GET'&&route===''){await empty(req);result=await d.repository.list(identity)}
-  else if(req.method==='GET'&&/^\/jobs\/[a-f0-9-]{36}$/.test(route)){await empty(req);result=await d.repository.get(identity,input(()=>localId(route.slice(6))))}
-  else if(req.method==='POST'&&(route===''||route==='/confirm')){const rawBody=await body(req),intent=input(()=>parseLocalIntent(rawBody));result=route==='/confirm'?await d.repository.confirm(identity,intent):await d.repository.record(identity,intent)}
+  if(req.method==='GET'&&route===''){await empty(req);result=await d.repository.list(identity,expectedOwner)}
+  else if(req.method==='GET'&&/^\/jobs\/[a-f0-9-]{36}$/.test(route)){await empty(req);result=await d.repository.get(identity,input(()=>localId(route.slice(6))),expectedOwner)}
+  else if(req.method==='POST'&&(route===''||route==='/confirm')){const rawBody=await body(req),intent=input(()=>parseLocalIntent(rawBody));result=route==='/confirm'?await d.repository.confirm(identity,intent,expectedOwner):await d.repository.record(identity,intent,expectedOwner)}
   else throw new HttpError(405,'method_not_allowed')
   let after:Identity;try{after=await d.authenticateRequest(req)}catch(error){throw nativeLocalAuthenticationError(error)}if(after.issuer!==identity.issuer||after.subject!==identity.subject)throw new HttpError(401,'session_required');respond(res,200,result)
  }catch(e){const x=e as {status?:number;code?:string};const known=e instanceof HttpError&&/^(?:native_local_[a-z_]+|invalid_native_local_device_value|native_employee_identity_required|native_request_origin_denied|session_required|employee_not_provisioned|method_not_allowed|json_content_type_required|request_too_large)$/.test(x.code??'');respond(res,known?x.status!:503,{error:known?x.code:'native_local_unavailable',...(e instanceof HttpError&&'request_id' in e?{request_id:e.request_id}:{})})}

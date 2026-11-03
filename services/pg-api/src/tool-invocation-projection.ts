@@ -1,3 +1,4 @@
+import {parseOriginalToolHubActivityQuery,projectOriginalToolHubActivity} from '../../../shared/original-toolhub-activity.ts'
 // Bounded owner metadata only. Never returns prompts, args, response bodies,
 // URLs, headers, credentials or another employee's rows. Counts are samples.
 import {HttpError,isUuid,type Identity,type SqlPool} from './contracts.ts'
@@ -94,6 +95,7 @@ export class OwnerToolInvocationRepository{
    return {items:rows.slice(0,500).map(projectInvocationRow),sampled:rows.length>500}
   })
  }
+ async originalPage(identity:Identity,raw:unknown){let query:ReturnType<typeof parseOriginalToolHubActivityQuery>;try{query=parseOriginalToolHubActivityQuery(raw)}catch{invalid()}const sample=await this.read(identity);return projectOriginalToolHubActivity(sample.items,sample.sampled,query)}
  async list(identity:Identity,raw:unknown):Promise<ToolHubInvocations>{const query=parseInvocationQuery(raw),sample=await this.read(identity,query.after),filtered=sample.items.filter(item=>(query.kind==='any'||item.kind===query.kind)&&(query.status==='any'||item.status===query.status)&&(!query.tool||item.tool===query.tool)),items=filtered.slice(0,query.limit),last=filtered.length>query.limit?items.at(-1):sample.sampled?sample.items.at(-1):null;return {items,next_after:last?cursor(last):null,scope:'owner_only' as const,scan_limit:500,scanned:sample.items.length,sampled:sample.sampled,worker_liveness:'not_inferred' as const,automatic_replay_allowed:false}}
  async stats(identity:Identity):Promise<ToolHubStats>{const sample=await this.read(identity);return {calls:sample.items.length,started:sample.items.filter(i=>i.status==='started').length,succeeded:sample.items.filter(i=>i.status==='succeeded').length,failed:sample.items.filter(i=>i.status==='failed').length,unknown:sample.items.filter(i=>i.status==='unknown').length,tools:invocationSummary(sample.items),retry_count:null,scope:'owner_only' as const,sample_limit:500,sampled:sample.sampled,metrics:'recorded_external_effects_only',worker_liveness:'not_inferred' as const}}
  async harness(identity:Identity):Promise<ToolHubHarness>{

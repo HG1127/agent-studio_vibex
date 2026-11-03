@@ -1,0 +1,25 @@
+// Executed only by the dedicated CI-owned child. The original journal, pairing,
+// poll/lease/check/completion/recovery protocol and real filesystem runtime run.
+import {requireOriginalDirectoryCi} from './native-original-directory-policy.mjs'
+import {installOriginalDirectoryNetworkGuard} from './native-original-directory-network.mjs'
+requireOriginalDirectoryCi()
+const network=installOriginalDirectoryNetworkGuard()
+const [{runNativeConnection},{nativeRequestPlan,readNativeResponse},{createRuntime},https,fs,path]=await Promise.all([import('../../../../local-executor/native-run.mjs'),import('../../../../local-executor/native-connection.mjs'),import('../../../../local-executor/runtime.mjs'),import('node:https'),import('node:fs/promises'),import('node:path')])
+const [command,file]=process.argv.slice(2)
+if(!['pair','run','recover','commit-result'].includes(command)||!path.isAbsolute(file))throw Error('original_directory_child_command_refused')
+const stat=await fs.lstat(file);if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||(stat.mode&0o077)!==0||stat.size>8192)throw Error('original_directory_child_config_refused')
+const config=JSON.parse(await fs.readFile(file,'utf8')),server=new URL(config.server)
+if(server.protocol!=='https:'||server.hostname!=='localhost'||!server.port||server.username||server.password||config.browser?.enabled!==false||config.office?.enabled!==false||config.mcpServers!==undefined||!Array.isArray(config.roots)||config.roots.length!==2)throw Error('original_directory_child_scope_refused')
+const ca=await fs.readFile(path.join(path.dirname(file),'credentials-directory-ca.pem')),stop=new AbortController()
+process.once('SIGTERM',()=>stop.abort());process.once('SIGINT',()=>stop.abort())
+const connectionFactory=(base,token)=>async(operation,body,signal)=>{
+ const plan=nativeRequestPlan(base,operation,body,token,signal);if(plan.url.origin!==server.origin)throw Error('original_directory_child_origin_changed')
+ return new Promise((resolve,reject)=>{const req=https.request(plan.url,{...plan.options,ca,servername:'localhost',rejectUnauthorized:true,minVersion:'TLSv1.2'},res=>{void readNativeResponse(res).then(resolve,reject)});req.once('error',reject);req.end(plan.bytes)})
+}
+try{
+ await runNativeConnection(command,file,{signal:stop.signal,connectionFactory,onState:state=>{if(state==='online')process.send?.({event:'original_directory_executor_online'})},runtimeFactory:async options=>{
+  const real=await createRuntime(options),tools=real.tools.filter(t=>t.name==='files.list');if(tools.length!==1)throw Error('original_directory_actual_catalog_missing')
+  return {tools,close:real.close,async execute(input,signal){if(input.tool!=='files.list')throw Error('original_directory_tool_refused');const result=await real.execute(input,signal);process.send?.({event:'original_directory_actual_list_completed'});return result}}
+ }})
+}catch{process.stderr.write('original_directory_owned_executor_failed\n');process.exitCode=1}
+finally{process.send?.({event:'original_directory_executor_network',counts:network.snapshot()});network.restore()}
