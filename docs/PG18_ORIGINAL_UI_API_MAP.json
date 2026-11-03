@@ -10230,6 +10230,114 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_4a19edf_queue_fixture_owner_transition_followup": {
+      "base_head": "4a19edfbaf97b17b140b94d333a764e0249e7258",
+      "source_reseal_pending": false,
+      "source_changes": [
+        "Initialize reportQueue only in old literal Broker unit state; retain actual product constructor and FIFO/record/ACK/cleanup behavior.",
+        "Observe at most one original autonomous GET denial captured before the actual employee Cookie switch finishes; require complete exact workflow_run_not_found404, actual Native/me using the same original Cookie and independent fresh original source owner. Preserve original response, five explicit negatives, privacy and final strict zeros.",
+        "Optimize only two strict JSON scanner declarations; all original UTF8, limits, fresh files, catalog/OID/ACL/owner checks, order, cleanup, serial pool1 and5/8/30/45s and15s budgets remain unchanged."
+      ],
+      "Root_directed_proof": {
+        "broker_dependency_suites": 6,
+        "broker_pure": 208,
+        "owner_transition_and_actual_host_callback_pure": 49,
+        "json_parser_pure": 16,
+        "json_parser_original_parent_and_fixture_bytes_verified": true,
+        "local_SQL_Worker_Native_browser_or_provider_calls": 0,
+        "current_candidate_genuine_acceptance": false
+      },
+      "base_hosted_proof": {
+        "workflows": 19,
+        "success": 14,
+        "failure": 5,
+        "quality_each": {
+          "jobs": 51,
+          "pass": 50,
+          "main_job_success": true,
+          "source_tests": 2972,
+          "source_pass": 2971,
+          "source_fail": 1,
+          "source_skip": 0,
+          "source_failure": "old literal test Broker lacks reportQueue"
+        },
+        "F01": {
+          "jobs": 21,
+          "pass": 20,
+          "fail": 1,
+          "actual_original_model_draft_and_feedback403_pass": true,
+          "failed_story": "original-run-detail-queued",
+          "all_story_stage_booleans_true": true,
+          "extra_actual_original_GET404": true,
+          "five_explicit_negatives_consumed": true,
+          "final_strict_zeros_failed": true
+        },
+        "strict069_and_telemetry": {
+          "preflight_unit_failure": true,
+          "actual_FIFO_runtime_effect_not_yet_observed": true
+        }
+      },
+      "last_real_strict069": {
+        "head": "eb04cbb2e12ca97a1b26ec3e12c14f4fb2110f3f",
+        "Legacy": {
+          "reason": "full069_worker_live_native_heartbeat_unavailable",
+          "reader_elapsed_ms": 5040,
+          "reader_remaining_ms": -39,
+          "guard_calls": 130,
+          "guard_ms": 4580
+        },
+        "Final14": {
+          "reason": "full069_worker_live_native_heartbeat_unavailable",
+          "phase": "warm_sample",
+          "reader_phase": "controller_reader_audit",
+          "reader_elapsed_ms": 5013,
+          "reader_remaining_ms": -12,
+          "guard_calls": 93,
+          "guard_ms": 4545
+        },
+        "original_reader_deadline_ms": 5000,
+        "actual_current_success": false
+      },
+      "private_candidates": {
+        "A_roles_UI": {
+          "Root_targets": 90,
+          "Root_parents": 49,
+          "Root_hunks": 108,
+          "Root_metadata": 42,
+          "Root_raw_inputs": 215,
+          "Root_composed_pure": 173,
+          "latest_actual_API_errors": 1,
+          "latest_actual_frontend_errors": 68,
+          "integrated": false,
+          "actual_SQL_Worker_browser_acceptance": false
+        },
+        "B_desktop": {
+          "Root_inputs": 63,
+          "Root_pure": 124,
+          "actual_Electron_SQL_employee_UI": false,
+          "integrated": false
+        },
+        "C_run_entry_resources": {
+          "Root_targets": 63,
+          "Root_parents": 18,
+          "Root_hunks": 77,
+          "Root_pure": 81,
+          "aligned_followup_awaits_independent_review": true,
+          "Native_fields_missing": 13,
+          "original_device_picker_still_PocketBase": true,
+          "C75_not_accepted": true,
+          "integrated": false
+        }
+      },
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 20419,
+        "retained_prior_pins": 20319,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,

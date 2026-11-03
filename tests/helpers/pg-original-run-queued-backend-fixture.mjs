@@ -1,6 +1,7 @@
 import {requireOriginalRunQueuedBrowserCi} from './pg-original-run-queued-browser-guard.mjs'
 import {verifyOriginalRunQueuedReviewedSources} from './pg-original-run-queued-reviewed-check.mjs'
 import {createOriginalRunQueuedProofs} from './pg-original-run-queued-proofs.mjs'
+import {verifyOriginalQueuedForeignRead} from './pg-original-run-queued-owner-transition.mjs'
 // Dedicated disposable composition. Existing read-only Login/Home fixtures
 // and their zero-model teardown checks are not relabeled or weakened.
 export async function originalRunQueuedBackendFixture(env=process.env){
@@ -93,11 +94,12 @@ export async function originalRunQueuedBackendFixture(env=process.env){
   const homeKnowledge={},bases=new knowledge.KnowledgeBaseRepository(f.pool)
   for(const who of ['alice','bob'])homeKnowledge[who]=await bases.create(identities[who],'Original Home synthetic private KB '+who,'Disposable owner metadata selected through the original Home checkbox')
   const profiles={};for(const who of ['alice','bob']){const actual=await f.request(who,'/api/native-auth/me');assert.equal(actual.status,200);assert.equal(actual.body.user.id,f.users[who]);profiles[who]=actual.body.user}
-  const request=async(who,route,method='GET',body,expectedEmployee)=>{
-   assert(['alice','bob'].includes(who)&&typeof route==='string'&&route.startsWith('/api/')&&route.length<4096&&['GET','POST','PATCH','DELETE'].includes(method))
+  const requestCookie=async(cookie,route,method='GET',body,expectedEmployee)=>{
+   assert(typeof cookie==='string'&&cookie.length>0&&cookie.length<=8192&&!/[\r\n\0]/.test(cookie)&&typeof route==='string'&&route.startsWith('/api/')&&route.length<4096&&['GET','POST','PATCH','DELETE'].includes(method))
    const bytes=body===undefined?undefined:Buffer.from(JSON.stringify(body)),upstream=new URL(nativeOrigin)
-   return new Promise((resolve,reject)=>{const req=https.request({hostname:'127.0.0.1',port:Number(upstream.port),servername:'localhost',path:route,method,ca:f.serverTls.ca,rejectUnauthorized:true,minVersion:'TLSv1.2',agent:false,signal:AbortSignal.timeout(8000),headers:{Accept:'application/json',Origin:permit.origin,Cookie:cookies.get(who),...(method==='GET'?{}:{'Content-Type':'application/json','X-AgentStudio-Request':'1'}),...(bytes?{'Content-Length':String(bytes.length)}:{}),...(expectedEmployee?{'X-AgentStudio-Expected-Employee':expectedEmployee}:{})}},res=>{let size=0;const chunks=[];res.on('data',chunk=>{size+=chunk.length;if(size>1048576){res.destroy();return}chunks.push(Buffer.from(chunk))});res.once('error',reject);res.once('aborted',()=>reject(Error('original_run_queued_probe_response_lost')));res.once('end',()=>{try{resolve({status:res.statusCode,body:JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks)))})}catch{reject(Error('original_run_queued_probe_invalid_response'))}})});req.once('error',reject);req.end(bytes)})
+   return new Promise((resolve,reject)=>{const req=https.request({hostname:'127.0.0.1',port:Number(upstream.port),servername:'localhost',path:route,method,ca:f.serverTls.ca,rejectUnauthorized:true,minVersion:'TLSv1.2',agent:false,signal:AbortSignal.timeout(8000),headers:{Accept:'application/json',Origin:permit.origin,Cookie:cookie,...(method==='GET'?{}:{'Content-Type':'application/json','X-AgentStudio-Request':'1'}),...(bytes?{'Content-Length':String(bytes.length)}:{}),...(expectedEmployee?{'X-AgentStudio-Expected-Employee':expectedEmployee}:{})}},res=>{let size=0;const chunks=[];res.on('data',chunk=>{size+=chunk.length;if(size>1048576){res.destroy();return}chunks.push(Buffer.from(chunk))});res.once('error',reject);res.once('aborted',()=>reject(Error('original_run_queued_probe_response_lost')));res.once('end',()=>{try{assert.equal(res.complete,true);resolve({status:res.statusCode,body:JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks)))})}catch{reject(Error('original_run_queued_probe_invalid_response'))}})});req.once('error',reject);req.end(bytes)})
   }
+  const request=async(who,...args)=>{assert(['alice','bob'].includes(who));return requestCookie(cookies.get(who),...args)}
   const actualCap=await request('alice','/api/native-auth/capabilities')
   assert.equal(actualCap.status,200);assert.equal(actualCap.body.config_writes_enabled,true);assert.equal(actualCap.body.run_submission_enabled,true);assert.equal(actualCap.body.workflow_execution_enabled,true);assert.equal(actualCap.body.workflow_v2_submission_enabled,true);assert.equal(actualCap.body.autonomous_agent_submission_enabled,true);assert.equal(actualCap.body.agent_memory_runtime_enabled,true);assert.equal(actualCap.body.agent_feedback_submission_enabled,true);assert.equal(actualCap.body.original_model_pagination_protocol,'native_model_connections_paging_v1');assert.equal(actualCap.body.model_probe_enabled,false)
   // Existing F01 readiness seeds use their reviewed synthetic probe port. This
@@ -119,6 +121,7 @@ export async function originalRunQueuedBackendFixture(env=process.env){
   await proofs.assertZeroExecution();await proofs.proveAdmission()
   reviewed.check()
   return{users:f.users,credentials:f.credentials,serverTls:f.serverTls,profiles,owned,nativeOrigin,allowedOrigin:permit.origin,request,close,...proofs,
+   async verifyForeignRead(id,from,to,cookie){assert(['alice','bob'].includes(from)&&['alice','bob'].includes(to)&&from!==to&&owned[from].runs.agent_autonomous.run.id===id);return verifyOriginalQueuedForeignRead({cookie,runId:id,employee:f.users[to],readIdentity:actualCookie=>requestCookie(actualCookie,'/api/native-auth/me'),readSource:()=>proofs.runState(from,id)})},
    finalOwnerAudit:()=>finalOwnerAudit,
    async assertZeroExecution(){if(!closed)return proofs.assertZeroExecution();assert(finalZeroProof,'final zero proof must have completed before actual pool close');return {...finalZeroProof,verified_before_actual_pool_close:true}},
    async revokeKnowledge(){const actual=await acl.revoke();const current=await request('bob','/api/v2/agent-autonomous-runs/'+owned.bob.runs.agent_autonomous.run.id);assert.equal(current.status,200);assert.equal(current.body.knowledge_outputs_available,false,'actual empty-memory receipt must recheck original KB ACL');assert(actual);return{actual_acl_revoke:true,actual_queued_source_unavailable:true}},

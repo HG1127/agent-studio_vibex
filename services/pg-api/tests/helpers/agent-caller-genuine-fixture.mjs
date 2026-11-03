@@ -321,7 +321,7 @@ export const agentCallerGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/pg-runtime-target.ts": "4e47957241fc66c686a49e302d3c6698d781158727855d1b176a42ef2838253e",
   "services/pg-api/src/pg18-ci-schema.mjs": "b9091ac92aeeecc465c4ec2b9038bd8dec1033e734e9cb81fa6de0135da7bff1",
   "services/pg-api/src/pg18-complete-operator-runtime.d.mts": "8fe2a1f9c53d13b0331d24a03323833d5f8f5d0740695d57b6890b73cad1fa75",
-  "services/pg-api/src/pg18-complete-operator-runtime.mjs": "3c49d5d02c7fee194d5cec908a9293b6fcb6af3a333f72761daf6036b9023b74",
+  "services/pg-api/src/pg18-complete-operator-runtime.mjs": "98d46dd1dc8a8ee32a6fd3e74d9311d47b86cd4f1e42709fef570e998b2a6314",
   "services/pg-api/src/pg18-complete-profile-source.d.mts": "c314265af0f2c56f77f7d81112f89d0015f12b20dfad6b1b86f8758b5c315ab9",
   "services/pg-api/src/pg18-complete-profile-source.mjs": "9c3c1d521ebf3b1f5d33859a4264db0a4e79f80ea7040c4e65413a98de9d6fae",
   "services/pg-api/src/pg18-complete-profile.ts": "6dfd232a01592c85cc027d0e92de6816000d643a95d338cef070d63b1ff1b8f2",
@@ -356,7 +356,7 @@ export const agentCallerGenuineFrozenSources=Object.freeze({
   "services/pg-api/src/worker-heartbeat-activated-audit.ts": "977bc53eeee5aec9f4fcb7e663b11e121583618246df6615ed8b0554eedba1ee",
   "services/pg-api/src/worker-heartbeat-activation-control-client.ts": "93db0442634399213b90b0239814585b7a973fd86b0fa11156d9b8632a5c2c87",
   "services/pg-api/src/worker-heartbeat-activation-control-contract.ts": "3d1a9b65a50cba9f3538256203dab134ccff3d1166a9017d7f6e4fa916d55662",
-  "services/pg-api/src/worker-heartbeat-activation-control-runtime.mjs": "515efa35c6c7ab806c23ad6b60fba96f0c88f922d8268b994fbe3ee510fa25d6",
+  "services/pg-api/src/worker-heartbeat-activation-control-runtime.mjs": "bbdc2db3d7806bf2d519af53f969102197338e0a215ac2c30a6a3f715f07ef81",
   "services/pg-api/src/worker-heartbeat-activation-control-source.mjs": "67f95bf9da6285d20837471b73cd16d9c00e65ae7ad842f3b579468542449722",
   "services/pg-api/src/worker-heartbeat-activation-control.ts": "c2fdce1d0af2f753c1ad8e00c1dcee21b05e1092a6e3d0888f47dfbee90165b0",
   "services/pg-api/src/worker-heartbeat-activation-registry.ts": "962ea6e1d6bf279e1488c669ac1d2fe43806d1c0637e7ff39081df1aa5ec01e4",
@@ -782,7 +782,7 @@ export const agentCallerGenuineFrozenSources=Object.freeze({
   "services/pg-api/tests/helpers/monitor074-definition-fixture.mjs": "28799c066ca5df32fcc16384baa57cb6033c86b4047ff801f1e444049874bf99",
   "services/pg-api/tests/helpers/monitor074-original-pb-semantics-reference.cjs": "a40efb70300d9259e3560250aba04a856f756e88a35e6a6cd24b4e13fc6af2e7",
   "services/pg-api/tests/helpers/native-monitor074-ci-guard.mjs": "f04a8fb69412f70f37668057110b7581652f6bc8f6113d91428bc6f900df7fb7",
-  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "b8f341f24d40f9994812487e84860aa1c900a96ae1176258e22100087b2c4cb8",
+  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "294902c64515e031be84bf809d0761ed507a0127385f66ab9de15d46615b6638",
   "services/pg-api/tests/helpers/native-monitor074-row-lock-genuine.mjs": "525b12d40e0574656b1c7c9bca4c55bfa296b81eb17475cbe963237eb086090d",
   "services/pg-api/tests/helpers/ordinary077-catalog-data.mjs": "c1fdde5c290ddc4a6f577d0028aecf47264cf21b0d108cf1a54f5784e2bb3b5f",
   "services/pg-api/tests/native-monitor-author-pure.test.mjs": "041de254cc584d30b58a8188c83faffd928a2356e7717e5393fdc716ee2cf6c7",
@@ -934,14 +934,18 @@ export const agentCallerGenuineFrozenSources=Object.freeze({
   "tests/browser-json-response-observer.test.mjs": "136c01cfd52e7d1b2bdbc08aa957b30bbc43257e6f25fe1b1fbbcef989557e29",
   "tests/helpers/browser-json-response-observer.mjs": "1c9c1197af7743e01625b8c73cdbbc6e04eaf381d970317fb703888d68fc11dd",
   "tests/original-run-transport-lifecycle.test.mjs": "8bafa927a7ce4067f6c864ddabd93df14ca13cd65fb8fe6881b52f47cce1c0cc",
-  "docs/PG18_ISOLATED_BROWSER_TEST_RUNTIME.md": "ffad73a9e30e70607f52a40778e45056e84d30e4e16738827ac4cdcd82eda10e",
+  "docs/PG18_ISOLATED_BROWSER_TEST_RUNTIME.md": "6bf8c2b3da072630dfe40f6bb9b6c7dedb1aa4d583583bb112236f1ac74fc6d3",
   "ops/pg18-original-no-store-browser-check.mjs": "e4e6584bdb7f628a50de21727d1e06794eb997cedbe3621c450da8bea36008f6",
   "tests/helpers/original-feedback-revocation.mjs": "489fc3f53a29c1e249b58472a1feaad139b151ef553f5424f164f78fa7089db9",
   "tests/helpers/original-no-store-browser-check.mjs": "22ba2fc8a31cd3048dc3889e36a2ea0e9e0cb720b0453bd9e854107ffa1c43e5",
   "tests/original-feedback-revocation.test.mjs": "5b9a426a6644df57c815aad23af7f20e9a577cb8e95883c51b39b7e2e7a16a5f",
   "tests/original-no-store-browser-check.test.mjs": "e84a9dbc556c0705b237585f232b8dbeb60eafa6cf9b36fb6d1ba4e61bf60a4c",
   "services/pg-api/tests/fixtures/writer-report-before-fifo.txt": "a08e89dd93d005a411067aabd8c6eca74f778d3620762aab0abc7b73184be1df",
-  "services/pg-api/tests/worker-heartbeat-writer-report-admission.test.mjs": "8a10f771c94c760694daeb1f8ccb44a4b75b78d30a6996b62327df50b4fd2324"
+  "services/pg-api/tests/worker-heartbeat-writer-report-admission.test.mjs": "8a10f771c94c760694daeb1f8ccb44a4b75b78d30a6996b62327df50b4fd2324",
+  "services/pg-api/tests/fixtures/pg18-runtime-json-pre-scan.txt": "fe8be661de4361d8062056c1fb3c5ac74878c3e6a98003c840de4b45f34901b8",
+  "services/pg-api/tests/pg18-runtime-json-scan.test.mjs": "d3a916e247d916c77e61ccdb3bfe9e146b040835a4db63914918a816a291110c",
+  "tests/helpers/pg-original-run-queued-owner-transition.mjs": "18622f58d268321011c346a4783444ebc7f8e5c8c54c0e31e814f03682fc2aeb",
+  "tests/pg-original-run-queued-owner-transition-pure.test.mjs": "19f2f394877c227d3f045a5dc48d57f75c71bff00271aeb395de0555d4a63182"
 })
 export async function agentCallerGenuineFixture(env=process.env,{browserMode=false}={}){
  const target=requireAgentCallerGenuineCi(env)

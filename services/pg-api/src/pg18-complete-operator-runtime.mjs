@@ -64,19 +64,22 @@ function assertUtf8Bytes(bytes,max){
 }
 // Independent strict JSON reader; importing CLI here would form an entry cycle.
 function json(raw){
-  const text=utf8(raw,2*1024*1024);let i=0,nodes=0
-  const ws=()=>{while(/[ \r\n\t]/.test(text[i]??'!'))i++}
-  const str=()=>{const start=i++;for(;i<text.length;i++){
-    if(text[i]==='\\'){i++;continue}
-    if(text[i]==='"'){let v;try{v=JSON.parse(text.slice(start,++i))}catch{fail()}if(Buffer.from(v).toString('utf8')!==v||v.includes('\0'))fail();return v}
-  }fail()}
+  const text=utf8(raw,2*1024*1024),number=/-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/y,strings=/["\\]/g;let i=0,nodes=0
+  const ws=()=>{for(;;){const c=text.charCodeAt(i);if(c!==32&&c!==13&&c!==10&&c!==9)break;i++}}
+  const str=()=>{const start=i++;for(;;){
+    strings.lastIndex=i;const token=strings.exec(text);if(!token)fail();i=strings.lastIndex
+    if(token[0]==='\\'){i++;continue}
+    let v;try{v=JSON.parse(text.slice(start,i))}catch{fail()}if(Buffer.from(v).toString('utf8')!==v||v.includes('\0'))fail();return v
+  }}
   const value=depth=>{
     if(depth>32||++nodes>32768)fail();ws();const ch=text[i]
     if(ch==='"')return str()
     if(ch==='{'){i++;ws();const v={},seen=new Set();if(text[i]==='}'){i++;return v}for(;;){ws();if(text[i]!=='"')fail();const k=str();if(seen.has(k)||['__proto__','prototype','constructor'].includes(k))fail();seen.add(k);ws();if(text[i++]!==':')fail();Object.defineProperty(v,k,{value:value(depth+1),enumerable:true});ws();if(text[i]==='}'){i++;return v}if(text[i++]!==',')fail()}}
     if(ch==='['){i++;ws();const v=[];if(text[i]===']'){i++;return v}for(;;){v.push(value(depth+1));ws();if(text[i]===']'){i++;return v}if(text[i++]!==',')fail()}}
-    for(const [s,v] of [['true',true],['false',false],['null',null]])if(text.startsWith(s,i)){i+=s.length;return v}
-    const m=text.slice(i).match(/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/);if(!m)fail();i+=m[0].length;const v=Number(m[0]);if(!Number.isSafeInteger(v)||Object.is(v,-0))fail();return v
+    if(text.startsWith('true',i)){i+=4;return true}
+    if(text.startsWith('false',i)){i+=5;return false}
+    if(text.startsWith('null',i)){i+=4;return null}
+    number.lastIndex=i;const m=number.exec(text);if(!m)fail();i=number.lastIndex;const v=Number(m[0]);if(!Number.isSafeInteger(v)||Object.is(v,-0))fail();return v
   }
   const result=value(0);ws();if(i!==text.length)fail();return result
 }

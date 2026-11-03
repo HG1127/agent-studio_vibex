@@ -3,6 +3,7 @@ import {createOriginalFeedbackRevocation} from './original-feedback-revocation.m
 import {originalRunQueuedPath,originalRunQueuedBrowserPolicy} from './pg-original-run-queued-browser-policy.mjs'
 import {verifyOriginalRunQueuedReviewedSources} from './pg-original-run-queued-reviewed-check.mjs'
 import {originalQueuedNegativeReads} from './pg-original-run-queued-negative-reads.mjs'
+import {createOriginalQueuedOwnerTransition} from './pg-original-run-queued-owner-transition.mjs'
 import {bindOriginalPauseStage,dropOriginalCommittedCancelReply} from './pg-original-run-queued-control-faults.mjs'
 import {dropOriginalIdentityReplyPrefix} from './pg-original-run-queued-identity-loss.mjs'
 // Import-safe. Admission and fixed sources precede PG, TLS and sockets.
@@ -60,9 +61,9 @@ export async function startOriginalRunQueuedBrowserFixture(env=process.env){
     head:env.GITHUB_SHA??null,build_directory:'dist-original-pg',
     source_authority:'fixed original-UI source closure plus actual F01 and optional070-073 auditors; exact committed head and clean source required',
     checked_sources:sourceHashes,manifest_sha256:sha(manifestBytes),index_sha256:sha(index),assets:assetHashes}
- let fixture,server,agent,closed=false,nextIdentityDrop=null,nextIdentityHold=null,nextReplyDrop=null,nextStaged=null,feedbackRevocation,signedOutAllowance=0,negativeReads
+ let fixture,server,agent,closed=false,nextIdentityDrop=null,nextIdentityHold=null,nextReplyDrop=null,nextStaged=null,feedbackRevocation,signedOutAllowance=0,negativeReads,ownerTransition
  const gates=new Set(),flights=new Set(),pauseStages=new Map()
- const observations={legacy_backend_requests:[],unexpected_api_failures:[],blocked_requests:[],forbidden_auth_headers:0,overflow:false,paging_requests:0,paging_complete_responses:0,partial_model_reads:0,controlled_identity_drops:0,identity_reply_prefixes:[],controlled_reply_drops:0,controlled_staged_requests:0,controlled_client_timeouts:0,controlled_feedback403:0,actual_signed_out401:0,expected_not_found:[],negative_control_confirmations:0,positive_control_confirmations:0,gate_deadline_failures:0,control_posts:[],confirmation_posts:[],feedback_posts:[],submission_posts:[]}
+ const observations={legacy_backend_requests:[],unexpected_api_failures:[],blocked_requests:[],forbidden_auth_headers:0,overflow:false,paging_requests:0,paging_complete_responses:0,partial_model_reads:0,controlled_identity_drops:0,identity_reply_prefixes:[],controlled_reply_drops:0,controlled_staged_requests:0,controlled_client_timeouts:0,controlled_feedback403:0,actual_signed_out401:0,expected_not_found:[],owner_transition_denials:[],negative_control_confirmations:0,positive_control_confirmations:0,gate_deadline_failures:0,control_posts:[],confirmation_posts:[],feedback_posts:[],submission_posts:[]}
  const remember=(key,value)=>{if(observations[key].length<256)observations[key].push(value);else observations.overflow=true}
  const reply=(res,status,code)=>{res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify({error:code}))}
  const count=key=>{if(observations[key]>=256)observations.overflow=true;else observations[key]++}
@@ -74,7 +75,7 @@ export async function startOriginalRunQueuedBrowserFixture(env=process.env){
   try{agent?.destroy()}catch(e){errors.push(e)}
   try{if(fixture)await fixture.assertZeroExecution()}catch(e){errors.push(e)}
   try{await fixture?.close()}catch(e){errors.push(e)}
-  try{negativeReads?.assertEmpty();assert.equal(nextIdentityDrop,null,'unconsumed identity loss');feedbackRevocation?.assertEmpty()}catch(e){errors.push(e)}
+  try{negativeReads?.assertEmpty();ownerTransition?.assertEmpty();assert.equal(nextIdentityDrop,null,'unconsumed identity loss');feedbackRevocation?.assertEmpty()}catch(e){errors.push(e)}
   files.clear();gates.clear();try{checkSources()}catch(e){errors.push(e)}
   if(errors.length)throw new AggregateError(errors,'original_run_queued_host_cleanup_failed')
  }
@@ -82,6 +83,7 @@ export async function startOriginalRunQueuedBrowserFixture(env=process.env){
   fixture=await originalRunQueuedBackendFixture(env)
   feedbackRevocation=createOriginalFeedbackRevocation({known:id=>Object.values(fixture.owned).some(owner=>owner.runs.agent_autonomous?.run.id===id),withdraw:()=>fixture.setFeedbackSubmission(false)})
   negativeReads=originalQueuedNegativeReads(Object.values(fixture.owned).flatMap(owner=>Object.values(owner.runs).map(value=>value.run.id)))
+  ownerTransition=createOriginalQueuedOwnerTransition({known:(id,who)=>fixture.owned[who]?.runs.agent_autonomous?.run.id===id,verify:(id,from,to,cookie)=>fixture.verifyForeignRead(id,from,to,cookie)})
   assert.equal(fixture.backendProfile.head,permit.head);assert.equal(fixture.allowedOrigin,permit.origin)
   const upstream=new URL(fixture.nativeOrigin),tls=fixture.serverTls
   assert.equal(upstream.protocol,'https:');assert.equal(upstream.hostname,'localhost');assert(upstream.port&&!upstream.username&&!upstream.password&&upstream.pathname==='/'&&!upstream.search&&!upstream.hash)
@@ -99,6 +101,7 @@ export async function startOriginalRunQueuedBrowserFixture(env=process.env){
      const path=nativePath(rule.pathname),identityDrop=nextIdentityDrop&&req.method==='GET'&&path==='/api/native-auth/me'?nextIdentityDrop:null,identityHold=nextIdentityHold&&req.method==='GET'&&path==='/api/native-auth/me'?nextIdentityHold:null,replyDrop=nextReplyDrop&&req.method==='POST'&&path===nextReplyDrop.path?nextReplyDrop:null,staged=nextStaged&&req.method==='POST'&&path===nextStaged.path?nextStaged:null
      if(identityDrop)nextIdentityDrop=null;if(identityHold)nextIdentityHold=null;if(replyDrop)nextReplyDrop=null;if(staged)nextStaged=null
      const headers=Object.fromEntries(Object.entries(req.headers).filter(([name])=>!hop.has(name.toLowerCase())))
+      const ownerTicket=ownerTransition.capture(req.method,nativePath(req.url),headers.cookie)
      let actualBody
      if(req.method==='POST'){actualBody=await collect(req);if(/^\/api\/v2\/agent-specs\/[^/]+\/autonomous-runs$/.test(path))remember('submission_posts',{path});if(/\/agent-autonomous-runs\/[^/]+\/(pause|resume|cancel)$/.test(path)||/\/workflow-v2-runs\/[^/]+\/cancel$/.test(path))remember('control_posts',{path});if(/\/(pause|resume)-confirm$/.test(path))remember('confirmation_posts',{path});if(/^\/api\/v2\/agent-feedback\/[^/]+\/(change|confirm)$/.test(path))remember('feedback_posts',{path})}
       feedbackRevocation.beforeDispatch(req.method,path)
@@ -116,6 +119,7 @@ export async function startOriginalRunQueuedBrowserFixture(env=process.env){
         if(status===401&&path==='/api/native-auth/me'&&signedOutAllowance>0&&body.error==='session_required'){signedOutAllowance--;count('actual_signed_out401');expected=true}
          if(feedbackRevocation.consume(req.method,path,status,body)){count('controlled_feedback403');expected=true}
         const miss=negativeReads.consume(req.method,path,status,body);if(miss){remember('expected_not_found',miss);expected=true}
+         const transition=await ownerTransition.consume(ownerTicket,status,body,response.complete===true);if(transition){assert.equal(expected,false);remember('owner_transition_denials',transition);expected=true}
         if((status<200||status>=300)&&!expected)remember('unexpected_api_failures',{...sample,status})
         if(status===200&&req.method==='GET'&&path==='/api/v2/model-connections'){const q=new URL(req.url,permit.origin).searchParams;if(q.get('paging')==='owner_cursor_v1'){count('paging_requests');if(body.complete===true)count('paging_complete_responses')}else count('partial_model_reads')}
         if(status===200&&req.method==='POST'&&/\/(pause|resume)-confirm$/.test(path)){if(body.control_confirmed===false&&body.run_control_confirmation===null)count('negative_control_confirmations');else if(body.control_confirmed===true&&body.run_control_confirmation)count('positive_control_confirmations');else remember('unexpected_api_failures',{...sample,status:502})}
@@ -143,13 +147,14 @@ export async function startOriginalRunQueuedBrowserFixture(env=process.env){
   return{...fixture,origin:permit.origin,spki,provenance,observations,close,
    allowSignedOutReads(n=4){assert(Number.isSafeInteger(n)&&n>0&&n<=8);signedOutAllowance=n},
    expectNotFound:(id,kinds,reason)=>negativeReads.expect(id,kinds,reason),
+   observeOwnerTransition(id,from,to){const observation=ownerTransition.arm(id,from,to);return{finish:()=>observation.finish(()=>Promise.all([...flights]))}},
    dropNextActualIdentity(employee){assert.equal(nextIdentityDrop,null);assert(Object.values(fixture.users).includes(employee));const g=gate('identity_reply_loss',8000);g.employee=employee;nextIdentityDrop=g;return{done:()=>g.done}},
    holdNextActualIdentity(){assert(!nextIdentityHold);const g=gate('identity_reply',5500);nextIdentityHold=g;return{entered:()=>g.entered,release:()=>g.release(),done:()=>g.done}},
    armFeedbackRevocationAtOriginalSubmit(id){assert(known(id,'agent_autonomous'));feedbackRevocation.arm(id)},
    restoreFeedbackSubmission(){fixture.setFeedbackSubmission(true)},
    dropNextActualCancelReply(id,kind){assert(known(id,kind)&&!nextReplyDrop&&['agent_autonomous','workflow_v2'].includes(kind));const g=gate('committed_cancel_reply',12000);nextReplyDrop={id,kind,path:'/api/v2/'+(kind==='workflow_v2'?'workflow-v2-runs':'agent-autonomous-runs')+'/'+id+'/cancel',gate:g};return{entered:()=>g.entered,done:()=>g.done,clientClosed:()=>g.entered.then(()=>g.closed)}},
    stageNextOriginalPause(id){assert(known(id,'agent_autonomous')&&!nextStaged);const g=gate('original_pause_dispatch',20000);g.id=id;g.path='/api/v2/agent-autonomous-runs/'+id+'/pause';nextStaged=g;return{entered:()=>g.entered,request:()=>{assert(g.request);return g.request},clientClosed:()=>g.entered.then(()=>g.pause.clientClosed()),release:async()=>{await g.pause.authorizeRelease(body=>fixture.controlReceipts(ownerFor(id,'agent_autonomous'),id,body,0));g.release()},done:()=>g.done}},
-   assertNoUnconsumedMisses(){negativeReads.assertEmpty()},
+   assertNoUnconsumedMisses(){negativeReads.assertEmpty();ownerTransition.assertEmpty()},
   }
  }catch(error){try{await close()}catch(cleanup){throw new AggregateError([error,cleanup],'original_run_queued_host_start_and_cleanup_failed')}throw error}
 }
