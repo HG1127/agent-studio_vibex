@@ -11558,6 +11558,111 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_6b7a82f_Skill_query_feedback_and_Quality_inventory_followup": {
+      "base_head": "6b7a82fa71f5500df774e6ea00950ee7ac962488",
+      "source_only": true,
+      "source_reseal_pending": false,
+      "actual_terminal_evidence": {
+        "Role": {
+          "log_sha256": "b5dcdb3e254b6f40b31a02c3289fdea0ce130037ed2b2309c29c6260dd6c1bb9",
+          "prior_Role_catalog_refusal_passed": true,
+          "new_failure": "Skill AB inspect catalog42601 FROM position2666",
+          "business17_not_entered": true
+        },
+        "Quality089": {
+          "both_branches_post_COMMIT_and_release": true,
+          "first_refusal": "audit_09 inventory in postinstall API verify",
+          "rollback_release_passed": true,
+          "factory_or_semantic_check_still_unknown": true,
+          "logs": [
+            "dab6c884ad669743855aa794a1395bcc0b3c8f28d861c2eb7f0bfba5da0c1c23",
+            "fb47b9ce125e78969dac601a03ef82566b7fbe811a5dc92794991307f48d7c56"
+          ]
+        },
+        "Staff084": {
+          "original_http_actual_acl_rows": 9,
+          "expected": 3,
+          "extra": 6,
+          "missing": 0,
+          "observed_extra_category": "owner to other USAGE false count6",
+          "actual_extra_role_identities_unproven": true,
+          "log_sha256": "c7d22d18be629f386d46c014a383cc1aa00828248a77443c2b42eecc8f45db3f",
+          "no_grants_filtered_or_accepted": true
+        }
+      },
+      "repairs": {
+        "Skill_query": "Remove one observed extra closing delimiter; entire strict auditor suffix and all SQL install files unchanged.",
+        "feedback_certainty": "Retain original definitive error after existing privacy lock. First403/404 can settle as denied; prior unknown results retain exact pending request even after confirm403.",
+        "Quality_inventory_observation": "Emit only seven fixed factory codes in existing Quality hosted scope before the original throw; no SQL/error body read and full original AST restorable."
+      },
+      "Root_current_proof": {
+        "feedback": {
+          "sha256": "44e37f9bf72bd1ed785a8b8455dabb9454b6cb115d10a7609744b54d84314dfc",
+          "tests": 138,
+          "pass": 138,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "effect_reports": 5,
+          "all_effects_zero": true
+        },
+        "Role_prechecks": {
+          "sha256": "1e249d4e00be5140a3e6b46e844ea78f8ffb57fdc82ef857fc14ce26047448c9",
+          "tests": 110,
+          "pass": 110,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "effect_reports": 3,
+          "all_effects_zero": true
+        },
+        "Skill_Quality": {
+          "sha256": "9b5840eac6be2178dd0a7e5c075d47d703d4a010e6a0f40b43e5e15125b82e7a",
+          "tests": 417,
+          "pass": 417,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "effect_reports": 6,
+          "all_effects_zero": true
+        },
+        "counts_overlap": true,
+        "actual_frontend_and_API_types_exit": 0,
+        "whole_claim_or_slices_executed_or_imported": false,
+        "local_SQL_Worker_Native_API_browser": false
+      },
+      "canonical_ToolHub_private_only": {
+        "B169_B170_Home_Av2_manifests_verified": 4,
+        "source_targets": 46,
+        "new_paths": 34,
+        "reviewed_forward_inverse_hunks": 43,
+        "closed_cases": 119,
+        "actual_frontend_and_API_types_exit": 0,
+        "actual_main_App_Vite_exit": 0,
+        "Root_product_applied": false,
+        "genuine_SQL_or_browser_acceptance": false,
+        "new_source_DAG_and_CI_integration_pending": true
+      },
+      "all_limits_and_fresh_security_checks_retained": true,
+      "current_head_genuine_acceptance": false,
+      "accepted_UI_complete": false,
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 28321,
+        "retained_prior_pins": 28321,
+        "all_prior_pin_sets_retained": true,
+        "new_source_paths_in_each_workflow_closure": [],
+        "nested_Role": 199,
+        "retained_nested_Role": 199,
+        "new_nested_Role_sources": [],
+        "nested_home071": 9,
+        "nested_Native_child": 9,
+        "nested_Native_shared": 1,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,

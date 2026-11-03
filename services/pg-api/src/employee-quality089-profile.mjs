@@ -1,4 +1,4 @@
-import {hostedQuality089Phase,hostedQuality089Sync} from './hosted-profile-diagnostic.mjs'
+import {hostedQuality089Phase,hostedQuality089Sync,hostedQuality089InventoryRefusal} from './hosted-profile-diagnostic.mjs'
 
 import {employeeQuality089Profile,employeeQuality089Receipt,employeeQuality089Migration,quality089ReceiptBody,quality089Target,assertQuality089CatalogDelta} from './employee-quality089-contract.mjs'
 import {assertEmployeeQuality089Snapshot} from './employee-quality089-source.mjs'
@@ -24,7 +24,7 @@ import {inspectOptionalNativeMonitorInbox} from './native-monitor-inbox-audit.ts
 import {auditModelConfigReceipt075After069} from './model-config-receipt-startup075.ts'
 import {inspectOriginalSchedulesSchema} from './original-schedules-audit.ts'
 import {createHash} from 'node:crypto'
-const fail=code=>{throw Error('employee_quality089_'+code)},sha=s=>createHash('sha256').update(s).digest('hex')
+const fail=code=>{try{hostedQuality089InventoryRefusal(code)}catch{}throw Error('employee_quality089_'+code)},sha=s=>createHash('sha256').update(s).digest('hex')
 async function catalog(db){const r=(await db.query(employeeUi078CatalogSql)).rows;if(r.length!==1||!r[0]?.catalog)fail('catalog_shape');return r[0].catalog}
 async function inventory(db,s,context){
  const names=(await db.query("SELECT n.nspname||'.'||c.relname AS name,c.relkind::text AS kind,c.relrowsecurity AS enabled,c.relforcerowsecurity AS forced FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN('agentstudio','agentstudio_auth') AND c.relkind IN('r','p','v','m','f','S') ORDER BY n.nspname COLLATE \"C\",c.relname COLLATE \"C\"")).rows

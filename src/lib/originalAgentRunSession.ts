@@ -53,7 +53,7 @@ export function createOriginalAgentRunSession(options:{employeeId:string;api:Api
    const raw=answer as {knowledge_outputs_available?:unknown;run?:{knowledge_outputs_available?:unknown};state?:unknown}|null
    if(raw&&(raw.knowledge_outputs_available===false||raw.run?.knowledge_outputs_available===false||raw.state==='unconfirmed')){lockPrivate('运行来源或访问权限已变化，详情、历史、反馈、记忆与复制正文均已隐藏。');throw new PgNativePilotError(503,'original_run_source_revoked')}
    return answer
-  }catch(cause){const status=cause&&typeof cause==='object'&&'status'in cause?Number(cause.status):0;if([401,403,404].includes(status)){lockPrivate('后台拒绝当前来源读取，详情、历史、反馈、记忆与复制正文均已隐藏；原未确认操作保留。',status===401);throw new PgNativePilotError(503,'original_run_source_denied')}throw cause}
+  }catch(cause){const status=cause&&typeof cause==='object'&&'status'in cause?Number(cause.status):0;if([401,403,404].includes(status)){lockPrivate('后台拒绝当前来源读取，详情、历史、反馈、记忆与复制正文均已隐藏；原未确认操作保留。',status===401);throw cause}throw cause}
  }}return Object.freeze(result) as T}
  const api=scoped(options.api),home=scoped(options.home),inbox=scoped(options.inbox),modelSource=scoped(options.models)
  const preparationPorts=options.preparation?scoped(options.preparation):null

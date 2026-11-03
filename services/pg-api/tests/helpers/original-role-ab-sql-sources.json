@@ -605,7 +605,7 @@
     },
     {
       "path": "services/pg-api/src/original-skill-ab-catalog.mjs",
-      "sha256": "b7a25fb454c509bdf29e0d69d81e7d87e57d4d22c11b41c144b97a17918f0e0d"
+      "sha256": "7fc262be57abe9b70e9d6fb2ce2eefb86917dd5e2b394abc63c9655b2309d83a"
     },
     {
       "path": "services/pg-api/src/original-skill-ab-client.ts",

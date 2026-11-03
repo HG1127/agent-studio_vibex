@@ -71,3 +71,10 @@ export function emitHostedStaffNamespaceAclDifference(actualJson,expectedJson,ro
  const selected=scope.getStore();if(!selected||selected.profile!=='staff084')return
  try{if(typeof actualJson==='function'){const observed=actualJson();if(!Array.isArray(observed)||observed.length!==3)return;[actualJson,expectedJson,rolesJson]=observed}const value=staffAclObservedDifference(actualJson,expectedJson,rolesJson);if(!value)return;const line=JSON.stringify(value)+'\n';if(line.length<=staffAclMaxLine)process.stderr.write(line)}catch{}
 }
+
+// Fixed source failure sites only; never inspect or emit an error object.
+const quality089InventoryChecks=new Set(['whole_table_inventory','function_resolution','whole_function_inventory','whole_role_inventory','foreign_shadow','global_inventory','catalog_context'])
+export function hostedQuality089InventoryRefusal(check){
+ const selected=scope.getStore();if(!selected||selected.profile!=='quality089'||!quality089InventoryChecks.has(check))return
+ emit({event:'hosted_quality089_inventory_refusal',profile:'quality089',check})
+}

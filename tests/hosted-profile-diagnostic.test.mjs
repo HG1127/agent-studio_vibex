@@ -122,3 +122,23 @@ test('quality code data does not coerce a hostile value or read inherited access
  for(const error of [{code:hostile},inherited])await assert.rejects(qualityBoundaryRun(()=>hostedQuality089Phase('audit_01',()=>{throw error})),e=>e===error);
  assert.equal(reads,0);const refused=qualityBoundaryRows(lines).filter(r=>r.state==='refused');assert.equal(refused.length,2);assert(refused.every(r=>r.error_kind==='unclassified'));assert(!lines.join('').includes('PRIVATE'));
 })
+
+import {hostedQuality089InventoryRefusal} from '../services/pg-api/src/hosted-profile-diagnostic.mjs'
+test('quality inventory refusal reports only fixed source codes in its existing hosted scope',async t=>{
+ const lines=capture(t),codes=['whole_table_inventory','function_resolution','whole_function_inventory','whole_role_inventory','foreign_shadow','global_inventory','catalog_context'];
+ for(const check of codes){hostedQuality089InventoryRefusal(check);await withHostedProfileDiagnostics('staff084',()=>hostedQuality089InventoryRefusal(check))}assert.deepEqual(lines,[]);
+ await qualityBoundaryRun(()=>{for(const check of codes)hostedQuality089InventoryRefusal(check)});
+ assert.deepEqual(records(lines),codes.map(check=>({event:'hosted_quality089_inventory_refusal',profile:'quality089',check})));
+})
+test('quality inventory refusal never coerces unknown or hostile values',async t=>{
+ const lines=capture(t);let reads=0;const hostile=new Proxy({},{get(){reads++;throw Error('PRIVATE_CODE')}});
+ await qualityBoundaryRun(()=>{for(const check of ['PRIVATE_SQL_OR_ERROR',null,{},hostile,Symbol()])hostedQuality089InventoryRefusal(check)});assert.equal(reads,0);assert.deepEqual(lines,[]);
+})
+test('quality original failure factory preserves the original thrown object even if observation throws',async t=>{
+ capture(t);const match=/const fail=(code=>\{[^\n]*?\}),sha=/.exec(qualityBoundarySource);assert(match);const failure=Object.freeze(Error('PRIVATE_ORIGINAL')),trace=[];
+ for(const observer of [hostedQuality089InventoryRefusal,()=>{throw Error('PRIVATE_OBSERVER')}]){
+  const fail=vmQualityDiagnostic.runInNewContext('('+match[1]+')',{hostedQuality089InventoryRefusal:observer,Error(message){trace.push(message);return failure}});
+  await qualityBoundaryRun(()=>assert.throws(()=>fail('whole_table_inventory'),error=>error===failure));
+ }
+ assert.deepEqual(trace,['employee_quality089_whole_table_inventory','employee_quality089_whole_table_inventory']);
+})
