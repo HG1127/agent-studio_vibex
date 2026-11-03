@@ -11663,6 +11663,68 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_4aa12b1_Reader_paths_and_Skill_constraint_diagnostic_followup": {
+      "base_head": "4aa12b17e3397bcf3e0abc8ad050b326424f19fc",
+      "source_only": true,
+      "source_reseal_pending": false,
+      "Reader": {
+        "manifest_sha256": "344c1e90371d03b1edbff4572ff870c0daa4a59602a9e442c39488fc7b652a8c",
+        "exact_reversible_substitutions": 11,
+        "constructor_derived_expected_paths_only": true,
+        "actual_stat_FD_hash_bytes_source_identity_permission_receipt_or_results_not_cached": true,
+        "all_fresh_calls_and_error_order_retained": true,
+        "Root_closed_cases": 239,
+        "pass": 239,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "effect_reports": 3,
+        "all_effects_zero": true,
+        "business_runtime_module_imports": 0,
+        "synthetic_CPU_saving_not_real_wallclock_or_lease_evidence": true,
+        "real_strict_CI_pending": true
+      },
+      "Skill": {
+        "actual_log_sha256": "33410555d0df3af9dddcb6970bbfafa3195ff0a85b893192f55d72757a7674d2",
+        "actual_query_syntax_passed": true,
+        "actual_failure": "CHECK expression comparison in original-skill-ab-catalog52:356",
+        "actual_constraint_index_and_expression_unknown": true,
+        "diagnostic_only": "Only after original failure bind exact source index and SHA256 of original returned token strings. No values, normalization or cast guesses. Original expr/bad once, exact original Error rethrown.",
+        "entire_original_auditor_byte_restorable": true,
+        "original_Role_diagnostic_helper_prefix_unchanged": true,
+        "new_closed_cases": 10,
+        "workflow_prechecks": 120
+      },
+      "Root_actual_API_compiler_exit": 0,
+      "frozen059060_source_proof_pass": true,
+      "frontend_product_unchanged": true,
+      "whole_claim_or_slices_executed_or_imported": false,
+      "old53_SQL_077_API_package_lock_unchanged": true,
+      "Quality_evidence": {
+        "postinstall_audit09_still_refused": true,
+        "no_inventory_factory_event": true,
+        "lower_audit_masks_SQL_or_catalog_cause": true,
+        "query_lexical_balance_only_not_engine_validation": true
+      },
+      "new_head_genuine_acceptance": false,
+      "accepted_UI_carry_complete": false,
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 28321,
+        "retained_prior_pins": 28321,
+        "all_prior_pin_sets_retained": true,
+        "new_source_paths_in_each_workflow_closure": [],
+        "nested_Role": 199,
+        "retained_nested_Role": 199,
+        "new_nested_Role_sources": [],
+        "nested_home071": 9,
+        "nested_Native_child": 9,
+        "nested_Native_shared": 1,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,

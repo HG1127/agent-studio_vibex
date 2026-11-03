@@ -180,9 +180,9 @@ export function assertWorkerHeartbeatActivationControlRuntimeInventory(expected,
   const left=list(expected),right=list(actual)
   if(left.length!==right.length||left.some((p,i)=>p!==right[i]))fail()
 }
-function ancestors(file,privateParent=false){
-  let current=path.dirname(file),first=true;const chain=[]
-  for(;;){const st=lstatSync(current);trustedMetadata(meta(st),first&&privateParent?'private-directory':'ancestor');chain.push({path:current,dev:st.dev,ino:st.ino,mode:st.mode,uid:st.uid,gid:st.gid});const parent=path.dirname(current);if(parent===current)break;current=parent;first=false}
+function ancestors(file,privateParent=false,expectedParents){
+  let current=expectedParents?.[0]??path.dirname(file),first=true,index=0;const chain=[]
+  for(;;){const st=lstatSync(current);trustedMetadata(meta(st),first&&privateParent?'private-directory':'ancestor');chain.push({path:current,dev:st.dev,ino:st.ino,mode:st.mode,uid:st.uid,gid:st.gid});const parent=expectedParents?(expectedParents[++index]??current):path.dirname(current);if(parent===current)break;current=parent;first=false}
   if(privateParent)for(const d of chain)for(const name of ['package.json','pnpm-workspace.yaml','.git','pyproject.toml']){try{if(lstatSync(path.join(d.path,name),{throwIfNoEntry:false})!==undefined)fail()}catch(error){if(error?.code!=='ENOENT')throw error}}
   return chain
 }
@@ -200,8 +200,8 @@ function readExactBoundBytes(fd,size){
   if(offset!==size)fail()
   return allocation.subarray(0,offset)
 }
-function readBound(file,expected,kind,expectedBytes){
-  const chain=ancestors(file,kind==='manifest'),before=lstatSync(file)
+function readBound(file,expected,kind,expectedBytes,expectedParents){
+  const chain=ancestors(file,kind==='manifest',expectedParents),before=lstatSync(file)
   trustedMetadata(meta(before),kind)
   if(realpathSync(file)!==file||expectedBytes!==undefined&&before.size!==expectedBytes)fail()
   const fd=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK)
@@ -212,7 +212,7 @@ function readBound(file,expected,kind,expectedBytes){
     const bytes=readExactBoundBytes(fd,before.size)
     if(bytes.length!==before.size||sha(bytes)!==expected)fail()
     trustedStatStable(beforeStamp,fstatSync(fd));trustedStatStable(beforeStamp,lstatSync(file))
-    sameChain(chain,ancestors(file,kind==='manifest'));assertUtf8Bytes(bytes,kind==='manifest'?2*1024*1024:16*1024*1024)
+    sameChain(chain,ancestors(file,kind==='manifest',expectedParents));assertUtf8Bytes(bytes,kind==='manifest'?2*1024*1024:16*1024*1024)
     return {bytes,stamp:beforeStamp,chain}
   }finally{closeSync(fd)}
 }
@@ -329,7 +329,14 @@ function runtimeTreeLayout(state,initial){
   for(const [p,h] of Object.entries(parserPins))allowed.set(prefix+'typescript/'+p,{sha256:h,bytes:undefined})
   const dirs=new Set([prefix.slice(0,-1)])
   for(const p of allowed.keys()){const pieces=p.split('/');for(let i=3;i<pieces.length;i++)dirs.add(pieces.slice(0,i).join('/'))}
-  const layout=Object.freeze({rootPackages,allowed,dirs});treeLayouts.set(state,layout);return layout
+  // Expected strings only; no filesystem observation or check result.
+  const paths=new Map([...dirs,...allowed.keys()].map(relative=>[relative,path.join(root,relative)])),parents=new Map()
+  for(const relative of allowed.keys()){
+    let current=path.dirname(paths.get(relative));const chain=[]
+    for(;;){chain.push(current);const parent=path.dirname(current);if(parent===current)break;current=parent}
+    parents.set(relative,Object.freeze(chain))
+  }
+  const layout=Object.freeze({rootPackages,allowed,dirs,paths,parents});treeLayouts.set(state,layout);return layout
 }
 /* READER_RUNTIME_TIMING_BEGIN */
 // Passive Reader timings. Tokens contain no identity, state or verdict and
@@ -362,21 +369,21 @@ function verifyTree(state,initial=false,timing){
   // Keep every original readBound/hash/stat/chain observation; only the
   // earlier duplicate root-type JSON decode is omitted. No cross-assert cache.
   /* READER_RUNTIME_TIMING_BEGIN */markRuntimeTiming(frame,"tree");/* READER_RUNTIME_TIMING_END */
-  const {rootPackages,allowed,dirs}=runtimeTreeLayout(state,initial)
+  const {rootPackages,allowed,dirs,paths,parents}=runtimeTreeLayout(state,initial)
   const seen=new Set();let count=0
   const walk=relative=>{
-    const directory=lstatSync(path.join(root,relative)),directoryStamp=stamp(directory)
+    const directoryPath=paths.get(relative)??path.join(root,relative),directory=lstatSync(directoryPath),directoryStamp=stamp(directory)
     trustedMetadata(meta(directory),'directory')
     const oldDirectory=state.directoryStamps.get(relative)
     if(oldDirectory)trustedStable(oldDirectory,directoryStamp)
     else if(initial)state.directoryStamps.set(relative,directoryStamp);else fail()
-    for(const name of readdirSync(path.join(root,relative))){
-      const next=relative+'/'+name,actual=path.join(root,next),st=lstatSync(actual)
+    for(const name of readdirSync(directoryPath)){
+      const next=relative+'/'+name,actual=paths.get(next)??path.join(root,next),st=lstatSync(actual)
       if(++count>4096||st.isSymbolicLink())fail()
       if(st.isDirectory()){if(!dirs.has(next))fail();walk(next)}
       else{
         const record=allowed.get(next);if(!record||seen.has(next))fail()
-        const bound=readBound(actual,record.sha256,'code',record.bytes),old=state.stamps.get(next)
+        const bound=readBound(actual,record.sha256,'code',record.bytes,parents.get(next)),old=state.stamps.get(next)
         if(next.endsWith('/package.json')&&!next.startsWith(prefix+'typescript/')&&!rootPackages.has(next)){
           const p=json(bound.bytes)
           if(p.type!==undefined&&p.type!=='commonjs'&&(p.type!=='module'||!next.includes('/esm/')))fail()
@@ -388,7 +395,7 @@ function verifyTree(state,initial=false,timing){
         seen.add(next)
       }
     }
-    trustedStatStable(directoryStamp,lstatSync(path.join(root,relative)))
+    trustedStatStable(directoryStamp,lstatSync(directoryPath))
   }
   walk(prefix.slice(0,-1));assertWorkerHeartbeatActivationControlRuntimeInventory([...allowed.keys()],[...seen])
   /* READER_RUNTIME_TIMING_BEGIN */markRuntimeTiming(frame,"packages");/* READER_RUNTIME_TIMING_END */

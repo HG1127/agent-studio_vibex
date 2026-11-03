@@ -49,3 +49,12 @@ export function originalRoleConstraintExpressionDiagnostic(expectedIndex,actualA
 export function emitOriginalRoleConstraintDifference(expectedIndex,actualAst,expectedAst){
  try{const value=originalRoleConstraintExpressionDiagnostic(expectedIndex,actualAst,expectedAst);if(!value)return;const line='original_role_constraint_expression_diagnostic '+JSON.stringify(value)+'\n';if(line.length<=768)process.stderr.write(line)}catch{}
 }
+
+// Skill A/B uses its original token-string comparison. Only bind those exact
+// returned strings; never reinterpret tokens, normalize casts or expose values.
+export function emitOriginalSkillAbConstraintDifference(expectedIndex,actual,expected){
+ try{
+  if(!Number.isSafeInteger(expectedIndex)||expectedIndex<0||expectedIndex>=512||typeof actual!=='string'||typeof expected!=='string'||actual===expected||actual.length>32768||expected.length>32768||Buffer.byteLength(actual,'utf8')>32768||Buffer.byteLength(expected,'utf8')>32768)return
+  const value={event:'original_skill_ab_constraint_difference',expected_constraint_index:expectedIndex,actual_expression_sha256:createHash('sha256').update(actual).digest('hex'),expected_expression_sha256:createHash('sha256').update(expected).digest('hex')},line=JSON.stringify(value)+'\n';if(line.length<=384)process.stderr.write(line)
+ }catch{}
+}
