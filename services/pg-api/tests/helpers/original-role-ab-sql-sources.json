@@ -549,7 +549,7 @@
     },
     {
       "path": "services/pg-api/src/original-role-catalog.mjs",
-      "sha256": "794f568bd2ac042666b0f4db67f54e4d3d1b9417595d5fbf08fa124cbdc6ba89"
+      "sha256": "c52be4b2b8b1da3a809426573fc2531eb703264d57fe5f86b190b03caeed593e"
     },
     {
       "path": "services/pg-api/src/original-role-evidence.ts",
@@ -798,6 +798,10 @@
     {
       "path": "shared/skill-ab-compare.ts",
       "sha256": "ce726613cffbf29c76e8c780658b0d2357350f43d18490fe48e1008d18a9d950"
+    },
+    {
+      "path": "services/pg-api/src/original-role-constraint-diagnostic.mjs",
+      "sha256": "d1ed0f8a018317abe62b9828765313c11d3fdecdf81162ee8906fb614cebc1ae"
     }
   ]
 }

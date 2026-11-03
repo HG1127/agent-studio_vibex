@@ -11324,6 +11324,181 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_0290405_Role_constraint_diagnostic_followup": {
+      "base_head": "02904056ec31bc23665f977d931d576ecaf9e5fd",
+      "source_only": true,
+      "source_reseal_pending": false,
+      "base_hosted_evidence": {
+        "workflows": 22,
+        "success": 17,
+        "failure": 5,
+        "all_terminal": true,
+        "full_quality_workflows_success": true,
+        "PB19_and_telemetry_workflow_success": true,
+        "F01": {
+          "jobs": 21,
+          "success": 20,
+          "failure": 1,
+          "original_RunDetail_pass": true,
+          "original_Agent_real_unknown_cancel_readonly_recovery_passed": true,
+          "new_failure": "after feedback selector403 and restored capability, prepareNewTask editor not visible; final zero reported three pocketbase_unavailable_in_pg_runtime events",
+          "original_agent_page_latest_UI_acceptance": false,
+          "log": {
+            "sha256": "057fa60e2fc243030f12719a6ea2d965aa5d506ec17bfee504040ec6a89d8c5e",
+            "source": "completed synthetic hosted CI log"
+          }
+        },
+        "quality089": {
+          "jobs": 2,
+          "failures": 2,
+          "source_capture_069_services_078_install_passed": true,
+          "refused_stage": "composite_install",
+          "HTTP_stage_ms_approx": 185000,
+          "browser_stage_ms_approx": 255000,
+          "no_Staff_catalog_check_ID_emitted": true,
+          "inner_failure_or_wait_cause_unproven": true,
+          "logs": [
+            {
+              "sha256": "4fb468da2f705b9e78da1eb3e9cb3a166a4f4f6502abc48df38d3eb839a727ab",
+              "source": "completed synthetic hosted CI log"
+            },
+            {
+              "sha256": "9625e4d121aaabb70a9993578e921745cddbee62ed489f49062a5b731132cfb5",
+              "source": "completed synthetic hosted CI log"
+            }
+          ]
+        },
+        "Staff084": {
+          "all4failed": true,
+          "original_http": {
+            "auditor": "staff084_original",
+            "check_id": 23,
+            "predicate": "schema ACL exact equality to authored owner USAGE/CREATE and native_auth USAGE rows",
+            "actual_ACL_rows_not_observed": true,
+            "no_ACL_filtered_or_accepted_by_diagnostic": true,
+            "log": {
+              "sha256": "9cae2e2a31499e88c7048dd03d397c85bea6a8579fa2d462a551761744cbb1d8",
+              "source": "completed synthetic hosted CI log"
+            }
+          },
+          "quality_combination_HTTP_no_number_emitted": true
+        },
+        "strict069": {
+          "both_jobs_failed": true,
+          "Legacy": {
+            "primary_reason": "full069_worker_live_native_heartbeat_unavailable",
+            "several_actual_readers_consumed_within_original5s": true,
+            "latest_consumed_reader_ms": [
+              4695,
+              4650,
+              4658,
+              4837,
+              4912,
+              4854
+            ],
+            "qualified": false,
+            "log": {
+              "sha256": "d148c863970d6d507a069142ea090b9996c1cbe7c4e1dda17c515d686a1cbec7",
+              "source": "completed synthetic hosted CI log"
+            }
+          },
+          "Final14": {
+            "primary_reason": "full069_worker_live_native_io",
+            "Native_ms": 8791,
+            "runtime_branch_fulfilled_ms": 27471,
+            "reader_ms": 5042,
+            "reader_remaining_ms": -41,
+            "guard_calls": 121,
+            "guard_ms": 4695,
+            "runtime_source_ms": 284,
+            "runtime_manifest_ms": 49,
+            "runtime_tree_ms": 3756,
+            "runtime_packages_ms": 285,
+            "runtime_cache_ms": 313,
+            "actual_registry_failure": {
+              "site": "target_query",
+              "cause": "lease_expired"
+            },
+            "stable_guard_calls": 30,
+            "stable_guard_ms": 16030,
+            "node_executable_ms": 5726,
+            "final_sources_ms": 7301,
+            "qualified": false,
+            "log": {
+              "sha256": "c7e84060ae363cba98d788ecea0fd99b18b384344cb3008fe1e76e541e7a01ea",
+              "source": "completed synthetic hosted CI log"
+            }
+          }
+        }
+      },
+      "repairs": {
+        "Role_failure_diagnostic": "Keep original same and two expr calls once in original order. Only after original failure, inspect the original returned AST strings and emit fixed expected constraint index, bounded difference path, node kinds and SHA256. Never emit expression/SQL/node values/error/stack; preserve exact thrown object. No expression normalization or guessed cast fix.",
+        "source_gate": "Retain all198 prior Role source paths/order and add the actual diagnostic module as199th; update one reviewed catalog pin and the workflow manifest SHA. Every dependency is sealed.",
+        "original_limits_unchanged": "5/8/30s deadlines,15s sample,45s heartbeat, all8 Worker kinds, all14LOGIN serial pool1; all fresh source/OID/ACL/owner/order/cleanup checks retained."
+      },
+      "Root_current_proof": {
+        "Role_component_cases": 76,
+        "original49_test_prefix_exactly_preserved": true,
+        "new27_cases": 27,
+        "workflow_prechecks": 98,
+        "component_counts_overlap": true,
+        "original_same_calls": 15,
+        "original_expr_calls": 9,
+        "AST_original_same_expr_equal": true,
+        "extra_SQL_expression_parses": 0,
+        "API_compiler_exit": 0,
+        "frozen059060_recheck_pass": true,
+        "frontend_product_unchanged": true,
+        "actual_SQL_Worker_API_Native_browser_paid_provider": false,
+        "whole_claim_or_slices_executed_or_imported": false
+      },
+      "accepted_UI_source_carry_audit": {
+        "accepted_commit": "c6237d68a8b3ee2a9b4e54e79d2bcd530f863193",
+        "accepted_is_Git_ancestor": false,
+        "accepted_source_files": 341,
+        "current_source_files_at0290405": 530,
+        "byte_identical": 167,
+        "changed": 125,
+        "absent_paths": 49,
+        "accepted_App_ToolHub_graph_nodes": 320,
+        "absent_in_that_graph": 49,
+        "counts_are_not_missing_features_or_migration_percentage": true,
+        "changes_include_legitimate_PG_adaptations": true,
+        "missing_dependencies_may_have_replacements": true,
+        "read_only_audit_sha256": "8e55ef1adffdc26868eac73ba23da4a5cfdae1db6069bbb2bdbab5329b47c1d5",
+        "canonical_ToolHub_minimal_B169_files": 5,
+        "canonical_carry_not_yet_integrated": true,
+        "old_Root_shell_private_A_ToolHub_not_delivery_acceptance": true,
+        "A_porting_to_accepted_shell_B_closing_dependencies": true
+      },
+      "remaining": {
+        "backend": "Real Role constraint index/AST difference and its actual fix; exact Staff schema ACL evidence; Quality inner install boundaries; Worker deadline performance; ordinary-case/revision carry integration.",
+        "original_pages": "Accepted unified desktop/source carry, PG ToolHub and directory, actual feedback recovery/legacy comparison boundary, other file/permissions/application/Office and missing action maps.",
+        "genuine_E2E": "Existing current-Root page cases do not certify latest accepted UI; full same-page action verification remains.",
+        "formal_cutover": "Accepted release inclusion, target/network/version, backup/restore/rollback, long-running Worker and real employee UAT/signoff remain open."
+      },
+      "current_candidate_genuine_acceptance": false,
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 28321,
+        "retained_prior_pins": 28296,
+        "all_prior_pin_sets_retained": true,
+        "new_source_paths_in_each_workflow_closure": [
+          "services/pg-api/src/original-role-constraint-diagnostic.mjs"
+        ],
+        "nested_Role": 199,
+        "retained_nested_Role": 198,
+        "new_nested_Role_sources": [
+          "services/pg-api/src/original-role-constraint-diagnostic.mjs"
+        ],
+        "nested_home071": 9,
+        "nested_Native_child": 9,
+        "nested_Native_shared": 1,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,
