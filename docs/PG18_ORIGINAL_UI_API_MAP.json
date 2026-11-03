@@ -10437,6 +10437,106 @@
         "source_only": true,
         "current_genuine_acceptance": false
       }
+    },
+    "current_f6c9dd8_owner_denial_barrier_followup": {
+      "base_head": "f6c9dd86232f5a5ec1396c00f0548351e573754a",
+      "source_reseal_pending": false,
+      "source_changes": [
+        "Wait for the old original page actual foreign404 heading after the real Cookie switch, before closing its exact transition observation and before arming the separate original explicit foreign read. Hidden private text and settled current proxy flights do not prove the later browser GET has completed.",
+        "Require exactly one original transition GET404 whose same Cookie maps to Bob and whose source still belongs to Alice, plus the unchanged five explicit negative reads and final strict unexpected/zero/owner/cleanup assertions. No broader failure allowance, fake response, extra business write or product UI change."
+      ],
+      "Root_directed_proof": {
+        "tests": 50,
+        "pass": 50,
+        "fail": 0,
+        "skip": 0,
+        "terminal_browser_continuation_race_reproduced": true,
+        "local_SQL_Worker_Native_browser_or_provider_calls": 0,
+        "current_candidate_genuine_acceptance": false
+      },
+      "base_hosted_proof": {
+        "workflows": 19,
+        "success": 17,
+        "failure": 2,
+        "quality_each": {
+          "jobs": 51,
+          "pass": 51,
+          "actual_unit_TypeScript_build_step_success": true
+        },
+        "F01": {
+          "jobs": 21,
+          "pass": 20,
+          "fail": 1,
+          "all_RunDetail_stage_booleans_true": true,
+          "explicit_negative_reads": 5,
+          "optional_transition_denials": 0,
+          "extra_actual_Alice_autonomous_GET404": true,
+          "final_strict_zeros_failed": true
+        },
+        "strict069": {
+          "Legacy": {
+            "actual_job": 125663923346,
+            "job_conclusion": "success",
+            "log_sha256": "7ebfa03d795eca393abcced9c22988300b27c12573421d98503b31ee44a0fa8d",
+            "long_term_or_employee_acceptance": false
+          },
+          "Final14": {
+            "actual_job": 125663923082,
+            "job_conclusion": "failure",
+            "primary_code": "full069_worker_live_native_io",
+            "phase": "warm_sample",
+            "reader_phase": "controller_reader_audit",
+            "Native_elapsed_ms": 8684,
+            "heartbeat_request_elapsed_ms": 5658,
+            "Native_remaining_ms": -173,
+            "own_deadline_destroy_seen": true,
+            "runtime_branch_fulfilled_ms": 31766,
+            "guard_calls": 30,
+            "guard_ms": 18953,
+            "node_executable_ms": 6402,
+            "final_sources_ms": 9025,
+            "original_Native_ms": 8000,
+            "original_sample_budget_ms": 15000,
+            "log_sha256": "9acd2319562d37c081b75fc370841ef6a628b8ee019f60f3566c8cfb46804d93",
+            "qualified": false
+          }
+        },
+        "telemetry_PB19_same_run_and_scheduled_Worker_pass": true
+      },
+      "private_candidates": {
+        "A_C_combined": {
+          "Root_A_v4ab_targets": 11,
+          "Root_A_v4ab_hunks": 9,
+          "Root_C_v2c_targets": 2,
+          "Root_C_v2c_hunks": 5,
+          "Root_role_revision_and_preview_pure": 218,
+          "Root_current_C_context_pure": 12,
+          "prior_C_entry_and_SDK_pure": 97,
+          "Root_API_compiler_pass": true,
+          "C_v2c_API_sources_unchanged": true,
+          "Root_actual_frontend_errors": 49,
+          "device_errors": 36,
+          "RunPage_remaining_fields": 13,
+          "rejected_C_v2b_not_applied": true,
+          "Skill_AB_execution_available": false,
+          "product_integrated": false,
+          "actual_SQL_Worker_browser_acceptance": false
+        },
+        "B_desktop": {
+          "Root_prior_pure": 124,
+          "Native_picker_and_owner_IPC_in_progress": true,
+          "actual_Electron_and_employee_acceptance": false,
+          "product_integrated": false
+        }
+      },
+      "production_GO": false,
+      "source_seals": {
+        "maps": 25,
+        "pins": 20469,
+        "retained_prior_pins": 20469,
+        "source_only": true,
+        "current_genuine_acceptance": false
+      }
     }
   },
   "qualifying24h_hours": 0,
