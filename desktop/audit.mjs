@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
 import {fileURLToPath} from 'node:url'
 import {createRequire} from 'node:module'
-import {APPLICATION_WINDOW_EXECUTABLE_CODE,APPLICATION_OBSERVER_EXECUTABLE_CODE} from '../local-executor/application-native.mjs'
+import {APPLICATION_WINDOW_EXECUTABLE_CODE,APPLICATION_OBSERVER_EXECUTABLE_CODE,APPLICATION_ACTION_EXECUTABLE_CODE} from '../local-executor/application-native.mjs'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..')
 const packaged=path.resolve(process.argv[2]||path.join(root,'.tmp/desktop-output/win-unpacked'))
 const hash=async file=>createHash('sha256').update(await fs.readFile(file)).digest('hex')
@@ -36,6 +36,8 @@ assert.equal(probe.policySha256,createHash('sha256').update(APPLICATION_WINDOW_E
 assert.equal(probe.sha256,await hash(path.join(probeDirectory,'application-window-probe.exe')),'compiled window probe mismatch')
 const observer=JSON.parse(await fs.readFile(path.join(probeDirectory,'application-observer.json'),'utf8'))
 assert.equal(observer.format,'agent-studio-observer-v1');assert.equal(observer.policySha256,createHash('sha256').update(APPLICATION_OBSERVER_EXECUTABLE_CODE).digest('hex'));assert.equal(observer.sha256,await hash(path.join(probeDirectory,'application-observer.exe')))
+const action=JSON.parse(await fs.readFile(path.join(probeDirectory,'application-action.json'),'utf8'))
+assert.equal(action.format,'agent-studio-application-action-v1');assert.equal(action.policySha256,createHash('sha256').update(APPLICATION_ACTION_EXECUTABLE_CODE).digest('hex'),'application action policy source is stale');assert.equal(action.sha256,await hash(path.join(probeDirectory,'application-action.exe')),'compiled application action mismatch')
 const guard=JSON.parse(await fs.readFile(path.join(resources,'update-guard/update-guard.json'),'utf8'))
 assert.equal(guard.format,'agent-studio-update-guard-v1');assert.equal(guard.sourceSha256,await hash(path.join(root,'desktop/update-guard.cs')));assert.equal(guard.sha256,await hash(path.join(resources,'update-guard/update-guard.exe')))
 const meta=JSON.parse(await fs.readFile(path.join(root,'desktop/build-info.json'),'utf8'))

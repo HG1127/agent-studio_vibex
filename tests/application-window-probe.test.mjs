@@ -5,7 +5,7 @@ import path from 'node:path'
 import os from 'node:os'
 import {execFile} from 'node:child_process'
 import {promisify} from 'node:util'
-import {applicationNative,APPLICATION_NATIVE_CODE} from '../local-executor/application-native.mjs'
+import {applicationNative,APPLICATION_NATIVE_CODE,APPLICATION_ACTION_EXECUTABLE_CODE} from '../local-executor/application-native.mjs'
 import {buildApplicationWindowProbe} from '../ops/build-application-window-probe.mjs'
 
 test('explicit approved foreground observer uses only pinned compiled helper and offers focused editor keyboard action',async()=>{
@@ -37,6 +37,14 @@ test('approved native application actions receive a bounded 60-second UIA budget
  await applicationNative(input,{platform:'win32',execute:(exe,args,options,done)=>{seen={timeout:options.timeout,shell:options.shell,windowsHide:options.windowsHide};done(null,'{\"ok\":true,\"value\":{\"accepted\":true}}')}});
  assert.deepEqual(seen,{timeout:60000,shell:false,windowsHide:true});
 })
+test('approved application actions use a pinned compiled helper and data-only input',async()=>{
+ const actionExecutable='C:\\\\packaged\\\\native\\\\application-action.exe'
+ const input={action:'act',path:'C:\\\\Apps\\\\safe.exe',window:'123',title:'Safe',kind:'type',element:1,name:'Editor',runtime:'1.2.3',text:'acceptance',key:''}
+ let seen
+ const result=await applicationNative(input,{platform:'win32',actionExecutable,execute:(exe,args,options,done)=>{seen={exe,args,timeout:options.timeout,shell:options.shell,windowsHide:options.windowsHide,code:options.env.STUDIO_APPLICATION_CODE,input:JSON.parse(Buffer.from(options.env.STUDIO_APPLICATION_INPUT,'base64').toString())};done(null,'{\"ok\":true,\"value\":{\"accepted\":true}}')}})
+ assert.deepEqual(result,{accepted:true});assert.equal(seen.exe,actionExecutable);assert.deepEqual(seen.args,[]);assert.equal(seen.timeout,60000);assert.equal(seen.shell,false);assert.equal(seen.windowsHide,true);assert.equal(seen.code,undefined);assert.deepEqual(seen.input,input)
+ assert.ok(APPLICATION_ACTION_EXECUTABLE_CODE.includes('StudioApplications.Act(window,expected,title,kind,element,name,runtime,text,key)'))
+})
 test('compiled window queries use a fixed executable with data-only input; actions retain their protected controller',async()=>{
  const probe='C:\\packaged\\native\\application-window-probe.exe',input={action:'windows',path:'C:\\Apps\\Literal $(not a command).exe',reveal:true}
  const result=await applicationNative(input,{platform:'win32',windowProbe:probe,execute:(exe,args,options,done)=>{
@@ -59,6 +67,10 @@ test('real compiled probe rejects non-window requests and unsafe paths without a
  const observer=path.join(directory,'native/application-observer.exe')
  await assert.rejects(applicationNative({action:'observe',path:'C:\\Apps\\safe.exe',window:'123',images:'true'},{observer}),/application_action_denied/)
  await assert.rejects(promisify(execFile)(observer,[],{windowsHide:true,env:{...process.env,STUDIO_APPLICATION_INPUT:Buffer.from(JSON.stringify({action:'act',path:'C:\\Apps\\safe.exe',window:'123'})).toString('base64')}}),error=>JSON.parse(error.stdout).error==='application_action_denied')
+ const actionExecutable=path.join(directory,'native/application-action.exe')
+ const actionMetadata=JSON.parse(await fs.readFile(path.join(directory,'native/application-action.json'),'utf8'));assert.equal(actionMetadata.format,'agent-studio-application-action-v1');assert.equal(actionMetadata.policySha256.length,64);assert.equal(actionMetadata.sha256.length,64)
+ await assert.rejects(promisify(execFile)(actionExecutable,[],{windowsHide:true,env:{...process.env,STUDIO_APPLICATION_INPUT:Buffer.from(JSON.stringify({action:'observe',path:'C:\\\\Apps\\\\safe.exe',window:'123'})).toString('base64')}}),error=>JSON.parse(error.stdout).error==='application_action_denied')
+ await assert.rejects(applicationNative({action:'act',path:'\\\\server\\share\\app.exe',window:'123',title:'Safe',kind:'type',element:1,name:'Editor',runtime:'1.2.3',text:'acceptance',key:''},{actionExecutable}),/application_path_denied/)
  const boundsSource=path.join(directory,'bounds.cs'),boundsBinary=path.join(directory,'bounds.exe'),framework=path.join(process.env.SystemRoot,'Microsoft.NET/Framework64/v4.0.30319')
  await fs.writeFile(boundsSource,'using System;class BoundsTest{static void Main(){var json=new System.Web.Script.Serialization.JavaScriptSerializer();Console.Write(json.Serialize(new {empty=StudioApplications.SafeControlBounds(Double.PositiveInfinity,Double.PositiveInfinity,Double.NegativeInfinity,Double.NegativeInfinity),nan=StudioApplications.SafeControlBounds(0,Double.NaN,10,10),normal=StudioApplications.SafeControlBounds(10,20,30,40)}));}}')
  await promisify(execFile)(path.join(framework,'csc.exe'),['/nologo','/target:exe','/platform:x64','/main:BoundsTest','/reference:System.Drawing.dll','/reference:System.Web.Extensions.dll',...['UIAutomationClient.dll','UIAutomationTypes.dll','WindowsBase.dll'].map(name=>'/reference:'+path.join(framework,'WPF',name)),'/out:'+boundsBinary,path.join(directory,'native/application-observer.cs'),boundsSource],{windowsHide:true})

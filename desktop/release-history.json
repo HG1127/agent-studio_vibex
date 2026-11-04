@@ -3,8 +3,7 @@
     "version": "0.1.0-preview.24",
     "publishedAt": "2026-11-04",
     "title": "WorkBuddy 授权后焦点恢复与原生输入超时修复（隔离验收候选）",
-    "notes": "[修复候选，尚未正式发布]\n- 修复本机授权弹窗关闭后 WorkBuddy 编辑框焦点恢复与 Electron HasKeyboardFocus 识别。\n- 已审批的原生应用输入操作超时由 20 秒调整为 60 秒，避免首次 UIA 编译与 Electron 控件扫描被过早终止。\n- 继续要求窗口身份、前台窗口、编辑框焦点和用户接管检查；每次输入与发送仍独立审批。\n- 不自动重试结果不确定的输入或发送。\n- 保留 preview23 的更新签名、回滚和桌面连接器能力；WorkBuddy 真实调研消息发送仍待端到端验收。"
-  },
+    "notes": "[修复候选，尚未正式发布]\n- 修复本机授权弹窗关闭后 WorkBuddy 编辑框焦点恢复与 Electron HasKeyboardFocus 识别。\n- 应用点击、输入、按键改用预编译、固定路径、仅接受结构化 JSON 数据的原生 action helper，避免每次动作动态编译 PowerShell/C#；构建审计校验 helper 源码策略摘要与二进制 SHA-256。\n- 已审批的原生 UIA 操作保留 60 秒有界预算；不降低窗口身份、前台窗口、目标控件焦点和用户接管校验。\n- 每次输入与发送仍独立审批；不自动重试结果不确定的输入或发送。\n- 保留 preview23 的更新签名、回滚和桌面连接器能力；WorkBuddy 真实调研消息发送仍待端到端验收。"  },
   {
     "version": "0.1.0-preview.23",
     "publishedAt": "2026-11-04",

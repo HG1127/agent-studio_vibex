@@ -273,8 +273,45 @@ public static class StudioObserver {
   }catch(Exception error){string code=System.Text.RegularExpressions.Regex.IsMatch(error.Message,@"^application_[a-z_]+$")?error.Message:"application_native_unavailable";Console.Write(json.Serialize(new {ok=false,error=code}));return 1;}
  }
 }`
+export const APPLICATION_ACTION_EXECUTABLE_CODE=APPLICATION_NATIVE_CODE+String.raw`
+public static class StudioApplicationAction {
+ static string ReadString(Dictionary<string,object> input,string key,int maximum){
+  object value;if(!input.TryGetValue(key,out value)||!(value is string))throw new Exception("application_action_denied");
+  string text=(string)value;if(text.Length>maximum)throw new Exception("application_action_denied");return text;
+ }
+ [STAThread]public static int Main(){
+  Console.OutputEncoding=new System.Text.UTF8Encoding(false);
+  var json=new System.Web.Script.Serialization.JavaScriptSerializer();json.MaxJsonLength=131072;
+  try{
+   string encoded=Environment.GetEnvironmentVariable("STUDIO_APPLICATION_INPUT");
+   if(encoded==null||encoded.Length>65536)throw new Exception("application_action_denied");
+   var input=json.Deserialize<Dictionary<string,object>>(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(encoded)));
+   string[] allowed={"action","path","window","title","kind","element","name","runtime","text","key"};
+   foreach(string fieldName in input.Keys)if(Array.IndexOf(allowed,fieldName)<0)throw new Exception("application_action_denied");
+   if(input.Count!=allowed.Length||!Object.Equals(input["action"],"act"))throw new Exception("application_action_denied");
+   string expected=ReadString(input,"path",2000),window=ReadString(input,"window",19),title=ReadString(input,"title",300);
+   string kind=ReadString(input,"kind",10),name=ReadString(input,"name",1000),runtime=ReadString(input,"runtime",512);
+   string text=ReadString(input,"text",4000),key=ReadString(input,"key",16);
+   if(!System.Text.RegularExpressions.Regex.IsMatch(expected,@"^[a-zA-Z]:\\")||System.Text.RegularExpressions.Regex.IsMatch(expected,@"[\x00-\x1f\x7f]"))throw new Exception("application_path_denied");
+   long handle;if(!System.Text.RegularExpressions.Regex.IsMatch(window,@"^\d{1,19}$")||!Int64.TryParse(window,out handle)||handle<=0)throw new Exception("application_window_changed");
+   if(!(input["element"] is int))throw new Exception("application_action_denied");
+   int element=(int)input["element"];if(element<0||element>=500)throw new Exception("application_element_changed");
+   if(kind!="click"&&kind!="type"&&kind!="key")throw new Exception("application_action_denied");
+   if(kind!="type"&&text.Length!=0)throw new Exception("application_action_denied");
+   if(kind!="key"&&key.Length!=0)throw new Exception("application_action_denied");
+   if(kind=="key"&&Array.IndexOf(new string[]{"Enter","Tab","Escape","Backspace","Delete","Up","Down","Left","Right","Home","End","PageUp","PageDown"},key)<0)throw new Exception("application_key_denied");
+   if(System.Text.RegularExpressions.Regex.IsMatch(text,@"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]"))throw new Exception("application_control_character_denied");
+   StudioApplications.Act(window,expected,title,kind,element,name,runtime,text,key);
+   Console.Write(json.Serialize(new {ok=true,value=new {accepted=true}}));return 0;
+  }catch(Exception error){
+   string code=System.Text.RegularExpressions.Regex.IsMatch(error.Message,@"^application_[a-z_]+$")?error.Message:"application_native_unavailable";
+   Console.Write(json.Serialize(new {ok=false,error=code}));return 1;
+  }
+ }
+}`
 const moduleDirectory=path.dirname(fileURLToPath(import.meta.url))
 const bundledWindowProbe=path.basename(path.dirname(moduleDirectory))==='app'?path.resolve(moduleDirectory,'../../native/application-window-probe.exe'):null
+const bundledAction=path.basename(path.dirname(moduleDirectory))==='app'?path.resolve(moduleDirectory,'../../native/application-action.exe'):null
 const bundledObserver=path.basename(path.dirname(moduleDirectory))==='app'?path.resolve(moduleDirectory,'../../native/application-observer.exe'):null
 
 const wrapper=String.raw`$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
@@ -309,10 +346,10 @@ try{
  [Console]::Write((@{ok=$true;value=$result}|ConvertTo-Json -Depth 8 -Compress))
 }catch{$errorCode=[string]$_.Exception.Message;$match=[regex]::Match($errorCode,'application_[a-z_]+');if($match.Success){$errorCode=$match.Value}else{$errorCode='application_native_unavailable'};[Console]::Write((@{ok=$false;error=$errorCode}|ConvertTo-Json -Compress));exit 1}`
 
-export function applicationNative(input,{execute=execFile,signal,platform=process.platform,timeout=['observe','activate_observe'].includes(input.action)?45000:input.action==='act'?60000:20000,windowProbe=bundledWindowProbe,observer=bundledObserver}={}){
+export function applicationNative(input,{execute=execFile,signal,platform=process.platform,timeout=['observe','activate_observe'].includes(input.action)?45000:input.action==='act'?60000:20000,windowProbe=bundledWindowProbe,observer=bundledObserver,actionExecutable=bundledAction}={}){
  if(platform!=='win32')return Promise.reject(Error('application_windows_required'))
  signal?.throwIfAborted()
- const compiled=input.action==='windows'?windowProbe:['observe','activate_observe'].includes(input.action)?observer:null
+ const compiled=input.action==='windows'?windowProbe:['observe','activate_observe'].includes(input.action)?observer:input.action==='act'?actionExecutable:null
  const command=compiled||path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe')
  const args=compiled?[]:['-NoLogo','-NoProfile','-NonInteractive','-STA','-EncodedCommand',Buffer.from(wrapper,'utf16le').toString('base64')]
  return new Promise((resolve,reject)=>execute(command,args,{windowsHide:true,shell:false,encoding:'utf8',maxBuffer:4*1024*1024,timeout,signal,env:{...process.env,...(!compiled?{STUDIO_APPLICATION_CODE:Buffer.from(input.action==='windows'?APPLICATION_WINDOW_CODE:APPLICATION_NATIVE_CODE).toString('base64')}:{}),STUDIO_APPLICATION_INPUT:Buffer.from(JSON.stringify(input)).toString('base64')}},(error,out)=>{
