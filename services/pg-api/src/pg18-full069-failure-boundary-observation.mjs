@@ -20,13 +20,17 @@ function errorData(error){const message=ownError(error,'message'),known=typeof m
 function milliseconds(a,b,signed=false){const n=Math.ceil(b-a);return Number.isFinite(a)&&Number.isFinite(b)&&Number.isSafeInteger(n)&&n>=(signed?-120000:0)&&n<=120000?(Object.is(n,-0)?0:n):null}
 function bounded(value,signed=false){return value===null||Number.isSafeInteger(value)&&!Object.is(value,-0)&&value>=(signed?-120000:0)&&value<=120000}
 function fixedFlags(value){if(Object.keys(flags).some(k=>value[k]!==flags[k]))fail()}
-export function full069NativeRequestFailureData(route,at,ownDeadline,socketTimeout,error,before,deadline,now){
+export function full069NativeRequestFailureData(route,at,ownDeadline,socketTimeout,error,before,deadline,now,ownDestroyAt=null){
  const request=requests.get(route);if(!request||!['request_error','response_error'].includes(at)||typeof ownDeadline!=='boolean'||typeof socketTimeout!=='boolean')fail()
- return parseFull069NativeRequestFailureData({event:requestEvent,request,failure_at:at,own_deadline_destroy_seen:ownDeadline,socket_timeout_seen:socketTimeout,node_error_code:nodeCode(error),request_elapsed_ms:milliseconds(before,now),native_remaining_ms:milliseconds(now,deadline,true),...flags})
+ const destroyedAt=ownDeadline&&typeof ownDestroyAt==='number'&&Number.isFinite(ownDestroyAt)&&ownDestroyAt>=before&&ownDestroyAt<=now?ownDestroyAt:null,callbackRemaining=destroyedAt===null?null:milliseconds(destroyedAt,deadline,true),afterDestroy=destroyedAt===null?null:milliseconds(destroyedAt,now),callbackKnown=callbackRemaining!==null&&afterDestroy!==null
+ return parseFull069NativeRequestFailureData({event:requestEvent,request,failure_at:at,own_deadline_destroy_seen:ownDeadline,socket_timeout_seen:socketTimeout,node_error_code:nodeCode(error),request_elapsed_ms:milliseconds(before,now),native_remaining_ms:milliseconds(now,deadline,true),request_budget_at_start_ms:milliseconds(before,deadline,true),own_deadline_callback_remaining_ms:callbackKnown?callbackRemaining:null,failure_after_own_deadline_ms:callbackKnown?afterDestroy:null,...flags})
 }
 export function parseFull069NativeRequestFailureData(raw){
- const r=record(raw,['event','request','failure_at','own_deadline_destroy_seen','socket_timeout_seen','node_error_code','request_elapsed_ms','native_remaining_ms',...Object.keys(flags)]);fixedFlags(r)
- if(r.event!==requestEvent||![...requests.values()].includes(r.request)||!['request_error','response_error'].includes(r.failure_at)||typeof r.own_deadline_destroy_seen!=='boolean'||typeof r.socket_timeout_seen!=='boolean'||r.node_error_code!==null&&!nodeCodes.has(r.node_error_code)||!bounded(r.request_elapsed_ms)||!bounded(r.native_remaining_ms,true))fail()
+ const r=record(raw,['event','request','failure_at','own_deadline_destroy_seen','socket_timeout_seen','node_error_code','request_elapsed_ms','native_remaining_ms','request_budget_at_start_ms','own_deadline_callback_remaining_ms','failure_after_own_deadline_ms',...Object.keys(flags)]);fixedFlags(r)
+ if(r.event!==requestEvent||![...requests.values()].includes(r.request)||!['request_error','response_error'].includes(r.failure_at)||typeof r.own_deadline_destroy_seen!=='boolean'||typeof r.socket_timeout_seen!=='boolean'||r.node_error_code!==null&&!nodeCodes.has(r.node_error_code)||!bounded(r.request_elapsed_ms)||!bounded(r.native_remaining_ms,true)||!bounded(r.request_budget_at_start_ms,true)||!bounded(r.own_deadline_callback_remaining_ms,true)||!bounded(r.failure_after_own_deadline_ms))fail()
+ if((r.own_deadline_callback_remaining_ms===null)!==(r.failure_after_own_deadline_ms===null)||!r.own_deadline_destroy_seen&&r.own_deadline_callback_remaining_ms!==null)fail()
+ if(r.request_budget_at_start_ms!==null&&r.request_elapsed_ms!==null&&r.native_remaining_ms!==null){const sum=r.request_elapsed_ms+r.native_remaining_ms;if(r.request_budget_at_start_ms<sum-1||r.request_budget_at_start_ms>sum)fail()}
+ if(r.own_deadline_callback_remaining_ms!==null&&r.native_remaining_ms!==null){const difference=r.own_deadline_callback_remaining_ms-r.failure_after_own_deadline_ms;if(r.native_remaining_ms<difference||r.native_remaining_ms>difference+1)fail()}
  return Object.freeze(r)
 }
 export function full069RejectedBranchesFailureData(checks,times){

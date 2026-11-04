@@ -349,7 +349,7 @@ test('byte-pipeline optimization leaves full fresh hash, FD/path/ancestor and ca
   const body=name=>tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name).getText()
   const reader=body('readBound'),exact=body('readExactBoundBytes'),verify=body('verifyTree')
   assert.match(exact,/Buffer\.allocUnsafe\(size\+1\)/);assert.doesNotMatch(exact,/Buffer\.from\(|Buffer\.concat\(|\.toString\(/)
-  for(const text of ['ancestors(file,kind===\'manifest\',expectedParents)','before=lstatSync(file)','realpathSync(file)!==file','O_NOFOLLOW','O_NONBLOCK','trustedStatStable(beforeStamp,fstatSync(fd))','trustedStatStable(beforeStamp,lstatSync(file))','sha(bytes)!==expected','assertUtf8Bytes(bytes','closeSync(fd)'])assert.ok(reader.includes(text),text)
+  for(const text of ['ancestors(file,kind===\'manifest\',expectedParents)','before=lstatSync(file)','realpathSync.native(file)!==file','O_NOFOLLOW','O_NONBLOCK','trustedStatStable(beforeStamp,fstatSync(fd))','trustedStatStable(beforeStamp,lstatSync(file))','sha(bytes)!==expected','assertUtf8Bytes(bytes','closeSync(fd)'])assert.ok(reader.includes(text),text)
   assert.equal((reader.match(/ancestors\(file,/g)||[]).length,2)
   for(const text of ['host();assertSource(state.snapshot,state.expected);assertProtocolPins(state)','readBound(state.manifestFile','readBound(path.join(root,\'services/pg-api/pnpm-lock.yaml\')','readdirSync','readBound(actual,record.sha256','assertWorkerHeartbeatActivationControlRuntimeInventory','packageInfo(state,name)','cacheCheck(state)'])assert.ok(verify.includes(text),text)
   assert.ok(body('assertWorkerHeartbeatActivationControlRuntime').includes('try{verifyTree(state,false,timing)}catch(error){state.failed=true;throw error}'))
@@ -378,7 +378,7 @@ function runtimeScalarPolicy(io={},strictInternal=false){
   }).join('\n')
   const {isUtf8}=createRequire(import.meta.url)('node:buffer')
   return Function('path','sha','isUtf8','lstatSync','realpathSync','openSync','fstatSync','readSync','closeSync','constants',values+'\n'+functions+'\nreturn {metadataValues,stableValues,trustedMetadata,trustedStable,meta,stamp,readBound}')(
-    path.posix,hash,isUtf8,io.lstatSync,io.realpathSync,io.openSync,io.fstatSync,io.readSync,io.closeSync,{O_RDONLY:0,O_NOFOLLOW:0o400000,O_NONBLOCK:0o4000})
+    path.posix,hash,isUtf8,io.lstatSync,Object.assign(io.realpathSync,{native:io.realpathSync}),io.openSync,io.fstatSync,io.readSync,io.closeSync,{O_RDONLY:0,O_NOFOLLOW:0o400000,O_NONBLOCK:0o4000})
 }
 
 test('public metadata/stability wrappers retain closed-object rejection without invoking caller getters',()=>{
@@ -479,7 +479,7 @@ test('private scalar cores have only trusted metadata/stamp callers and retain e
   assert.doesNotMatch(source,/DirectoryPass|directoryPasses/)
   const reader=body('readBound')
   assert.equal((reader.match(/ancestors\(file,kind==='manifest',expectedParents\)/g)||[]).length,2)
-  for(const token of ['before=lstatSync(file)','realpathSync(file)!==file','O_NOFOLLOW','O_NONBLOCK','readExactBoundBytes(fd,before.size)','sha(bytes)!==expected','trustedStatStable(beforeStamp,fstatSync(fd))','trustedStatStable(beforeStamp,lstatSync(file))','assertUtf8Bytes(bytes','finally{closeSync(fd)}'])assert.ok(reader.includes(token),token)
+  for(const token of ['before=lstatSync(file)','realpathSync.native(file)!==file','O_NOFOLLOW','O_NONBLOCK','readExactBoundBytes(fd,before.size)','sha(bytes)!==expected','trustedStatStable(beforeStamp,fstatSync(fd))','trustedStatStable(beforeStamp,lstatSync(file))','assertUtf8Bytes(bytes','finally{closeSync(fd)}'])assert.ok(reader.includes(token),token)
   for(const name of ['json','cacheCheck','inspectExports','checkExports','assertWorkerHeartbeatActivationControlRuntimeCacheRecord','assertProtocolPins','parseWorkerHeartbeatActivationControlRuntimeManifest'])assert.doesNotMatch(body(name),/metadataValues\(|stableValues\(|trustedMetadata\(|trustedStable\(/)
 })
 

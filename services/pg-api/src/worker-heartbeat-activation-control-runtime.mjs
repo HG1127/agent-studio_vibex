@@ -3,14 +3,14 @@
 import {lstatSync,realpathSync,openSync,fstatSync,readSync,closeSync,readdirSync,constants} from 'node:fs'
 import path from 'node:path'
 import {fileURLToPath,pathToFileURL} from 'node:url'
-import {createHash} from 'node:crypto'
+import {createHash,hash as digestBytes} from 'node:crypto'
 import {isUtf8} from 'node:buffer'
 import {performance} from 'node:perf_hooks'
 import {createRequire,registerHooks,isBuiltin,getCompileCacheDir} from 'node:module'
 import {assertWorkerHeartbeatActivationControlSources} from './worker-heartbeat-activation-control-source.mjs'
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..'),prefix='services/pg-api/node_modules/'
-const sha=b=>createHash('sha256').update(b).digest('hex'),hex=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v)
+const sha=b=>Buffer.isBuffer(b)?digestBytes('sha256',b,'hex'):createHash('sha256').update(b).digest('hex'),hex=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v)
 const lockSha='eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a'
 const protocolMessagesFile=prefix+'pg-protocol/dist/messages.js',protocolParserFile=prefix+'pg-protocol/dist/parser.js'
 const protocolPins=Object.freeze({[protocolMessagesFile]:'dfd22ad639f3030b41617ff0ee201ece7cdbce4adb7e1aae7978541b1384cd31',[protocolParserFile]:'6f841aabda7240df44e1b08bbe8e202502ead969576c1ecc17311af48f57f2ef'})
@@ -203,7 +203,7 @@ function readExactBoundBytes(fd,size){
 function readBound(file,expected,kind,expectedBytes,expectedParents){
   const chain=ancestors(file,kind==='manifest',expectedParents),before=lstatSync(file)
   trustedMetadata(meta(before),kind)
-  if(realpathSync(file)!==file||expectedBytes!==undefined&&before.size!==expectedBytes)fail()
+  if(realpathSync.native(file)!==file||expectedBytes!==undefined&&before.size!==expectedBytes)fail()
   const fd=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK)
   try{
     // Reuse only this captured Stats value, never a filesystem observation.

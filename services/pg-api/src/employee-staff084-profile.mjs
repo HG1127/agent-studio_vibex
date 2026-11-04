@@ -7,8 +7,8 @@ import {employeeUi078Receipt,employeeUi078ReceiptBody} from './pg18-employee-ui0
 import {verifyEmployeeUi078Profile} from './pg18-employee-ui078-profile.ts'
 import {inspectEmployeeGovernanceSchema} from './native-employee-governance-audit.mjs'
 import {inspectAgentReleaseSchema} from './agent-release-audit.ts'
-import {verifyOriginalStaff084Schema} from './original-staff-audit084.mjs'
-import {verifyStaffQuality089AuthSchema} from './staff084-quality089-auth-audit.mjs'
+import {verifyComplete078Staff084Schema} from './original-staff-audit084.mjs'
+import {verifyComplete078StaffQuality089AuthSchema} from './staff084-quality089-auth-audit.mjs'
 import {completeServiceTarget} from './pg18-complete-service-core.mjs'
 import {completeProfileLocksSql} from './pg18-complete-profile.ts'
 import {completeProfileReceipt,completeProfileReceiptBody} from './pg18-complete-profile-source.mjs'
@@ -62,7 +62,7 @@ async function stateOnAuth(db){
 }
 export async function verifyEmployeeStaff084AuthClient(db){
  const {snapshot,target}=await stateOnAuth(db),before=await audit(db,snapshot,target,'agentstudio_native_auth')
- if(snapshot.mode.quality)await verifyStaffQuality089AuthSchema(db);else await verifyOriginalStaff084Schema(db)
+ if(snapshot.mode.quality)await verifyComplete078StaffQuality089AuthSchema(db);else await verifyComplete078Staff084Schema(db)
  const after=await audit(db,snapshot,target,'agentstudio_native_auth');if(canonical(before)!==canonical(after))bad('auth_catalog_changed');return true
 }
 export async function verifyEmployeeStaff084Pool(pool,s,expected,target,kind){
