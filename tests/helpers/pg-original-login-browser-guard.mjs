@@ -35,6 +35,7 @@ export function originalLoginPath(raw){
 export function originalLoginRequestPolicy(method,raw,accept=''){
   const pathname=originalLoginPath(raw)
   if(!pathname)return {kind:'denied',pathname:'/invalid-path'}
+ if(pathname.startsWith('/__pg_native/api/native-auth/login-status'))return{kind:method==='GET'&&raw==='/__pg_native/api/native-auth/login-status'?'native':'api_denied',pathname:pathname}
   if(/^\/__(?:pb|pg)(?:\/|$)/.test(pathname))return {kind:'legacy_denied',pathname}
   if(pathname.startsWith('/__pg_native/api/')){
     // Do not decode an encoded API alias and then proxy a different wire path.

@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { AlertCircle, ArrowRight, Bot, KeyRound, LockKeyhole, Loader2, ShieldCheck } from "lucide-react"
 import { initializeStudioAdmin, readStudioLoginSetup, shouldCheckStudioSession,
-  signInStudioAccount, studioLoginErrorMessage, verifyStudioSession } from "@/lib/studioAuth"
+  signInStudioAccount, studioLoginErrorMessage, verifyStudioLoginSession } from "@/lib/studioAuth"
 import { getStudioLocalReturnPath } from "@/lib/studioLocalReturnPath"
 
 type SetupStatus = {initialized: boolean; can_setup: boolean}
@@ -24,7 +24,7 @@ export default function LoginPage() {
     let mounted = true
     void (async () => {
       try {
-        const status = shouldCheckStudioSession() ? await verifyStudioSession() : "signed_out"
+        const status = shouldCheckStudioSession() ? await verifyStudioLoginSession() : "signed_out"
         if (!mounted) return
         if (status === "authenticated") { navigate(afterLogin, {replace:true}); return }
         if (status === "unavailable") { setSetup(null); setStatusError(true); return }

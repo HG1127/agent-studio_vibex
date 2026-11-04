@@ -9,6 +9,7 @@ export function originalInternalSharePath(raw){
 export function originalInternalSharePolicy(method,raw,accept=''){
  const pathname=originalInternalSharePath(raw)
  if(!pathname)return{kind:'denied',pathname:'/invalid-path'}
+ if(pathname==='/__pg_native/api/native-auth/login-status')return{kind:method==='GET'&&raw==='/__pg_native/api/native-auth/login-status'?'native':'api_denied',pathname:pathname}
  if(/^\/__(?:pb|pg)(?:\/|$)/.test(pathname))return{kind:'legacy_denied',pathname}
  if(pathname.startsWith('/__pg_native/')){
   if(raw!==pathname)return{kind:'api_denied',pathname}

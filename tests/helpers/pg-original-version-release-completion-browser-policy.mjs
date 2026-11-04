@@ -5,6 +5,7 @@ const release=new RegExp('^'+v2+'original-ui/agent-releases/'+u+'(?:/(change|acc
 const metadata=new Set(['own-overview','own-todos','original-ui/agent-workspace','original-ui/agent-pending','original-ui/monitor-inbox','original-ui/agent-catalog','original-ui/home-resources','tool-connections','mcp-connections','knowledge-bases','shared-knowledge','knowledge-embedding/consent','agent-autonomous-runs'].map(p=>v2+p))
 export function originalVersionReleaseCompletionPolicy(method,raw,accept=''){
  const pathname=originalLoginPath(raw);if(!pathname)return{kind:'denied',pathname:'/invalid-path'}
+ if(pathname==='/__pg_native/api/native-auth/login-status')return{kind:method==='GET'&&raw==='/__pg_native/api/native-auth/login-status'?'native':'api_denied',pathname:pathname}
  if(/^\/__(?:pb|pg)(?:\/|$)/.test(pathname))return{kind:'legacy_denied',pathname}
  if(pathname.startsWith(root+'/')){
   if(raw.split('?',1)[0]!==pathname)return{kind:'api_denied',pathname}

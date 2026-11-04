@@ -5,6 +5,7 @@ const metadata=new Set([v2+'own-overview',v2+'own-todos',v2+'original-ui/agent-w
 /** Host route restriction only. Native identity/body/CAS checks still run. */
 export function originalModelConnectionsPolicy(method,raw,accept=''){
  const pathname=originalLoginPath(raw);if(!pathname)return{kind:'denied',pathname:'/invalid-path'}
+ if(pathname==='/__pg_native/api/native-auth/login-status')return{kind:method==='GET'&&raw==='/__pg_native/api/native-auth/login-status'?'native':'api_denied',pathname:pathname}
  if(/^\/__(?:pb|pg)(?:\/|$)/.test(pathname))return{kind:'legacy_denied',pathname}
  if(pathname.startsWith('/__pg_native/')){
   if(raw.split('?',1)[0]!==pathname)return{kind:'api_denied',pathname}

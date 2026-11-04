@@ -677,7 +677,7 @@
     },
     {
       "path": "services/pg-api/src/native-auth-http.mjs",
-      "sha256": "c336bd6e2060e6c002a1192c5ae216f6a632d27d2c3808c2b8a164086bde06ed"
+      "sha256": "593382524dea309213a7f667d61f26eed18c9e199229457065981ec528679912"
     },
     {
       "path": "services/pg-api/src/native-auth-repository.mjs",
@@ -1325,7 +1325,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-genuine-source-pins.mjs",
-      "sha256": "aa92b39b2969a35694a8ed9457786ef7dc0a9959176f9bbf61d0f3c3045d502a"
+      "sha256": "571883374899e977097d6a3357cdfa5ac4440eb1d0a91fc425d778dd3b346ef8"
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-original-home-guard.mjs",
@@ -1333,7 +1333,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-original-home-reviewed-sources.json",
-      "sha256": "02f76b46b5f7a774b89723b1eca82d3669987f45e7d0734bfd908b26e00235cf"
+      "sha256": "4fe9ab52a6f3e2a1c25368662257c01d5aca2c4c15a20a6ad2e2d08be46c7792"
     },
     {
       "path": "services/pg-api/tests/helpers/workflow-v2-agent-fixture.mjs",
@@ -2765,7 +2765,7 @@
     },
     {
       "path": "src/lib/pgNativeSession.ts",
-      "sha256": "a026ab870ec50cc899756f64f7ae005f9b211b3806492bfdf9a2eb1662d677bb"
+      "sha256": "66a1a18d60f84b7e2fa60a7735c6206230fe65f12035a3cfad5e52df175b149b"
     },
     {
       "path": "src/lib/pgNativeSessionReadFence.ts",
@@ -2877,7 +2877,7 @@
     },
     {
       "path": "src/lib/studioAuth.ts",
-      "sha256": "f8e0b95cb363017ded93cc41802536a7dc480b3540040c0bb9aa23b094357144"
+      "sha256": "a0e428155ddb11f738ab579d76ee5bf9f02ff2995436cd19659d313f13b4c720"
     },
     {
       "path": "src/lib/studioBackend.ts",
@@ -2897,7 +2897,7 @@
     },
     {
       "path": "src/lib/studioPgAuthAdapter.ts",
-      "sha256": "044e38204b7c2d61289c5004bf29933626ea04540e74258b9d6c7784eb6a46b3"
+      "sha256": "1cb2d71f0a36b7d4e7d8e3ebf4bce15d68e410381d4ed9e75758388c347c37e3"
     },
     {
       "path": "src/lib/studioSessionPrivacy.ts",
@@ -3049,7 +3049,7 @@
     },
     {
       "path": "src/pages/Login/LoginPage.tsx",
-      "sha256": "ee60756749a096ab9362f2ed153ca869abd5c30cd5474cbf92dce9ea1019b3c9"
+      "sha256": "daeeabb36403df0a381b6d11ee14051816b89704329294994543ca406aec97c9"
     },
     {
       "path": "src/pages/Manager/ManagerPage.tsx",

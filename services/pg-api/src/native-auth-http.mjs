@@ -8,6 +8,7 @@ import {NATIVE_SESSION_COOKIE,buildNativeSessionCookie,
   clearNativeSessionCookie} from "./native-employee-auth.mjs"
 
 const prefix="/api/native-auth"
+const nativeLoginStatusProtocol="native_employee_login_status_v1"
 const maxBody=8192
 function abort(status,code){const e=Error(code);e.status=status;throw e}
 function respond(res,status,body,extra={}){
@@ -26,6 +27,20 @@ function respond(res,status,body,extra={}){
 function publicProfile(profile){
   return {id:profile.id,email:profile.email,
     display_name:profile.display_name,is_admin:profile.is_admin===true,...(typeof profile.share_enabled==="boolean"?{share_enabled:profile.share_enabled}:{})}
+}
+// Public login state only; the existing repository verifies current Cookie,
+// revocation/expiry, enabled account and active employee on every token read.
+async function readNativeLoginStatus(req,auth){
+  const token=nativeSessionToken(req)
+  if(!token)return {protocol:nativeLoginStatusProtocol,authenticated:false,user:null}
+  const profile=await auth.getSessionProfile(token)
+  if(profile===null)return {protocol:nativeLoginStatusProtocol,authenticated:false,user:null}
+  if(!profile||typeof profile!=="object"||Array.isArray(profile)||typeof profile.id!=="string"||
+     !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(profile.id)||
+     typeof profile.email!=="string"||!profile.email||profile.email.length>254||
+     typeof profile.display_name!=="string"||profile.display_name.length>80||typeof profile.is_admin!=="boolean"||
+     profile.share_enabled!==undefined&&typeof profile.share_enabled!=="boolean")throw Error("native_login_profile_unavailable")
+  return {protocol:nativeLoginStatusProtocol,authenticated:true,user:publicProfile(profile)}
 }
 export function nativeSessionToken(req){
   const raw=req.headers.cookie
@@ -174,6 +189,15 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
       verifyNativeOrigin(req,allowedOrigin,!["GET","HEAD"].includes(method))
       if(req.headers.authorization!==undefined)
         abort(401,"native_cookie_only")
+      if(pathname===prefix+"/login-status"){
+        if(method!=="GET")abort(405,"method_not_allowed")
+        if(req.url!==prefix+"/login-status"||req.headers["transfer-encoding"]!==undefined||
+           req.headers["content-length"]!==undefined&&req.headers["content-length"]!=="0")
+          abort(400,"invalid_login_status_request")
+        if(["x-rh-user-id","x-rh-token","x-agentstudio-user-id","x-agentstudio-expected-employee"].some(key=>req.headers[key]!==undefined))
+          abort(400,"login_status_cookie_only")
+        return respond(res,200,await readNativeLoginStatus(req,auth))
+      }
       if(pathname===prefix+"/login"&&method==="POST"){
         const body=await readJson(req)
         exactKeys(body,["email","password"])

@@ -3,6 +3,7 @@ export {originalLoginPath as originalModelReceipts075Path}
 const auth='/__pg_native/api/native-auth/',v2='/__pg_native/api/v2/',model=v2+'model-connections',ops=v2+'model-config-operations',uuid='[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}',item=new RegExp('^'+model+'/'+uuid+'$'),receipt=new RegExp('^'+ops+'/'+uuid+'$'),metadata=new Set([v2+'own-overview',v2+'own-todos',v2+'original-ui/agent-workspace',v2+'original-ui/agent-pending',v2+'original-ui/monitor-inbox',v2+'original-ui/agent-catalog',v2+'original-ui/home-resources'])
 export function originalModelReceipts075Policy(method,raw,accept=''){
  const pathname=originalLoginPath(raw);if(!pathname)return{kind:'denied',pathname:'/invalid-path'}
+ if(pathname==='/__pg_native/api/native-auth/login-status')return{kind:method==='GET'&&raw==='/__pg_native/api/native-auth/login-status'?'native':'api_denied',pathname:pathname}
  if(/^\/__(?:pb|pg)(?:\/|$)/.test(pathname))return{kind:'legacy_denied',pathname}
  if(pathname.startsWith('/__pg_native/')){
   if(raw.split('?',1)[0]!==pathname)return{kind:'api_denied',pathname}

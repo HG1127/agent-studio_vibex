@@ -49,6 +49,16 @@ export function redirectToRhLogin(): void {
 export type StudioSessionStatus = "authenticated" | "signed_out" | "unavailable"
 let refreshInFlight: Promise<StudioSessionStatus> | null = null
 
+/** Login-page status only. Protected identity checks keep their original /me. */
+export function verifyStudioLoginSession(): Promise<StudioSessionStatus> {
+  if (!pgAuth) return verifyStudioSession()
+  const prior = pgAuth.account()?.id
+  return pgAuth.verifyLogin().then(status => {
+    if (status !== "authenticated" || prior !== undefined && prior !== pgAuth.account()?.id) invalidateStudioSessionPrivacy()
+    return status
+  }, error => { invalidateStudioSessionPrivacy(); throw error })
+}
+
 export function verifyStudioSession(): Promise<StudioSessionStatus> {
   if (pgAuth) {
     const prior = pgAuth.account()?.id

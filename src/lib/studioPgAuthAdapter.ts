@@ -9,6 +9,7 @@ export function selectStudioAuthBackend(flag: unknown): "pocketbase" | "native_p
 
 type NativeSessionPort = {
   session(): Promise<PgSessionState>
+  sessionForLogin?(): Promise<PgSessionState>
   signIn(email: string, password: string): Promise<PgEmployeeProfile>
   signOut(): Promise<void>
 }
@@ -20,6 +21,8 @@ export function createStudioPgAuthAdapter(native: NativeSessionPort) {
   let epoch = 0
   let profile: StudioProfile | null = null
   let verifying: Promise<StudioSessionStatus> | null = null
+  let loginVerifying: Promise<StudioSessionStatus> | null = null
+  let verificationRead = 0
   let mutationTail: Promise<void> = Promise.resolve()
   let mutations = 0
   let signingOut: { epoch: number; promise: Promise<void> } | null = null
@@ -49,13 +52,13 @@ export function createStudioPgAuthAdapter(native: NativeSessionPort) {
   function verify(): Promise<StudioSessionStatus> {
     if (mutations > 0) return Promise.resolve("unavailable")
     if (verifying) return verifying
-    const localEpoch = epoch
+    const localEpoch = epoch, read = ++verificationRead
     const pending: Promise<StudioSessionStatus> = (async () => {
       let result: PgSessionState
       try { result = await native.session() }
       catch { result = { status: "unavailable" } }
       // A stale read must not erase or replace a newer account.
-      if (localEpoch !== epoch) return "unavailable"
+      if (localEpoch !== epoch || read !== verificationRead) return "unavailable"
       profile = result.status === "authenticated" ? mapped(result.profile) : null
       return result.status
     })()
@@ -67,10 +70,33 @@ export function createStudioPgAuthAdapter(native: NativeSessionPort) {
     return pending
   }
 
+  function verifyLogin(): Promise<StudioSessionStatus> {
+    if (mutations > 0) return Promise.resolve("unavailable")
+    if (loginVerifying) return loginVerifying
+    if (!native.sessionForLogin) return verify()
+    const localEpoch = epoch, read = ++verificationRead
+    const pending: Promise<StudioSessionStatus> = (async () => {
+      let result: PgSessionState
+      try { result = await native.sessionForLogin!() }
+      catch { result = { status: "unavailable" } }
+      if (localEpoch !== epoch || read !== verificationRead) return "unavailable"
+      profile = result.status === "authenticated" ? mapped(result.profile) : null
+      return result.status
+    })()
+    loginVerifying = pending
+    void pending.then(
+      () => { if (loginVerifying === pending) loginVerifying = null },
+      () => { if (loginVerifying === pending) loginVerifying = null },
+    )
+    return pending
+  }
+
   function mutate<T>(operation: (stamp: number) => Promise<T>): Promise<T> {
     const stamp = ++epoch
     profile = null
     verifying = null
+    loginVerifying = null
+    ++verificationRead
     mutations++
     // Cookie-changing requests run in invocation order, including after errors.
     const pending = mutationTail.then(() => operation(stamp))
@@ -102,5 +128,5 @@ export function createStudioPgAuthAdapter(native: NativeSessionPort) {
     return pending
   }
 
-  return { verify, account, identity, signIn, signOut }
+  return { verify, verifyLogin, account, identity, signIn, signOut }
 }

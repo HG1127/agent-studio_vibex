@@ -7,6 +7,7 @@ function stepsQuery(raw,p){const q=new URL(raw,'https://localhost').searchParams
 function historyQuery(raw,p){const q=new URL(raw,'https://localhost').searchParams,page=q.get('page');return raw===p+'?'+q.toString()&&[...q.keys()].join(',')==='spec_id,anchor_run_id,page'&&[...q.keys()].every(k=>q.getAll(k).length===1)&&new RegExp('^'+uuid+'$').test(q.get('spec_id')??'')&&new RegExp('^'+uuid+'$').test(q.get('anchor_run_id')??'')&&/^[1-9][0-9]{0,15}$/.test(page??'')&&Number.isSafeInteger(Number(page))&&Number(page)<=Math.floor(Number.MAX_SAFE_INTEGER/25)}
 export function originalRunQueuedBrowserPolicy(method,raw,accept='',story='original-agent-run-queued'){
  const p=originalLoginPath(raw);if(!p)return{kind:'denied',pathname:'/invalid-path'}
+ if(p==='/__pg_native/api/native-auth/login-status')return{kind:method==='GET'&&raw==='/__pg_native/api/native-auth/login-status'?'native':'api_denied',pathname:p}
  if(/^\/__(?:pb|pg)(?:\/|$)/.test(p))return{kind:'legacy_denied',pathname:p}
  if(p.startsWith('/__pg_native/')){
   if(raw.split('?',1)[0]!==p)return{kind:'api_denied',pathname:p}

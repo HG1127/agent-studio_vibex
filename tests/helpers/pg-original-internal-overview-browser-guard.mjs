@@ -13,6 +13,7 @@ export function requireOriginalOverviewBrowserCi(env=process.env,platform=proces
 export function originalOverviewRequestPolicy(method,raw,accept=''){
  const pathname=originalLoginPath(raw)
  if(!pathname)return {kind:'denied',pathname:'/invalid-path'}
+ if(pathname==='/__pg_native/api/native-auth/login-status')return{kind:method==='GET'&&raw==='/__pg_native/api/native-auth/login-status'?'native':'api_denied',pathname:pathname}
  if(/^\/__(?:pb|pg)(?:\/|$)/.test(pathname))return {kind:'legacy_denied',pathname}
  if(pathname.startsWith('/__pg_native/api/')){
   if(raw!==pathname)return {kind:'api_denied',pathname}

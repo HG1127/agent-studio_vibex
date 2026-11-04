@@ -10,6 +10,7 @@ function selector(method,raw,path){if(method!=='GET')return false;const args=new
 /** Closed fixture transport restriction. Real native API owns authorization. */
 export function originalSchedules078Policy(method,raw,accept=''){
  const path=originalLoginPath(raw);if(!path)return{kind:'denied',pathname:'/invalid-path'}
+ if(path==='/__pg_native/api/native-auth/login-status')return{kind:method==='GET'&&raw==='/__pg_native/api/native-auth/login-status'?'native':'api_denied',pathname:path}
  if(/^\/__(?:pb|pg)(?:\/|$)/.test(path))return{kind:'legacy_denied',pathname:path}
  if(path.startsWith('/__pg_native/')){
   if(raw.split('?',1)[0]!==path)return{kind:'api_denied',pathname:path}

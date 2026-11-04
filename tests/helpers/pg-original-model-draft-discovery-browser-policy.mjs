@@ -14,6 +14,7 @@ function modelReadQuery(raw,pathname){
 /** Dedicated host restriction; actual Native Cookie/body/owner checks stay inside. */
 export function originalModelDraftDiscoveryPolicy(method,raw,accept=''){
  const pathname=originalLoginPath(raw);if(!pathname)return{kind:'denied',pathname:'/invalid-path'}
+ if(pathname==='/__pg_native/api/native-auth/login-status')return{kind:method==='GET'&&raw==='/__pg_native/api/native-auth/login-status'?'native':'api_denied',pathname:pathname}
  if(/^\/__(?:pb|pg)(?:\/|$)/.test(pathname))return{kind:'legacy_denied',pathname}
  if(pathname.startsWith('/__pg_native/')){
   if(raw.split('?',1)[0]!==pathname)return{kind:'api_denied',pathname}

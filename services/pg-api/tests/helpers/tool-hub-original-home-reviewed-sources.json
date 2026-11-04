@@ -319,7 +319,7 @@
     },
     {
       "path": "services/pg-api/src/native-auth-http.mjs",
-      "sha256": "c336bd6e2060e6c002a1192c5ae216f6a632d27d2c3808c2b8a164086bde06ed"
+      "sha256": "593382524dea309213a7f667d61f26eed18c9e199229457065981ec528679912"
     },
     {
       "path": "services/pg-api/src/native-employee-auth.mjs",
