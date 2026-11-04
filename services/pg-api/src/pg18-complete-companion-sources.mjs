@@ -20,7 +20,7 @@ function bytes(relative){
  if(!allowedSource(relative)&&!companionReviewAssets.includes(relative))fail('source_path')
  let at=root
  for(const part of relative.split('/')){if(fs.lstatSync(at).isSymbolicLink())fail('source_path');at=path.join(at,part)}
- const a=fs.lstatSync(at);if(a.isSymbolicLink()||!a.isFile()||a.nlink!==1||a.size<1||a.size>16*1024*1024||fs.realpathSync(at)!==at)fail('source_file')
+ const a=fs.lstatSync(at);if(a.isSymbolicLink()||!a.isFile()||a.nlink!==1||a.size<1||a.size>16*1024*1024||fs.realpathSync.native(at)!==at)fail('source_file')
  const raw=fs.readFileSync(at),z=fs.lstatSync(at);if(['dev','ino','size','mtimeMs','ctimeMs'].some(k=>a[k]!==z[k])||raw.includes(0)||raw[0]===0xef&&raw[1]===0xbb&&raw[2]===0xbf||!isUtf8(raw))fail('source_changed')
  return raw
 }

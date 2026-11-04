@@ -105,3 +105,51 @@ export function hostedQuality089SchemaRefusal(stage,error,check){
  if(stage==='catalog_assert'&&(!Number.isSafeInteger(check)||check<1||check>33)||stage!=='catalog_assert'&&check!==undefined)return
  const record={event:'hosted_quality089_schema_refusal',profile:'quality089',stage,error_kind:quality089SchemaErrorKind(error)};if(stage==='catalog_assert')record.check_id=check;emit(record)
 }
+
+// Shared failure-detail budget; no catalog result can grant acceptance here.
+function hostedCatalogDetail(profile,event,check,producer,validate){
+ const selected=scope.getStore();if(!selected||selected.profile!==profile||typeof producer!=='function'||(selected.catalogDetailCount??0)>=8)return
+ try{const value=validate(producer());if(!value)return;const record={event,profile,check_id:check,...value};if(Buffer.byteLength(JSON.stringify(record),'utf8')>2048)return;selected.catalogDetailCount=(selected.catalogDetailCount??0)+1;emit(record)}catch{}
+}
+export function emitHostedStaff031InventoryDifference(producer){hostedCatalogDetail('staff084','hosted_staff031_inventory_refusal',31,producer,validateStaff031Observation)}
+export function emitHostedQuality015ConstraintDifference(producer){hostedCatalogDetail('quality089','hosted_quality015_constraint_refusal',15,producer,validateQuality015Observation)}
+
+const countKeys=['relations','columns','constraints','indexes','policies','types','functions']
+const constraintKeys=['oid','name','table','type','index_oid','keys','target','target_keys','expression','update','delete','match','safe','deferrable','deferred']
+const differenceKinds=new Set(['lookup','shape','type','safe','deferrable','deferred','keys','expression','target','target_keys','update','delete','match','index_oid','unclassified'])
+const states=new Set(['value','missing','unsafe','oversized','normalization_refused'])
+const sha=value=>staffAclHash('sha256').update(value).digest('hex')
+const own=(value,key)=>Object.getOwnPropertyDescriptor(value,key)
+function object(value,keys){if(!value||typeof value!=='object'||Array.isArray(value)||isProxy(value))return null;const actual=Reflect.ownKeys(value);if(actual.length!==keys.length||actual.some(k=>typeof k!=='string'||!keys.includes(k)))return null;const out={};for(const key of keys){const d=own(value,key);if(!d?.enumerable||!Object.hasOwn(d,'value'))return null;out[key]=d.value}return out}
+function counts(value){const row=object(value,countKeys);if(!row||countKeys.some(k=>!Number.isSafeInteger(row[k])||row[k]<0||row[k]>1000000))return null;return row}
+function fingerprint(value){if(value===undefined)return {state:'missing',sha256:null,bytes:0};let nodes=0,size=0;const stack=new Set();try{const walk=(v,depth)=>{if(++nodes>512||depth>12)throw 'oversized';if(v===null)return ['null'];switch(typeof v){case 'boolean':return ['boolean',v];case 'number':if(!Number.isFinite(v))throw 'unsafe';return ['number',v];case 'string':if(v.length>32768)throw 'oversized';size+=Buffer.byteLength(v,'utf8');if(size>65536)throw 'oversized';return ['string',v];case 'object':{if(isProxy(v)||stack.has(v))throw 'unsafe';stack.add(v);let result;if(Array.isArray(v)){const length=own(v,'length');if(!length||!Object.hasOwn(length,'value')||!Number.isSafeInteger(length.value)||length.value>128)throw 'oversized';const keys=Reflect.ownKeys(v);if(keys.length!==length.value+1)throw 'unsafe';result=['array',Array.from({length:length.value},(_,i)=>{const d=own(v,String(i));if(!d?.enumerable||!Object.hasOwn(d,'value'))throw 'unsafe';return walk(d.value,depth+1)})]}else{const keys=Reflect.ownKeys(v);if(keys.length>64||keys.some(k=>typeof k!=='string'||k.length>120))throw 'oversized';result=['object',keys.sort().map(k=>{const d=own(v,k);if(!d?.enumerable||!Object.hasOwn(d,'value'))throw 'unsafe';return [k,walk(d.value,depth+1)]})]}stack.delete(v);return result}default:throw 'unsafe'}};const text=JSON.stringify(walk(value,0)),bytes=Buffer.byteLength(text,'utf8');if(bytes>65536)throw 'oversized';return {state:'value',sha256:sha(text),bytes}}catch(reason){return {state:reason==='oversized'?'oversized':'unsafe',sha256:null,bytes:0}}}
+const equal=(a,b)=>{const x=fingerprint(a),y=fingerprint(b);return x.state==='value'&&y.state==='value'&&x.sha256===y.sha256}
+export function staff031InventoryObservation(actual,expected){const a=counts(actual),e=counts(expected);if(!a||!e)return null;const first=countKeys.find(k=>a[k]!==e[k]);return first?{kind:'staff_inventory',first_difference:first,actual_counts:a,expected_counts:e}:null}
+export function validateStaff031Observation(value){const v=object(value,['kind','first_difference','actual_counts','expected_counts']);if(!v||v.kind!=='staff_inventory'||!countKeys.includes(v.first_difference))return null;const result=staff031InventoryObservation(v.actual_counts,v.expected_counts);return result?.first_difference===v.first_difference?result:null}
+function summary(value){const v=object(value,['state','sha256','bytes']);if(!v||!states.has(v.state)||!Number.isSafeInteger(v.bytes)||v.bytes<0||v.bytes>65536)return null;if(v.state==='value'){if(typeof v.sha256!=='string'||!/^[a-f0-9]{64}$/.test(v.sha256))return null}else if(v.sha256!==null||v.bytes!==0)return null;return v}
+export function validateQuality015Observation(value){const v=object(value,['kind','first_difference','table_ordinal','constraint_ordinal','table_sha256','constraint_sha256','actual','expected']);if(!v||v.kind!=='quality_constraint'||!differenceKinds.has(v.first_difference)||!Number.isSafeInteger(v.table_ordinal)||v.table_ordinal<1||v.table_ordinal>64||!Number.isSafeInteger(v.constraint_ordinal)||v.constraint_ordinal<1||v.constraint_ordinal>256||typeof v.table_sha256!=='string'||!/^[a-f0-9]{64}$/.test(v.table_sha256)||typeof v.constraint_sha256!=='string'||!/^[a-f0-9]{64}$/.test(v.constraint_sha256))return null;const a=summary(v.actual),e=summary(v.expected);return a&&e?{kind:v.kind,first_difference:v.first_difference,table_ordinal:v.table_ordinal,constraint_ordinal:v.constraint_ordinal,table_sha256:v.table_sha256,constraint_sha256:v.constraint_sha256,actual:a,expected:e}:null}
+const validOid=v=>typeof v==='string'&&/^[1-9][0-9]{0,9}$/.test(v)&&Number(v)<=4294967295
+/** Failure observation only. Values/expressions/OIDs and identifiers are never returned. */
+export function quality015ConstraintObservation(table,constraint,actual,normalize,tableOrdinal,constraintOrdinal){
+ const td=table&&typeof table==='object'&&!isProxy(table)?own(table,'name'):null,kd=constraint&&typeof constraint==='object'&&!isProxy(constraint)?own(constraint,'name'):null
+ if(!td||!kd||!Object.hasOwn(td,'value')||!Object.hasOwn(kd,'value')||typeof td.value!=='string'||td.value.length>120||typeof kd.value!=='string'||kd.value.length>120)return null
+ const base={kind:'quality_constraint',table_ordinal:tableOrdinal,constraint_ordinal:constraintOrdinal,table_sha256:sha(td.value),constraint_sha256:sha(kd.value)}
+ const difference=(kind,a,e)=>validateQuality015Observation({...base,first_difference:kind,actual:fingerprint(a),expected:fingerprint(e)})
+ if(actual===undefined)return difference('lookup',undefined,'present')
+ const a=object(actual,constraintKeys);if(!a){const keys=actual&&typeof actual==='object'&&!isProxy(actual)?Reflect.ownKeys(actual):undefined;return difference('shape',keys,constraintKeys)}
+ const k={};for(const key of ['type','keys','expression','target','target_keys']){const d=own(constraint,key);if(d&&!Object.hasOwn(d,'value'))return null;k[key]=d?.value}
+ for(const [key,e]of [['type',k.type],['safe',true],['deferrable',k.type==='t'],['deferred',k.type==='t'],['keys',k.keys??null]])if(!equal(a[key],e))return difference(key,a[key],e)
+ if(k.type==='c'){
+  let av,ev,ar=false,er=false;try{av=normalize(a.expression)}catch{ar=true}try{ev=normalize(k.expression)}catch{er=true}
+  if(ar||er||!equal(av,ev)){const record={...base,first_difference:'expression',actual:ar?{state:'normalization_refused',sha256:null,bytes:0}:fingerprint(av),expected:er?{state:'normalization_refused',sha256:null,bytes:0}:fingerprint(ev)};return validateQuality015Observation(record)}
+ }else if(a.expression!==null)return difference('expression',a.expression,null)
+ if(k.type==='f'){
+  for(const [key,e]of [['target',k.target],['target_keys',k.target_keys],['update','a'],['delete','a'],['match','s']])if(!equal(a[key],e))return difference(key,a[key],e)
+  if(!validOid(a.index_oid))return difference('index_oid',a.index_oid,'nonzero_oid')
+ }else{
+  for(const key of ['target','target_keys'])if(a[key]!==null)return difference(key,a[key],null)
+  if(k.type==='p'){if(!validOid(a.index_oid))return difference('index_oid',a.index_oid,'nonzero_oid')}
+  else if(a.index_oid!=='0')return difference('index_oid',a.index_oid,'0')
+ }
+ return difference('unclassified',a,k)
+}

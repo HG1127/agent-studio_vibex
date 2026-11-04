@@ -3,11 +3,24 @@ import {test,expect,chromium} from '@playwright/test'
 import {randomUUID} from 'node:crypto'
 import {TOOL_TRIAL_EFFECT_ACK} from '../services/pg-api/src/tool-trial-contract.ts'
 import {requireOriginalToolHubGenuineCi} from './helpers/pg-original-toolhub-genuine-guard.mjs'
+// Failure evidence only: fixed-size path/method/status/phase metadata.
+// Never reads bodies, headers, cookies, request postData, page text or secrets.
+function originalToolHubDiagnosticPath(raw,origin){try{const url=new URL(raw,origin);if(url.origin!==origin)return'<external-origin>';const path=url.pathname.replace(/\b[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\b/gi,':id').split('/').map(value=>value.length>40?':opaque':value).join('/');return path.length<=180?path:'<long-resource-path>'}catch{return'<invalid-resource-url>'}}
+function originalToolHubDiagnosticAppend(rows,row,max){rows.push(row);if(rows.length>max)rows.shift()}
+function createOriginalToolHubBoundedDiagnostics({origin,getPhase=()=> 'unobserved'}){
+ if(typeof origin!=='string'||new URL(origin).origin!==origin||typeof getPhase!=='function')throw Error('invalid_bounded_diagnostic_scope')
+ const errors=[],recent=[],consoleSources=[],detach=[];let dropped=0
+ const phase=()=>{const value=getPhase();return typeof value==='string'&&/^[a-z_]{1,60}$/.test(value)?value:'unobserved'},append=(rows,row,max)=>{if(rows.length>=max)dropped++;originalToolHubDiagnosticAppend(rows,row,max)}
+ return{attach(page){const response=r=>{const path=originalToolHubDiagnosticPath(r.url(),origin),status=r.status(),method=r.request().method();if(!Number.isSafeInteger(status)||status<100||status>599)return;const row={phase:phase(),path,method:['GET','POST','PATCH','DELETE','HEAD','OPTIONS'].includes(method)?method:'other',status};if(status>=400)append(errors,row,20);if(path.startsWith('/__pg_native/api/'))append(recent,row,30)},consoleMessage=m=>{if(m.type()==='error')append(consoleSources,{phase:phase(),path:originalToolHubDiagnosticPath(m.location()?.url??'',origin)},10)};page.on('response',response);page.on('console',consoleMessage);detach.push(()=>{page.off('response',response);page.off('console',consoleMessage)})},snapshot(){return{error_routes:errors.map(row=>({...row})),recent_native_routes:recent.map(row=>({...row})),console_error_sources:consoleSources.map(row=>({...row})),dropped}},dispose(){for(const off of detach.splice(0))off()}}
+}
+
 test('canonical ToolHub views: actual owner Home, calc/approval, numbered activity filters and truthful monitor',async({},testInfo)=>{
  requireOriginalToolHubGenuineCi()
  const {startOriginalToolHubGenuineFixture}=await import('./helpers/pg-original-toolhub-genuine-fixture.mjs'),f=await startOriginalToolHubGenuineFixture()
  let browser,context,page,phase='start';const contexts=[],exceptions=[],consoleErrors=[],failedRequests=[],badResponses=[],outside=[],traffic=[]
+ const diagnostics=createOriginalToolHubBoundedDiagnostics({origin:f.browserOrigin,getPhase:()=>phase})
  const attach=p=>{
+  diagnostics.attach(p)
   p.on('pageerror',e=>exceptions.push(String(e)));p.on('console',m=>{if(m.type()==='error')consoleErrors.push(m.text())});p.on('requestfailed',r=>failedRequests.push({url:r.url(),error:r.failure()?.errorText}))
   p.on('response',r=>{if(r.status()>=400)badResponses.push({url:r.url(),status:r.status()})})
   p.on('request',r=>{const u=new URL(r.url());if(['http:','https:'].includes(u.protocol)&&u.origin!==f.browserOrigin)outside.push(r.url());if(u.pathname.startsWith('/__pg_native/api/v2/'))traffic.push({view:new URL(p.url()).searchParams.get('view'),path:u.pathname+u.search})})
@@ -39,5 +52,5 @@ test('canonical ToolHub views: actual owner Home, calc/approval, numbered activi
   expect(traffic.filter(r=>r.view==='monitor').every(r=>!r.path.includes('/tool-connections')&&!r.path.includes('/original-ui/agent-specs')&&!r.path.includes('/tool-hub/invocations'))).toBe(true)
   phase='other_actual_employee';context=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:375,height:950}});contexts.push(context);page=await context.newPage();attach(page);await login('bob',page);await expect(page.getByRole('heading',{name:'验证工具是否可执行',exact:true})).toBeVisible();await expect(page.getByText(new RegExp('^'+resources.http.name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*'+String(resources.http.method||'POST').toUpperCase()+'$'))).toHaveCount(0);expect(await page.locator('body').innerText()).not.toContain(receipt.run_id);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true)
   expect(exceptions).toEqual([]);expect(consoleErrors).toEqual([]);expect(failedRequests).toEqual([]);expect(badResponses).toEqual([]);expect(outside).toEqual([]);expect(Object.values(f.network).every(count=>count===0)).toBe(true)
- }catch(error){console.error('[canonical original ToolHub pending CI phase] '+phase);throw error}finally{for(const owned of contexts)await owned.close();await browser?.close();await f.close()}
+ }catch(error){console.error('[canonical original ToolHub pending CI phase] '+phase);console.error('[original ToolHub bounded route/status] '+JSON.stringify(diagnostics.snapshot()));throw error}finally{diagnostics.dispose();for(const owned of contexts)await owned.close();await browser?.close();await f.close()}
 })

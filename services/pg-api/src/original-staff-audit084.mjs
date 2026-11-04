@@ -1,4 +1,4 @@
-import {hostedProfileCatalogRefusal,emitHostedStaffNamespaceAclDifference} from './hosted-profile-diagnostic.mjs'
+import {hostedProfileCatalogRefusal,emitHostedStaffNamespaceAclDifference,emitHostedStaff031InventoryDifference,staff031InventoryObservation} from './hosted-profile-diagnostic.mjs'
 import {createHash} from 'node:crypto'
 import {isProxy} from 'node:util/types'
 import {originalStaff084Tables as tables,originalStaffRevisionGuardSha256} from './original-staff-schema084.mjs'
@@ -42,7 +42,7 @@ export function assertOriginalStaff084Catalog(raw){
  ;(diagnosticCheck=27,unique(v.migrations.map(r=>r.version)));;for(const r of v.migrations){;(diagnosticCheck=28,exact(r,['version','description','applied_at']));;if(typeof r.version!=='string'||typeof r.description!=='string'||typeof r.applied_at!=='string')(diagnosticCheck=29,bad());}
  for(const version of ['pg18_native_auth_001','pg_v9_047','pg_v9_084'])(diagnosticCheck=30,one(v.migrations,r=>r.version===version));
  const indexes=tables.flatMap(t=>[...t.constraints.filter(c=>['p','u'].includes(c.type)).map(c=>({name:c.name,keys:c.keys,unique:true,primary:c.type==='p',table:t})),...(t.extra_indexes??[]).map(c=>({...c,primary:false,table:t}))])
- if(v.relations.length!==tables.length+indexes.length||v.columns.length!==50||v.constraints.length!==81||v.indexes.length!==8||v.policies.length!==5||v.types.length!==10||v.functions.length!==1)(diagnosticCheck=31,bad());
+ if(v.relations.length!==tables.length+indexes.length||v.columns.length!==50||v.constraints.length!==81||v.indexes.length!==8||v.policies.length!==5||v.types.length!==10||v.functions.length!==1){try{emitHostedStaff031InventoryDifference(()=>staff031InventoryObservation({relations:v.relations.length,columns:v.columns.length,constraints:v.constraints.length,indexes:v.indexes.length,policies:v.policies.length,types:v.types.length,functions:v.functions.length},{relations:tables.length+indexes.length,columns:50,constraints:81,indexes:8,policies:5,types:10,functions:1}))}catch{}(diagnosticCheck=31,bad());}
  ;(diagnosticCheck=32,unique(v.relations.map(r=>(diagnosticCheck=33,oid(r.oid)))));;;(diagnosticCheck=34,unique(v.relations.map(r=>r.name)));;const relByName=new Map(v.relations.map(r=>[r.name,r])),indexByName=new Map(v.indexes.map(r=>[r.name,r]))
  for(const r of v.relations){;(diagnosticCheck=35,exact(r,['oid','name','owner','kind','type','natts','rls','force','safe']));;if(r.owner!==owner||r.safe!==true)(diagnosticCheck=36,bad());}
  if(v.acl.length!==54)(diagnosticCheck=37,bad());;;(diagnosticCheck=38,unique(v.columns.map(c=>c.rel+':'+c.number)));;;(diagnosticCheck=39,unique(v.constraints.map(c=>(diagnosticCheck=40,oid(c.oid)))));;;(diagnosticCheck=41,unique(v.constraints.map(c=>c.rel+':'+c.name)));;;(diagnosticCheck=42,unique(v.indexes.map(i=>(diagnosticCheck=43,oid(i.oid)))));;;(diagnosticCheck=44,unique(v.indexes.map(i=>i.name)));

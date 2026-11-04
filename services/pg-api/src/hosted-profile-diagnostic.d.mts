@@ -7,3 +7,9 @@ export function hostedQuality089Sync<T>(step:unknown,body:()=>T):T
 export function emitHostedStaffNamespaceAclDifference(actualJson:unknown,expectedJson?:unknown,rolesJson?:unknown):void
 export function hostedQuality089InventoryRefusal(check:unknown):void
 export function hostedQuality089SchemaRefusal(stage:string,error:unknown,check?:number):void
+export function emitHostedStaff031InventoryDifference(producer:unknown):void
+export function emitHostedQuality015ConstraintDifference(producer:unknown):void
+export function staff031InventoryObservation(actual:unknown,expected:unknown):unknown
+export function validateStaff031Observation(value:unknown):unknown
+export function quality015ConstraintObservation(table:unknown,constraint:unknown,actual:unknown,normalize:unknown,tableOrdinal:unknown,constraintOrdinal:unknown):unknown
+export function validateQuality015Observation(value:unknown):unknown

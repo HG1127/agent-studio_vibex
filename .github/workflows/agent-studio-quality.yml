@@ -53,6 +53,8 @@ jobs:
         run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
       - name: Verify original page contracts and exact recovery regressions
         run: pnpm test:original-ui-contracts
+      - name: Verify current migration repair source regressions
+        run: node --test --test-concurrency=1 tests/original-toolhub-public-checkpoint-pure.test.mjs tests/original-toolhub-session-pure.test.mjs tests/staff031-quality015-observation-pure.test.mjs services/pg-api/tests/full069-native-realpath-source-pure.test.mjs services/pg-api/tests/pg18-source-utf8-native.test.mjs tests/pg-original-run-queued-history-policy-pure.test.mjs tests/original-agent-run-initial-route-pure.test.mjs tests/pg-original-run-queued-policy.test.mjs services/pg-api/tests/native-original-directory-pair-source-pure.test.mjs services/pg-api/tests/native-original-directory-shutdown-source-pure.test.mjs
 
   pg17-tcp-isolated:
     name: Real PostgreSQL 17 / RLS / multi-worker (ephemeral)

@@ -21,7 +21,7 @@ function bytes(relative){
  if(typeof relative!=='string'||! /^(?:services\/pg-api\/src|shared|db\/postgres)\/[A-Za-z0-9_./-]+$/.test(relative)||relative.split('/').some(p=>!p||p==='.'||p==='..'))fail()
  let current=root
  for(const part of relative.split('/')){if(fs.lstatSync(current).isSymbolicLink())fail();current=path.join(current,part)}
- const st=fs.lstatSync(current);if(st.isSymbolicLink()||!st.isFile()||st.size<1||st.size>16*1024*1024||fs.realpathSync(current)!==current)fail()
+ const st=fs.lstatSync(current);if(st.isSymbolicLink()||!st.isFile()||st.size<1||st.size>16*1024*1024||fs.realpathSync.native(current)!==current)fail()
  return fs.readFileSync(current)
 }
 function utf8(raw){const text=raw.toString('utf8');if(!Buffer.from(text).equals(raw)||text.startsWith('\uFEFF')||text.includes('\0'))fail();return text}

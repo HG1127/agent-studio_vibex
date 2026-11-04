@@ -12,7 +12,7 @@ export const complete069PlanWorkflowAssets=Object.freeze(['docs/PG18_COMPLETE_06
 function sourceBytes(name,deployment=false){
  if(typeof name!=='string'||! /^(?:services\/pg-api\/src|shared|docs|ops\/templates)\/[A-Za-z0-9_./-]+$/.test(name)||name.split('/').some(p=>!p||p==='.'||p==='..'))fail()
  let at=root;for(const part of name.split('/')){const parent=fs.lstatSync(at);if(parent.isSymbolicLink()||!parent.isDirectory()||deployment&&(parent.uid!==0||parent.gid!==0||(parent.mode&0o022)!==0))fail();at=path.join(at,part)}
- const s=fs.lstatSync(at);if(!s.isFile()||s.isSymbolicLink()||s.nlink!==1||s.size<1||s.size>16*1024*1024||fs.realpathSync(at)!==at||deployment&&(s.uid!==0||s.gid!==0||(s.mode&0o222)!==0))fail()
+ const s=fs.lstatSync(at);if(!s.isFile()||s.isSymbolicLink()||s.nlink!==1||s.size<1||s.size>16*1024*1024||fs.realpathSync.native(at)!==at||deployment&&(s.uid!==0||s.gid!==0||(s.mode&0o222)!==0))fail()
  const b=fs.readFileSync(at),t=fs.lstatSync(at);for(const k of['dev','ino','size','mtimeMs','ctimeMs','mode','uid','gid'])if(s[k]!==t[k])fail();if(b.includes(0)||!isUtf8(b))fail();return b
 }
 const freeze=v=>{if(v&&typeof v==='object'){for(const x of Object.values(v))freeze(x);Object.freeze(v)}return v}
