@@ -1,6 +1,6 @@
 {
-  "sourceCommit": "bf3d3cb4f630a526fe980948923fb88aca66b309",
-  "version": "0.1.0-preview.23",
+  "sourceCommit": "a06ec82e0a175f65853fb5b7f2b7d7134b158cf1",
+  "version": "0.1.0-preview.24",
   "platform": "win32-x64",
   "codeSigned": false,
   "integratedSources": {
