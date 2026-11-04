@@ -1,6 +1,6 @@
 {
-  "sourceCommit": "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11",
-  "version": "0.1.0-preview.21",
+  "sourceCommit": "bf3d3cb4f630a526fe980948923fb88aca66b309",
+  "version": "0.1.0-preview.23",
   "platform": "win32-x64",
   "codeSigned": false,
   "integratedSources": {
@@ -21,5 +21,5 @@
     "updateRecovery": "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11",
     "applicationObservation": "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11"
   },
-  "sourceState": "committed-unified-preview20-with-update-recovery-and-observation-fixes"
+  "sourceState": "committed-unified-source-with-workbuddy-electron-focus-keyboard-fallback-and-safe-takeover"
 }
