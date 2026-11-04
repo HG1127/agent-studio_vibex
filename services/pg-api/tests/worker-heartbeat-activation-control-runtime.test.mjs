@@ -378,7 +378,7 @@ function runtimeScalarPolicy(io={},strictInternal=false){
   }).join('\n')
   const {isUtf8}=createRequire(import.meta.url)('node:buffer')
   return Function('path','sha','isUtf8','lstatSync','realpathSync','openSync','fstatSync','readSync','closeSync','constants',values+'\n'+functions+'\nreturn {metadataValues,stableValues,trustedMetadata,trustedStable,meta,stamp,readBound}')(
-    path.posix,hash,isUtf8,io.lstatSync,Object.assign(io.realpathSync,{native:io.realpathSync}),io.openSync,io.fstatSync,io.readSync,io.closeSync,{O_RDONLY:0,O_NOFOLLOW:0o400000,O_NONBLOCK:0o4000})
+    path.posix,hash,isUtf8,io.lstatSync,io.realpathSync===undefined?undefined:Object.assign(io.realpathSync,{native:io.realpathSync}),io.openSync,io.fstatSync,io.readSync,io.closeSync,{O_RDONLY:0,O_NOFOLLOW:0o400000,O_NONBLOCK:0o4000})
 }
 
 test('public metadata/stability wrappers retain closed-object rejection without invoking caller getters',()=>{

@@ -1,3 +1,4 @@
+import {assertOriginalUiEmployee} from './native-original-ui-preconditions.ts'
 import {createHmac,randomUUID} from "node:crypto"
 import {HttpError,isUuid,type Identity,type SqlClient,type SqlPool} from "./contracts.ts"
 import {withActor} from "./repository.ts"
@@ -14,6 +15,22 @@ const managedColumns="id,namespace,remote_connection_id,server_name,binding_proo
 const revision=(raw:unknown,min=1)=>{if(!Number.isSafeInteger(raw)||Number(raw)<min)throw new HttpError(400,"invalid_revision");return Number(raw)}
 const uuid=(raw:string)=>{if(!isUuid(raw))throw new HttpError(400,"invalid_smithery_request_id");return raw.toLowerCase()}
 export class SmitheryRepository{
+  private originalUiEmployee?:string
+  forOriginalEmployee(expected:string):this{
+    if(!isUuid(expected)||this.originalUiEmployee!==undefined)throw new HttpError(400,'invalid_original_plugin_employee')
+    // Request-local view: preserve existing shared probes, key and transport;
+    // never mutate the singleton repository or store a caller identity there.
+    const bound=Object.create(this) as this
+    Object.defineProperty(bound,'originalUiEmployee',{value:expected.toLowerCase(),enumerable:false,writable:false,configurable:false})
+    return bound
+  }
+  private originalActor<T>(identity:Identity,body:(db:SqlClient,owner:string)=>Promise<T>):Promise<T>{
+    return withActor(this.pool,identity,async(db,owner)=>{assertOriginalUiEmployee(owner,this.originalUiEmployee);return body(db,owner)})
+  }
+  private originalBrokerActor<T>(identity:Identity,body:(db:SqlClient,owner:string)=>Promise<T>):Promise<T>{
+    if(!this.brokerPool)throw new HttpError(503,'configuration_broker_unavailable')
+    return withModelBrokerActor(this.brokerPool,identity,async(db,owner)=>{assertOriginalUiEmployee(owner,this.originalUiEmployee);return body(db,owner)})
+  }
   readonly pool:SqlPool;readonly brokerPool:SqlPool;readonly key:Buffer;readonly transport:SmitheryTransport
   constructor(pool:SqlPool,key:string|Buffer,brokerPool:SqlPool,transport:SmitheryTransport){
     this.pool=pool;this.key=Buffer.isBuffer(key)?key:parseModelEncryptionKey(key);this.brokerPool=brokerPool;this.transport=transport
@@ -41,11 +58,11 @@ export class SmitheryRepository{
     return (await db.query<KeyRow>("SELECT "+keyColumns+" FROM agentstudio.smithery_credentials WHERE owner_user_id=$1::uuid"+(lock?" FOR UPDATE":""),[owner])).rows[0]
   }
   private keyDto(row:KeyRow|undefined){return {has_key:row?.active===true,revision:row?Number(row.revision):0,tail:row?.active?row.key_tail:"",last_request_id:row?.last_request_id??null}}
-  keyStatus(identity:Identity){return withActor(this.pool,identity,async(db,owner)=>this.keyDto(await this.keyRow(db,owner)))}
+  keyStatus(identity:Identity){return this.originalActor(identity,async(db,owner)=>this.keyDto(await this.keyRow(db,owner)))}
   private async material(identity:Identity){
-    const selected=await withActor(this.pool,identity,async(db,owner)=>this.keyRow(db,owner))
+    const selected=await this.originalActor(identity,async(db,owner)=>this.keyRow(db,owner))
     if(!selected?.active)throw new HttpError(409,"smithery_key_required")
-    const key=await withModelBrokerActor(this.brokerPool,identity,async(db,owner)=>{
+    const key=await this.originalBrokerActor(identity,async(db,owner)=>{
       const row=(await db.query<{active:boolean;revision:number|string;api_key_ciphertext:Uint8Array;api_key_nonce:Uint8Array;api_key_tag:Uint8Array}>(
         "SELECT active,revision,api_key_ciphertext,api_key_nonce,api_key_tag FROM agentstudio.smithery_credentials WHERE owner_user_id=$1::uuid",[owner])).rows[0]
       if(!row?.active||Number(row.revision)!==Number(selected.revision))throw new HttpError(409,"smithery_key_changed")
@@ -64,7 +81,7 @@ export class SmitheryRepository{
   async saveKey(identity:Identity,raw:unknown,expected:number,requestId:string){
     revision(expected,0);requestId=uuid(requestId)
     let key:string;try{key=smitheryApiKey(raw)}catch{throw new HttpError(400,"invalid_smithery_key")}
-    const fingerprint=this.hash({key}),check=await withActor(this.pool,identity,async(db,owner)=>{
+    const fingerprint=this.hash({key}),check=await this.originalActor(identity,async(db,owner)=>{
       const prior=await this.keyRow(db,owner)
       if(prior?.last_request_id===requestId){if(prior.key_fingerprint!==fingerprint)throw new HttpError(409,"smithery_key_request_conflict");return this.keyDto(prior)}
       if((prior?Number(prior.revision):0)!==expected)throw new HttpError(409,"smithery_key_changed")
@@ -75,7 +92,7 @@ export class SmitheryRepository{
     // if the vendor rejects it. It cannot create a remote connection.
     try{parseSmitheryNamespaces(this.success(await this.call(key,{method:"GET",path:"/namespaces"})))}
     catch(cause){if(cause instanceof HttpError&&cause.code==="smithery_key_rejected")throw new HttpError(400,"invalid_smithery_key");throw cause}
-    return withActor(this.pool,identity,async(db,owner)=>{
+    return this.originalActor(identity,async(db,owner)=>{
       await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))",[owner+":smithery-key"])
       const prior=await this.keyRow(db,owner,true)
       if(prior?.last_request_id===requestId){if(prior.key_fingerprint!==fingerprint)throw new HttpError(409,"smithery_key_request_conflict");return this.keyDto(prior)}
@@ -92,7 +109,7 @@ export class SmitheryRepository{
       return this.keyDto(await this.keyRow(db,owner))
     })
   }
-  removeKey(identity:Identity,expected:number,requestId:string){revision(expected,0);requestId=uuid(requestId);return withActor(this.pool,identity,async(db,owner)=>{
+  removeKey(identity:Identity,expected:number,requestId:string){revision(expected,0);requestId=uuid(requestId);return this.originalActor(identity,async(db,owner)=>{
     await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))",[owner+":smithery-key"])
     const prior=await this.keyRow(db,owner,true),fingerprint=this.hash({removed:true})
     if(prior?.last_request_id===requestId){if(prior.key_fingerprint!==fingerprint)throw new HttpError(409,"smithery_key_request_conflict");return this.keyDto(prior)}
@@ -119,11 +136,11 @@ export class SmitheryRepository{
       state:row.state,revoke_requested:row.revoke_requested,setup_url:row.setup_url,missing:row.missing,last_error:row.last_error,revision:Number(row.revision),
       operation_in_flight:row.operation_token!==null,mcp_revision:Number(mcp.revision),enabled:mcp.enabled,mcp_status:mcp.status}
   }
-  get(identity:Identity,id:string){id=uuid(id);return withActor(this.pool,identity,async(db,owner)=>{
+  get(identity:Identity,id:string){id=uuid(id);return this.originalActor(identity,async(db,owner)=>{
     const row=(await db.query<ManagedRow>("SELECT "+managedColumns+" FROM agentstudio.smithery_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid",[id,owner])).rows[0]
     return row?this.publicRow(db,owner,row):null
   })}
-  list(identity:Identity){return withActor(this.pool,identity,async(db,owner)=>{
+  list(identity:Identity){return this.originalActor(identity,async(db,owner)=>{
     const rows=(await db.query<ManagedRow>("SELECT "+managedColumns+" FROM agentstudio.smithery_connections WHERE owner_user_id=$1::uuid ORDER BY updated_at DESC,id LIMIT 50",[owner])).rows
     const result=[];for(const row of rows)result.push(await this.publicRow(db,owner,row));return result
   })}
@@ -131,7 +148,7 @@ export class SmitheryRepository{
     requestId=uuid(requestId);let input:ReturnType<typeof parseSmitherySelection>
     try{input=parseSmitherySelection(raw)}catch{throw new HttpError(400,"invalid_smithery_selection")}
     const fingerprint=this.hash(input),token=randomUUID()
-    const selected=await withActor(this.pool,identity,async(db,owner)=>{
+    const selected=await this.originalActor(identity,async(db,owner)=>{
       await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))",[owner+":smithery-key"])
       const prior=(await db.query<ManagedRow>("SELECT "+managedColumns+" FROM agentstudio.smithery_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid",[requestId,owner])).rows[0]
       if(prior){if(prior.creation_fingerprint!==fingerprint)throw new HttpError(409,"smithery_create_request_conflict");return {row:prior,fresh:false}}
@@ -149,7 +166,7 @@ export class SmitheryRepository{
     if(!selected.fresh)return this.get(identity,requestId)
     return this.perform(identity,selected.row,token,"connect",input.name)
   }
-  pause(identity:Identity,id:string,expected:number){id=uuid(id);revision(expected);return withActor(this.pool,identity,async(db,owner)=>{
+  pause(identity:Identity,id:string,expected:number){id=uuid(id);revision(expected);return this.originalActor(identity,async(db,owner)=>{
     await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))",[owner+":smithery-key"])
     const row=(await db.query<ManagedRow>("SELECT "+managedColumns+" FROM agentstudio.smithery_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR UPDATE",[id,owner])).rows[0]
     if(!row)throw new HttpError(404,"smithery_connection_not_found")
@@ -163,7 +180,7 @@ export class SmitheryRepository{
   })}
   async operate(identity:Identity,id:string,expected:number,kind:"refresh"|"revoke"|"connect"){
     id=uuid(id);revision(expected);if(!["refresh","revoke","connect"].includes(kind))throw new HttpError(400,"invalid_smithery_operation")
-    const token=randomUUID(),selected=await withActor(this.pool,identity,async(db,owner)=>{
+    const token=randomUUID(),selected=await this.originalActor(identity,async(db,owner)=>{
       await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))",[owner+":smithery-key"])
       const row=(await db.query<ManagedRow>("SELECT "+managedColumns+" FROM agentstudio.smithery_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR UPDATE",[id,owner])).rows[0]
       if(!row)throw new HttpError(404,"smithery_connection_not_found")
@@ -209,7 +226,7 @@ export class SmitheryRepository{
         }
       }
     }catch(cause){error=cause instanceof HttpError&&["smithery_key_required","smithery_key_changed","smithery_namespace_not_owned","smithery_key_rejected"].includes(cause.code)?cause.code:"smithery_outcome_unknown"}
-    return withActor(this.pool,identity,async(db,owner)=>{
+    return this.originalActor(identity,async(db,owner)=>{
       await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))",[owner+":smithery-key"])
       const current=(await db.query<ManagedRow>("SELECT "+managedColumns+" FROM agentstudio.smithery_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR UPDATE",[row.id,owner])).rows[0]
       if(!current)throw new HttpError(404,"smithery_connection_not_found")

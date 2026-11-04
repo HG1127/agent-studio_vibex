@@ -11,9 +11,14 @@ import { SpecEditorCard } from "@/components/home/SpecEditorCard"
 import { AgentDraftDrawer } from "@/components/site/AgentDraftDrawer"
 import { useHome } from "@/pages/Home/useHome"
 import { getPocketBaseUrl } from "@/lib/pb"
-import { vibexAuthHeaders } from "@/lib/studioAuth"
+import { vibexAuthHeaders, verifyStudioSession, getStudioAccountInfo } from "@/lib/studioAuth"
+import { createOriginalAgentCreateReader } from "@/lib/originalAgentCreateReader"
+import { ORIGINAL_PG_UI_ENABLED } from "@/lib/studioBackend"
+import { subscribeStudioSessionPrivacy } from "@/lib/studioSessionPrivacy"
 import { evaluateAgentJourney, countVerifiedModelConnections, createLatestRequestFence } from "@/lib/agentCreateJourney"
 import { addReturnAgentToUrl } from "@/lib/toolSearchPrivacy"
+
+const createNativeJourneyReader=import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED==='true'?createOriginalAgentCreateReader:null
 
 const STAGES = [
   {id:"describe",label:"描述需求",hint:"一句话明确目标"},
@@ -33,7 +38,7 @@ const NEED_EXAMPLES = [
 ]
 
 type ModelState="loading"|"ready"|"unavailable"
-type RecentRun={id:string;spec_id:string;status:string;created:string;instruction:string;result?:string}
+type RecentRun={id:string;spec_id:string;status:string;created:string;instruction:string;result?:string;spec_revision?:number;outputs_current?:boolean}
 function progressFromQuery(raw:string|null):number{
   const val=Number.parseInt(raw||"1",10)
   return Number.isFinite(val)?Math.max(0,Math.min(4,val-1)):0
@@ -43,10 +48,13 @@ export default function AgentCreateRoute() {
   const p=useHome()
   const [params,setParams]=useSearchParams()
   const step=progressFromQuery(params.get("step"))
-  const [modelState,setModelState]=useState<ModelState>("loading")
-  const [enabledModels,setEnabledModels]=useState(0)
+  const [modelReadState,setModelState]=useState<ModelState>("loading")
+  const [enabledModelCount,setEnabledModels]=useState(0)
+  const [nativeIdentityEpoch,setNativeIdentityEpoch]=useState(0)
+  const [modelReadScope,setModelReadScope]=useState("")
+  const [runReadScope,setRunReadScope]=useState("")
   const [run,setRun]=useState<RecentRun|null>(null)
-  const [runChecked,setRunChecked]=useState(false)
+  const [runReadChecked,setRunChecked]=useState(false)
   const [runError,setRunError]=useState("")
   const [runLoading,setRunLoading]=useState(false)
   const modelRequestFence=useRef(createLatestRequestFence())
@@ -54,6 +62,23 @@ export default function AgentCreateRoute() {
   const [notice,setNotice]=useState("")
   const [resourceMessage,setResourceMessage]=useState("")
   const [localEditorOpen,setLocalEditorOpen]=useState(false)
+  const nativeScope=(p.nativeCreationOwner??'')+':'+nativeIdentityEpoch
+  const nativeRunScope=nativeScope+':'+p.savedSpecId+':'+(p.nativeSavedRevision??'')
+  const nativeScopeRef=useRef(nativeScope),nativeRunScopeRef=useRef(nativeRunScope)
+  nativeScopeRef.current=nativeScope;nativeRunScopeRef.current=nativeRunScope
+  const enabledModels=ORIGINAL_PG_UI_ENABLED&&modelReadScope!==nativeScope?0:enabledModelCount
+  const modelState:ModelState=ORIGINAL_PG_UI_ENABLED&&modelReadScope!==nativeScope&&modelReadState!=='loading'?'unavailable':modelReadState
+  const runChecked=runReadChecked&&(!ORIGINAL_PG_UI_ENABLED||runReadScope===nativeRunScope)
+  const nativeReader=useMemo(()=>createNativeJourneyReader&&p.nativeCreationOwner?createNativeJourneyReader({employeeId:p.nativeCreationOwner,
+    currentEmployee:()=>getStudioAccountInfo()?.id??null,
+    verifyEmployee:async()=>{const status=await verifyStudioSession(),account=getStudioAccountInfo();if(status!=='authenticated'||!account?.active)throw new Error('original_agent_create_identity_unavailable');return account.id},
+  }):null,[p.nativeCreationOwner])
+  useEffect(()=>{
+    if(!ORIGINAL_PG_UI_ENABLED)return
+    const invalidate=()=>{nativeReader?.invalidate();modelRequestFence.current.invalidate();runRequestFence.current.invalidate();setNativeIdentityEpoch(v=>v+1);setEnabledModels(0);setModelState('unavailable');setRun(null);setRunChecked(false);setRunLoading(false);setRunError('');setResourceMessage('模型和试跑状态需要重新核对，请刷新。')}
+    const unsubscribe=subscribeStudioSessionPrivacy(invalidate)
+    return()=>{unsubscribe();nativeReader?.invalidate();modelRequestFence.current.invalidate();runRequestFence.current.invalidate()}
+  },[nativeReader])
   useEffect(()=>{
     const openEditor=()=>setLocalEditorOpen(true)
     window.addEventListener("studio:open-current-agent-editor",openEditor)
@@ -62,11 +87,17 @@ export default function AgentCreateRoute() {
 
 
   const refreshModels=useCallback(async()=>{
-    const ticket=modelRequestFence.current.next()
+    const ticket=modelRequestFence.current.next(),scope=nativeScopeRef.current
     setModelState("loading")
     setEnabledModels(0)
     setResourceMessage("")
     try{
+      if(ORIGINAL_PG_UI_ENABLED){
+        if(!nativeReader)throw new Error('original_agent_create_identity_unavailable')
+        const count=await nativeReader.models()
+        if(!modelRequestFence.current.isCurrent(ticket))return
+        setModelReadScope(scope);setEnabledModels(count);setModelState('ready');return
+      }
       const res=await fetch(getPocketBaseUrl()+"/api/model-connections",{
         headers:{...vibexAuthHeaders()},
       })
@@ -81,7 +112,7 @@ export default function AgentCreateRoute() {
       setModelState("unavailable")
       setResourceMessage("暂时无法读取模型连接；请检查网络后刷新。")
     }
-  },[])
+  },[nativeReader])
   useEffect(()=>{
     let cancelled=false
     void Promise.resolve().then(()=>{if(!cancelled)void refreshModels()})
@@ -94,7 +125,7 @@ export default function AgentCreateRoute() {
   },[step,p.refreshKnowledgeBases])
 
   const refreshRuns=useCallback(async()=>{
-    const ticket=runRequestFence.current.next()
+    const ticket=runRequestFence.current.next(),scope=nativeRunScopeRef.current
     const specId=p.savedSpecId
     setRun(null)
     setRunChecked(false)
@@ -102,6 +133,12 @@ export default function AgentCreateRoute() {
     if(!specId){setRunLoading(false);return}
     setRunLoading(true)
     try{
+      if(ORIGINAL_PG_UI_ENABLED){
+        if(!nativeReader||!p.nativeSavedRevision)throw new Error('original_agent_create_identity_unavailable')
+        const recent=await nativeReader.latest(specId,p.nativeSavedRevision)
+        if(!runRequestFence.current.isCurrent(ticket))return
+        setRunReadScope(scope);setRun(recent);setRunChecked(true);return
+      }
       const res=await fetch(getPocketBaseUrl()+"/api/agent-runs/recent?limit=20",{
         headers:{...vibexAuthHeaders()},
       })
@@ -135,7 +172,7 @@ export default function AgentCreateRoute() {
     }finally{
       if(runRequestFence.current.isCurrent(ticket))setRunLoading(false)
     }
-  },[p.savedSpecId])
+  },[p.savedSpecId,p.nativeSavedRevision,nativeReader])
   useEffect(()=>{
     if(step<3 || !p.savedSpecId)return
     let cancelled=false
@@ -144,7 +181,7 @@ export default function AgentCreateRoute() {
   },[step,p.savedSpecId,refreshRuns])
 
   // A previous Agent's run must never appear during another draft's first render.
-  const scopedRun=run?.spec_id===p.savedSpecId?run:null
+  const scopedRun=run?.spec_id===p.savedSpecId&&(!ORIGINAL_PG_UI_ENABLED||runReadScope===nativeRunScope)?(ORIGINAL_PG_UI_ENABLED&&(run.outputs_current!==true||run.spec_revision!==p.nativeSavedRevision)?{...run,instruction:'',result:''}:run):null
   const evaluated=useMemo(()=>evaluateAgentJourney({
     spec:p.spec,specName:p.specName,savedId:p.savedSpecId,dirty:p.specDirty,
     enabledModelCount:enabledModels,modelState,
@@ -186,7 +223,8 @@ export default function AgentCreateRoute() {
     onRefreshKnowledgeBases:p.refreshKnowledgeBases,
     onToggleTool:p.handleToggleSpecTool,reviseInput:p.reviseInput,
     onReviseInputChange:p.setReviseInput,onRevise:p.handleRevise,
-    isRevising:p.isRevising,onSave:p.handleSave,isSaving:p.isSaving,dirty:p.specDirty,
+    isRevising:p.isRevising,reviseActionLabel:p.nativeReviseActionLabel,revisePending:p.nativeRevisePending,reviseBlocked:p.nativeReviseBlocked,reviseNotice:p.nativeReviseNotice,
+    onSave:p.handleSave,isSaving:p.isSaving,dirty:p.specDirty,
     savedMsg:p.savedMsg,savedSpecId:p.savedSpecId,onClear:p.handleClearSpec,
     saveConflict:p.saveConflict,onSaveAsCopy:p.handleSaveAsCopy,
   } : null
@@ -280,7 +318,7 @@ export default function AgentCreateRoute() {
         <section id="spec-editor" className="min-w-0 space-y-4 scroll-mt-28">
           {step===0 && <>
             <CreateComposer variant="focus" userInput={p.userInput} onUserInputChange={p.setUserInput}
-                onCreate={p.handleCreate} isGenerating={p.isGenerating} authoringPreview={p.authoringPreview}/>
+                onCreate={p.handleCreate} isGenerating={p.isGenerating} authoringPreview={p.authoringPreview} nativeDesign={p.nativeDesignComposer}/>
             {p.spec && <div role="status" className="rounded-xl border border-primary/25 bg-primary/5 p-4">
               <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
                 <CheckCircle2 className="h-4 w-4 text-primary"/> 已生成可编辑方案：{p.specName}

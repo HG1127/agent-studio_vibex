@@ -1,0 +1,17 @@
+import type {SourceKey,SourceState} from './harnessData.ts'
+const keys:SourceKey[]=['worker','monitor','stats','agents','workflows'],initial=()=>Object.fromEntries(keys.map(key=>[key,{loading:false}])) as Record<SourceKey,SourceState>,status=(e:unknown)=>e&&typeof e==='object'&&'status'in e?Number(e.status):0
+/** Closed presentation state. Ports are read adapters, never Actor/verifiers. */
+export function createOriginalHarnessSession(options:{employeeId:string;verifyEmployee:()=>Promise<string>;readCycle:(current:()=>boolean,signal:AbortSignal)=>{read:(key:SourceKey)=>Promise<NonNullable<SourceState['data']>>};now?:()=>number;budgetMs?:number}){
+ const budget=options.budgetMs??20000;if(!Number.isSafeInteger(budget)||budget<1||budget>20000)throw Error('invalid_original_harness_budget')
+ const listeners=new Set<()=>void>();let closed=false,visible=false,blocked=false,epoch=0,sequence=0,sources=initial(),problem='',controller:AbortController|null=null
+ const publish=()=>{if(!closed)for(const fn of listeners)fn()},hide=(auth=false)=>{epoch++;sequence++;controller?.abort();controller=null;visible=false;blocked=auth;problem='当前员工身份尚未核实，未保留来源快照。';sources=initial();publish()}
+ async function verify(current:()=>boolean){try{const employee=await options.verifyEmployee();if(!current())return false;if(employee!==options.employeeId)throw Object.assign(Error('employee_changed'),{status:401});return true}catch(error){if(current())hide([401,403,412].includes(status(error)));return false}}
+ return{
+  snapshot(){return{employeeId:options.employeeId,visible:visible&&!closed,closed,authRequired:blocked,sources:visible?sources:Object.fromEntries(keys.map(key=>[key,{loading:false,...(problem?{error:problem}:{})}])) as Record<SourceKey,SourceState>}},subscribe(fn:()=>void){listeners.add(fn);return()=>{listeners.delete(fn)}},hidePrivate(){hide()},
+  async refresh(){if(closed||blocked)return;controller?.abort();const selected=++sequence,life=epoch,abort=new AbortController();controller=abort;const owned=()=>!closed&&!blocked&&sequence===selected&&epoch===life,current=()=>owned()&&!abort.signal.aborted
+   if(!await verify(current)||!current())return;visible=true;problem='';sources=Object.fromEntries(keys.map(key=>[key,{...sources[key],loading:true,error:undefined}])) as Record<SourceKey,SourceState>;publish()
+   let timer:ReturnType<typeof setTimeout>|undefined
+   try{const cycle=options.readCycle(current,abort.signal);await Promise.race([Promise.allSettled(keys.map(async key=>{try{const data=await cycle.read(key);if(!current()||!await verify(current)||!current())return;sources={...sources,[key]:{data,loadedAt:(options.now??Date.now)(),loading:false}};publish()}catch(error){if(!current())return;if([401,403,412].includes(status(error))){hide(true);return}sources={...sources,[key]:{...sources[key],loading:false,error:'当前来源未核实，请刷新重试；不以零值替代。'}};publish()}})),new Promise(resolve=>{timer=setTimeout(()=>{abort.abort();resolve(null)},budget)})])}catch{if(owned())sources=Object.fromEntries(keys.map(key=>[key,{...sources[key],loading:false,error:'来源读取未开始，请重新核实当前接口。'}])) as Record<SourceKey,SourceState>}finally{clearTimeout(timer);if(owned()){controller=null;sources=Object.fromEntries(keys.map(key=>[key,{...sources[key],loading:false,...(abort.signal.aborted?{error:'读取超时，当前来源未核实。'}:{})}])) as Record<SourceKey,SourceState>;publish()}}
+  },dispose(){closed=true;epoch++;sequence++;controller?.abort();controller=null;visible=false;sources=initial();listeners.clear()}
+ }
+}

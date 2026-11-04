@@ -19,7 +19,7 @@ import {verifyAgentCallerCredentials} from './agent-caller-audit.ts'
 import {verifyOwnerToolTrialCredentials} from './owner-tool-trial-audit.ts'
 import {inspectOptionalNativeHomeAuthoringSchema} from './native-home-authoring-audit.ts'
 import {inspectOptionalNativeAgentCatalogSchema} from './native-agent-catalog-audit.ts'
-import {inspectOptionalOriginalHomeKnowledgeStatisticsSchema} from './native-home-knowledge-stats-audit.ts'
+import {inspectQuality089OriginalHomeKnowledgeStatisticsSchema} from './native-home-knowledge-stats-audit.ts'
 import {inspectOptionalNativeMonitorInbox} from './native-monitor-inbox-audit.ts'
 import {auditModelConfigReceipt075After069} from './model-config-receipt-startup075.ts'
 import {inspectOriginalSchedulesSchema} from './original-schedules-audit.ts'
@@ -75,7 +75,7 @@ async function watchRollback(pool,inspect){return await hostedQuality089Phase('i
 
 export async function verifyEmployeeQuality089ApiPool(pool,s,expected,target){return await hostedQuality089Phase('verify_body',async()=>{
  assertEmployeeQuality089Snapshot(s,expected);quality089Target(target);const before=await hostedQuality089Phase('verify_01',()=>auditApi(pool,s,target))
- for(const check of [inspectOptionalNativeHomeAuthoringSchema,inspectOptionalNativeAgentCatalogSchema,inspectOptionalOriginalHomeKnowledgeStatisticsSchema,inspectOptionalNativeMonitorInbox])if(await hostedQuality089Phase('verify_02',()=>watchRollback(pool,check))!=='installed')fail('parent_optional_audit')
+ for(const check of [inspectOptionalNativeHomeAuthoringSchema,inspectOptionalNativeAgentCatalogSchema,inspectQuality089OriginalHomeKnowledgeStatisticsSchema,inspectOptionalNativeMonitorInbox])if(await hostedQuality089Phase('verify_02',()=>watchRollback(pool,check))!=='installed')fail('parent_optional_audit')
  await hostedQuality089Phase('verify_03',()=>watchRollback(pool,auditModelConfigReceipt075After069));if(await hostedQuality089Phase('verify_04',()=>watchRollback(pool,inspectOriginalSchedulesSchema))!==true)fail('parent_schedule_audit')
  const after=await hostedQuality089Phase('verify_05',()=>auditApi(pool,s,target));if(canonical(before)!==canonical(after))fail('catalog_changed')
  return Object.freeze({profile:employeeQuality089Profile,source_sha256:expected,target,catalog_sha256:after.digest,actual_API_LOGIN:true,whole_catalog_and_ledger:true,original046_preinstall_and069_070_073_075_078_089_audits:true,old_profile_accepts089:false,Native_server_process_entry_verified:false,production_GO:false})

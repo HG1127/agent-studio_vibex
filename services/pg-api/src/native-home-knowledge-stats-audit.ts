@@ -1,9 +1,11 @@
+const quality089HomeStatisticsParentToken=Symbol('named_quality089_home_statistics_parent')
 import {createHash} from 'node:crypto'
 import {HttpError,type SqlClient,type SqlPool} from './contracts.ts'
 import {originalHomeStatisticsFunctionPins} from './native-home-knowledge-stats-pins.ts'
 import {originalHome070PresenceSql,verifyNativeHomeAuthoringSchema} from './native-home-authoring-audit.ts'
 import {originalAgentCatalog071PresenceSql,verifyNativeAgentCatalogSchema} from './native-agent-catalog-audit.ts'
 import {verifyKnowledgeHelperCredentials} from './knowledge-content-privileges.ts'
+import {verifyQuality089KnowledgeHelperCredentials} from './quality089-knowledge-parent-audit.ts'
 import {verifyApprovalDelegationCredentials} from './approval-delegation-audit.ts'
 import {verifyNativeLocalDeviceSchema} from './native-local-device-audit.ts'
 import {verifyAgentCallerCredentials} from './agent-caller-audit.ts'
@@ -44,24 +46,28 @@ export async function verifyOriginalHomeKnowledgeAclDependencies(db:SqlClient):P
 export async function verifyOriginalHomeKnowledgeStats(db:SqlClient):Promise<void>{
  await verifyOriginalHomeKnowledgeAclDependencies(db);exact((await db.query<{kind:string;name:string}>(originalHomeStatisticsPresenceSql)).rows,expected072);await functions(db,true)
 }
-async function fullPredecessor(db:SqlClient):Promise<void>{
+async function fullPredecessor(db:SqlClient,profileToken?:symbol):Promise<void>{
+ const qualityMode=profileToken!==undefined&&profileToken===quality089HomeStatisticsParentToken;if(profileToken!==undefined&&!qualityMode)unavailable()
  exact((await db.query<{kind:string;name:string}>(originalHome070PresenceSql)).rows,expected070)
  exact((await db.query<{kind:string;name:string}>(originalAgentCatalog071PresenceSql)).rows,expected071)
  await verifyNativeHomeAuthoringSchema(db);await verifyNativeAgentCatalogSchema(db)
  // Original functions run verbatim on the actual072 catalog. No filtered view
  // is passed to any old auditor and no old complete069 receipt is minted.
  for(const verify of [verifyApprovalDelegationCredentials,verifyNativeLocalDeviceSchema,verifyAgentCallerCredentials,verifyOwnerToolTrialCredentials])if(await verify(db)!==true)unavailable()
- await verifyKnowledgeHelperCredentials(db)
+ if(qualityMode)await verifyQuality089KnowledgeHelperCredentials(db);else await verifyKnowledgeHelperCredentials(db)
  const tables=(await db.query<{name:string;ok:boolean}>("SELECT c.relname::text AS name,c.relkind='r' AND c.relrowsecurity AND c.relforcerowsecurity AS ok FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='agentstudio' AND c.relname IN('knowledge_access','knowledge_access_receipts','knowledge_content_receipts','knowledge_bases','knowledge_documents','knowledge_chunks') ORDER BY c.relname")).rows
  if(tables.length!==6||tables.some(row=>row.ok!==true)||new Set(tables.map(row=>row.name)).size!==6)unavailable()
 }
-export async function inspectOptionalOriginalHomeKnowledgeStatisticsSchema(pool:SqlPool):Promise<'absent'|'installed'>{
+export async function inspectOptionalOriginalHomeKnowledgeStatisticsSchema(pool:SqlPool,profileToken?:symbol):Promise<'absent'|'installed'>{
+ const qualityMode=profileToken!==undefined&&profileToken===quality089HomeStatisticsParentToken;if(profileToken!==undefined&&!qualityMode)unavailable()
  const db=await pool.connect();let primary:unknown,discard=false
  try{
   await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');await db.query('SET LOCAL ROLE agentstudio_api');await db.query('SET LOCAL search_path=pg_catalog');await principal(db)
   const rows=(await db.query<{kind:string;name:string}>(originalHomeStatisticsPresenceSql)).rows
   if(!Array.isArray(rows))unavailable();if(rows.length===0)return'absent'
-  exact(rows,expected072);await verifyOriginalHomeKnowledgeStats(db);await fullPredecessor(db);return'installed'
+  exact(rows,expected072);await verifyOriginalHomeKnowledgeStats(db);await fullPredecessor(db,qualityMode?quality089HomeStatisticsParentToken:undefined);return'installed'
  }catch(error){primary=error;throw error}
  finally{try{await db.query('ROLLBACK')}catch{discard=true;if(primary===undefined)throw Error('original_home_statistics_schema_rollback_required')}finally{if(discard)Reflect.apply(db.release,db,[true]);else db.release()}}
 }
+
+export async function inspectQuality089OriginalHomeKnowledgeStatisticsSchema(pool:SqlPool):Promise<'absent'|'installed'>{return await inspectOptionalOriginalHomeKnowledgeStatisticsSchema(pool,quality089HomeStatisticsParentToken)}

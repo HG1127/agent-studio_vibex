@@ -1,3 +1,4 @@
+import {parseOriginalHarnessSnapshot} from '../../../shared/original-harness-contract.ts'
 import {readOriginalInternalOverview} from './original-internal-overview-read.ts'
 // Owner metadata projections. No task bodies, mutations or action authority.
 import {HttpError,type Identity,type SqlClient,type SqlPool} from "./contracts.ts"
@@ -127,6 +128,9 @@ function originalMeta(raw:unknown):OriginalAgentMeta{
  return parseOriginalAgentMeta({id:row.run_id,spec_id:row.resource_id,spec_name:displayName(row.resource_name),engine_kind:row.kind,status:row.status,
   created:ownPublicStamp(ownStamp(row.created_at_us,true)),updated:ownPublicStamp(ownStamp(row.updated_at_us,true))})
 }
+export const originalHarnessRunCountsSql=ownOperationsRunCte+" SELECT count(*) FILTER(WHERE kind IS NOT NULL)::text AS run_count,count(*) FILTER(WHERE kind IN('agent_single','agent_autonomous'))::text AS agent_run_count,count(*) FILTER(WHERE kind IN('workflow_v2','workflow_safe'))::text AS workflow_run_count,count(*) FILTER(WHERE kind IS NULL)::text AS unsupported_runs FROM owned_runs"
+export const originalHarnessCallsSql="SELECT count(*)::text AS calls,count(*) FILTER(WHERE e.status='started')::text AS started,count(*) FILTER(WHERE e.status='succeeded')::text AS succeeded,count(*) FILTER(WHERE e.status='failed')::text AS failed,count(*) FILTER(WHERE e.status='unknown')::text AS unknown FROM agentstudio.external_effects e JOIN agentstudio.runs r ON r.id=e.run_id AND r.owner_user_id=e.owner_user_id WHERE e.owner_user_id=$1::uuid AND e.tool_name IN('workflow:tool','calculate','summarize','knowledge_search','web_fetch','web_search')"
+export const originalHarnessRecentSql=ownOperationsRunCte+" SELECT id AS run_id,kind,resource_id,left(resource_name_full,120) AS resource_name,status,"+micro('created_at')+" AS created_at_us,"+micro('updated_at')+" AS updated_at_us,"+micro('finished_at')+" AS finished_at_us FROM owned_runs WHERE kind=ANY($2::text[]) ORDER BY created_at DESC,id DESC LIMIT 20"
 export class OwnOperationsRepository{
  readonly pool:SqlPool
  constructor(pool:SqlPool){this.pool=pool}
@@ -182,6 +186,17 @@ export class OwnOperationsRepository{
    const items=(await db.query(originalAgentPendingPageSql,[...params,q.perPage,(q.page-1)*q.perPage])).rows.map(originalMeta)
    return parseOriginalAgentPendingPage({protocol:'native_original_agent_pending_v1',scope:'current_user',employee_id:owner,as_of:ownPublicStamp(now),
     items,totalItems:total,totalPages:Math.max(1,Math.ceil(total/q.perPage)),...q},q)
+  })
+ }
+ async originalHarness(identity:Identity,expectedEmployee:string){
+  ownId(expectedEmployee)
+  return this.actor(identity,async(db,owner,now)=>{
+   if(owner!==expectedEmployee)return ownUnavailable()
+   const runRows=(await db.query(originalHarnessRunCountsSql,[owner])).rows,callRows=(await db.query(originalHarnessCallsSql,[owner])).rows;if(runRows.length!==1||callRows.length!==1)return ownUnavailable()
+   const runRaw=exact(runRows[0],['run_count','agent_run_count','workflow_run_count','unsupported_runs']),callRaw=exact(callRows[0],['calls','started','succeeded','failed','unknown']),run_counts=Object.fromEntries(Object.entries(runRaw).map(([k,v])=>[k,ownDatabaseCount(v)])),call_counts=Object.fromEntries(Object.entries(callRaw).map(([k,v])=>[k,ownDatabaseCount(v)]))
+   const recent=async(kinds:string[])=>{const rows=(await db.query(originalHarnessRecentSql,[owner,kinds])).rows;if(rows.length>20)return ownUnavailable();return rows.map(row=>{const r=exact(row,['run_id','kind','resource_id','resource_name','status','created_at_us','updated_at_us','finished_at_us']);return parseOwnRunMeta({run_id:r.run_id,kind:r.kind,resource_id:r.resource_id,resource_name:displayName(r.resource_name),status:r.status,created_at:ownPublicStamp(ownStamp(r.created_at_us,true)),updated_at:ownPublicStamp(ownStamp(r.updated_at_us,true)),finished_at:r.finished_at_us===null?null:ownPublicStamp(ownStamp(r.finished_at_us,true))})})}
+   const agents=await recent(['agent_single','agent_autonomous']),workflows=await recent(['workflow_v2','workflow_safe'])
+   return parseOriginalHarnessSnapshot({protocol:'native_original_harness_v1',scope:'current_user',employee_id:owner,as_of:ownPublicStamp(now),run_counts,call_counts,agents,workflows,history_limit_per_kind:20,worker_heartbeats:'unavailable',retry_count:null,external_invocation_count:null},owner)
   })
  }
  async overview(identity:Identity):Promise<OwnOverview>{

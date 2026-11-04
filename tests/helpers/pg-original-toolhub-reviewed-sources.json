@@ -393,7 +393,7 @@
     },
     {
       "path": "services/pg-api/src/autonomous-agent-run-repository.ts",
-      "sha256": "e266b2d2f7ca44904202736d2a034e52f32ab4a8ef4591e12cbeac9d48575e56"
+      "sha256": "b0817505717c73a447537e76ec9ad70e6deb30a1e69c0ad1ff609760a9df55c7"
     },
     {
       "path": "services/pg-api/src/baota-pg18-fresh-init.mjs",
@@ -457,7 +457,7 @@
     },
     {
       "path": "services/pg-api/src/http.ts",
-      "sha256": "9082bdffb32b693a75fbc8438f0f7628e8ca93283f50ec748bdda089bae3d827"
+      "sha256": "b3c65ab1ceb9015736f30bd6c71b372e938552378848c4d5ba7eb5e65953742a"
     },
     {
       "path": "services/pg-api/src/knowledge-access-repository.ts",
@@ -617,7 +617,7 @@
     },
     {
       "path": "services/pg-api/src/mcp-connection-repository.ts",
-      "sha256": "dd098b36c036d0af43fafc785ac91698779e63da39daf3b36f7e25f20ef70f1b"
+      "sha256": "4201ae91547bec61712ea776c99cfe9162fcd723de091456a746b3482f0b5b4a"
     },
     {
       "path": "services/pg-api/src/mcp-discovery.ts",
@@ -685,7 +685,7 @@
     },
     {
       "path": "services/pg-api/src/native-config-uat-policy.ts",
-      "sha256": "1aed2c17497c1f2ea6bbc8ca958843747da160a227f5cb7375c78725e1d7211d"
+      "sha256": "8905327f7d90356ac4833c2d42c373ff2639f2733a18653190ad77a45307a04f"
     },
     {
       "path": "services/pg-api/src/native-employee-auth.mjs",
@@ -717,7 +717,7 @@
     },
     {
       "path": "services/pg-api/src/native-home-knowledge-stats-audit.ts",
-      "sha256": "ea7804b2e177223cf2bdfe45d5e78a789998086d9792930db787ca6856f30337"
+      "sha256": "fa87b9c45ffe2bbb22460e6d6ab2d6ffc87c5204afa9c7ff1d4b3c76a3bd8dbb"
     },
     {
       "path": "services/pg-api/src/native-home-knowledge-stats-pins.ts",
@@ -1001,7 +1001,7 @@
     },
     {
       "path": "services/pg-api/src/own-operations-repository.ts",
-      "sha256": "092699446d390974ea20cdb62c4d386d82b702dc7cc67526ab08ba5e1f816679"
+      "sha256": "13f2f136c17c596b2d5bb402cc2ca02ad9880421129828aa571f2ad4b89fe3e3"
     },
     {
       "path": "services/pg-api/src/owned-step-decision-context.ts",
@@ -1125,7 +1125,7 @@
     },
     {
       "path": "services/pg-api/src/smithery-repository.ts",
-      "sha256": "e091ad51dc41bfcb383a81a356c3886e61f01402ee1782f3f73fd129993a5a5e"
+      "sha256": "f2f35ee47bae05aeb13b74cef288ec56b3bb8531d3d8d34a1a4cde82fd2989bb"
     },
     {
       "path": "services/pg-api/src/tool-connection-page-cursor.ts",
@@ -1261,7 +1261,7 @@
     },
     {
       "path": "services/pg-api/src/workflow-v2-tool-dispatch.ts",
-      "sha256": "e330134d53507437878b7ffb152c29d370cb9d6ee693c375d490e76c389bb837"
+      "sha256": "37686e9556eea8b75fff32bb3c8ebb2d3ef501675a5f230377a8dd0f8c354d0b"
     },
     {
       "path": "services/pg-api/src/workflow-v2-tool-handler.ts",
@@ -1269,7 +1269,7 @@
     },
     {
       "path": "services/pg-api/src/workflow-v2-tool-network.ts",
-      "sha256": "5b3e2e29bdfb314fe61f78bf143a9c0c5eff98d2e437cf89c5409cfb07a2eec5"
+      "sha256": "58f12257497acaa63bfa1a986679c63712f88a471ae3fdcaaf98e97b416f37bc"
     },
     {
       "path": "services/pg-api/src/workflow-v2-tool-plan.ts",
@@ -1317,7 +1317,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-genuine-fixture.mjs",
-      "sha256": "40161a17e920a916363ec9c881dcbd2a418fdd11af6c24185410b1b0c33dea94"
+      "sha256": "56f8692758d9457343b99f410f06dde08caf608cbce587c30fd7f6d757c0131a"
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-genuine-guard.mjs",
@@ -1325,7 +1325,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-genuine-source-pins.mjs",
-      "sha256": "29e380aca1137fb0be50732004696592543ec97e4fe1cfd28bd10e14d0bb7953"
+      "sha256": "ab0989249f6a4f3231ddfa6814b0a8760523a9e1691b16a4343fc77eb8b318e7"
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-original-home-guard.mjs",
@@ -1333,7 +1333,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-original-home-reviewed-sources.json",
-      "sha256": "4fe9ab52a6f3e2a1c25368662257c01d5aca2c4c15a20a6ad2e2d08be46c7792"
+      "sha256": "779387c2aa6af472ed345f4ebcce76f53377a02660774030a867398d0539e3bd"
     },
     {
       "path": "services/pg-api/tests/helpers/workflow-v2-agent-fixture.mjs",
@@ -1469,7 +1469,7 @@
     },
     {
       "path": "src/App.tsx",
-      "sha256": "a3b452e96f14107af889970da4fb007ffe8a77c1f70a4d9f68d4f3fb434136b4"
+      "sha256": "a5bd3f40d38694b6e53c95ba429c14c780b866c0bc3768ef391e1822c9a7cc96"
     },
     {
       "path": "src/components/agent-run/AgentInputCard.tsx",
@@ -1705,19 +1705,19 @@
     },
     {
       "path": "src/components/plugin-market/InvokeTestPanel.tsx",
-      "sha256": "f462303c84c3081fb919c86fcf0a08e361a05db246faff931ff06b70760bd502"
+      "sha256": "afec56ebf0a77cf1b8e3f86801ca2516fd064b766141fd43f1a7c7680c93446a"
     },
     {
       "path": "src/components/plugin-market/MarketBrowser.tsx",
-      "sha256": "57f53c9c0182b98197a3108c75442368a43fc544126e5517d91ebdd80bdf6102"
+      "sha256": "1c3effde564caa1ba861f69ae1725540d81e93eb91367bb292f569e5178c246f"
     },
     {
       "path": "src/components/plugin-market/MarketInvocationLog.tsx",
-      "sha256": "5a0e522644210d74c30d355ae414bf49782b7c5d453ebc60d2582c5d4a980e0a"
+      "sha256": "9a9f5439b4519da06ed31d1bee9f4e0616b8dc9de16733271a9784ede02b17f4"
     },
     {
       "path": "src/components/plugin-market/MyConnectionsBar.tsx",
-      "sha256": "58e3ffed966206d0aa8551d0adf73e87886f727ab54b78811d440814872248d3"
+      "sha256": "6770e090ea5dfafa443c6c9f608bda4d914d4025d310f708af035502338d0340"
     },
     {
       "path": "src/components/plugin-market/PluginDetailDrawer.tsx",
@@ -1733,7 +1733,7 @@
     },
     {
       "path": "src/components/plugin-market/SmitheryConnectCard.tsx",
-      "sha256": "82883af6510fc8623873baba900897fa7d9cf2a919120213f137ecd39bc53810"
+      "sha256": "b1a913945fc1b4a5a26fa803768b7c0362d751d8c7919ded85708bf5a4adeb1b"
     },
     {
       "path": "src/components/run-detail/RdActionBar.tsx",
@@ -2493,7 +2493,7 @@
     },
     {
       "path": "src/lib/originalToolConnections.ts",
-      "sha256": "645a248ca9a22d255edb168b6a66c0d7fe32abc31d5fa75340b3e2f39117e11d"
+      "sha256": "69577d18cc20d8fc6e3a16e782e68338b10693d52c75395172d6d08952a6ebb9"
     },
     {
       "path": "src/lib/originalToolConnectionsApi.ts",
@@ -2969,7 +2969,7 @@
     },
     {
       "path": "src/pages/AgentCreate/AgentCreatePage.tsx",
-      "sha256": "92c8a5c71e2b6b01433daf97a590b41bd519d1ec796b6ec5c32b4e84366da31a"
+      "sha256": "f984f25dc3bdac6a9a8e473b8491c40c3cf2c7903e82450ab668512c02717981"
     },
     {
       "path": "src/pages/AgentRun/AgentRunPage.tsx",
@@ -3005,7 +3005,7 @@
     },
     {
       "path": "src/pages/Home/useHome.ts",
-      "sha256": "f3c10c5b335e9775c01019c9cc4cb46805372e9f02e1357c50a7372c8b289d5c"
+      "sha256": "022d8285c4806db789b782785505b8232ee5d498bcc69d24547d939780df7071"
     },
     {
       "path": "src/pages/Integrate/index.tsx",
@@ -3381,11 +3381,11 @@
     },
     {
       "path": "src/pages/PluginMarket/PluginMarketPage.tsx",
-      "sha256": "e557fd61cc33111f26d1b036cb5579b095ed0b0d090e27465ead6f72b6815f27"
+      "sha256": "65c546fa635f39d352aaf2f0f8df34a3ca933d85f46d77b25b7cc4cfb1d098eb"
     },
     {
       "path": "src/pages/PluginMarket/usePluginMarket.ts",
-      "sha256": "656c8cb9f45562487d6d690362d19f5b859ecc0610a3c36a49701144956627c7"
+      "sha256": "e9d872db846e87c9d6a08f07ee56898981d70944a559b16f9934c616b79f9c81"
     },
     {
       "path": "src/pages/RunDetail/index.tsx",
@@ -3469,7 +3469,7 @@
     },
     {
       "path": "src/pages/ToolConnections/usePgToolConnections.ts",
-      "sha256": "b4f36a36cd2530f59e590f8543b8ae67b1290f56b8e7d44c9997bc9584cda0db"
+      "sha256": "7105c52ca0b66ba05dd201df8ca42dd2b4c8ee2438591b32156794d200ef5a2e"
     },
     {
       "path": "src/pages/ToolConnections/useToolConnections.ts",
@@ -3521,7 +3521,7 @@
     },
     {
       "path": "tests/helpers/pg-original-toolhub-genuine-fixture.mjs",
-      "sha256": "ee655f92ab551176352feb1fbf21e5e058962e0dcbdc92e14462c4d01535e29b"
+      "sha256": "531ae45a453d01ba175b68b246ae43b75c5ed16ba16364166f23870cf6150eb3"
     },
     {
       "path": "tests/helpers/pg-original-toolhub-genuine-guard.mjs",

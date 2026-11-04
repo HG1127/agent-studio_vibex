@@ -1,3 +1,4 @@
+import {parseOriginalAgentCreateTrial,originalAgentCreateTrialProtocol,type OriginalAgentCreateTrial} from '../../../shared/original-agent-create-read-contract.ts'
 import {originalRunOptionsProtocol} from '../../../shared/original-agent-run-options.ts'
 import {parseOriginalRunOptions} from '../../../shared/original-agent-run-options.ts'
 import {bindOriginalRunAdmission,originalRunAdmissionMatches} from './original-agent-run-options-policy.ts'
@@ -73,6 +74,28 @@ export class AutonomousAgentRunRepository extends WorkflowV2RunRepository{
     const local=(await db.query<{device_id:string|null;tasks:unknown}>("SELECT agentstudio.native_local_admission_device($1::uuid) AS device_id,agentstudio.native_local_run_tasks($1::uuid) AS tasks",[row.id])).rows
     if(local.length!==1)throw Error("native_local_invalid_admission_projection")
     return {...result,...(roleProjection?{original_role:roleProjection}:{}),...(proof?{optimization_retest:proof}:{}),local_device_id:local[0]!.device_id,local_tasks:local[0]!.tasks}
+  }
+  /** Exact latest run for the original five-stage creation page; no bounded global list. */
+  async latestForOriginalCreate(identity:Identity,specId:string,revision:number,expectedEmployee:string){
+    if(identity?.issuer!=='urn:agentstudio:local:v1'||!isUuid(expectedEmployee))throw new HttpError(403,'native_employee_identity_required')
+    if(!isUuid(specId)||!Number.isSafeInteger(revision)||revision<1||revision>=Number.MAX_SAFE_INTEGER)throw new HttpError(400,'invalid_original_agent_create_trial')
+    specId=specId.toLowerCase()
+    return withActor(this.pool,identity,async(db,owner)=>{
+      assertOriginalUiEmployee(owner,expectedEmployee);await assertOwnedAdmissionContext(db,owner)
+      const current=(await db.query<{revision:string|number;updated_at:Date|string}>('SELECT revision,updated_at FROM agentstudio.agent_specs WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE',[specId,owner])).rows
+      if(current.length!==1)throw new HttpError(404,'agent_spec_not_found')
+      if(Number(current[0]!.revision)!==revision)throw new HttpError(409,'original_create_spec_changed')
+      const rows=(await db.query<WorkflowV2RunRow>('SELECT '+workflowV2RunColumns+" FROM agentstudio.runs WHERE owner_user_id=$1::uuid AND agent_spec_id=$2::uuid AND kind='agent' AND checkpoint->>'execution_mode'='agent_native_v2' ORDER BY created_at DESC,id DESC LIMIT 1",[owner,specId])).rows
+      if(rows.length>1)throw new HttpError(503,'invalid_original_agent_create_trial')
+      const timestamp=(v:Date|string)=>{const d=v instanceof Date?v:new Date(v);if(!Number.isFinite(d.getTime()))throw new HttpError(503,'invalid_original_agent_create_trial');return d.toISOString()}
+      let run:OriginalAgentCreateTrial['run']=null
+      if(rows[0]){const value=await this.assemble(db,owner,rows[0],true),actual=value.run,runRevision=Number(actual.checkpoint.spec_revision)
+        if(actual.id!==rows[0].id||actual.agent_spec_id!==specId||actual.owner_user_id!==owner||!Number.isSafeInteger(runRevision)||runRevision<1||runRevision>revision)throw new HttpError(503,'invalid_original_agent_create_trial')
+        const outputsCurrent=value.knowledge_outputs_available===true&&runRevision===revision
+        run={id:actual.id,spec_id:specId,spec_revision:runRevision,status:actual.status,created:timestamp(actual.created_at),instruction:outputsCurrent?actual.instruction:'',result:outputsCurrent&&actual.status==='succeeded'?actual.result_text:'',outputs_current:outputsCurrent}
+      }
+      try{return parseOriginalAgentCreateTrial({protocol:originalAgentCreateTrialProtocol,owner_user_id:owner,spec_id:specId,spec_revision:revision,spec_updated_at:timestamp(current[0]!.updated_at),run},{owner,specId,revision})}catch{throw new HttpError(503,'invalid_original_agent_create_trial')}
+    })
   }
   /** Complete owner-scoped history metadata for the existing comparison card. */
   async history(identity:Identity,specId:string,anchorRunId:string,page=1){

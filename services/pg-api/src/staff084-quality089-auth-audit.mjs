@@ -1,7 +1,7 @@
 import {complete078StaffQuality089CatalogSQL} from './staff084-complete078-auth-catalog.mjs'
 import {inspectComplete078StaffExtensions} from './staff084-complete078-auth-extension.mjs'
 const complete078QualityToken=Symbol('named_complete069_employee078_staff084')
-import {hostedProfileCatalogRefusal} from './hosted-profile-diagnostic.mjs'
+import {emitHostedStaffComplete078ContractRefusal,hostedProfileCatalogRefusal} from './hosted-profile-diagnostic.mjs'
 import {createHash} from 'node:crypto'
 import {isProxy} from 'node:util/types'
 import {originalStaff084Tables as tables,originalStaffRevisionGuardSha256} from './original-staff-schema084.mjs'
@@ -68,7 +68,7 @@ export function assertStaffQuality089AuthCatalog(raw,profileToken){
  if(v.user_policies.length!==3)(diagnosticCheck=133,bad());;for(const [name,command,using,check]of [['native_auth_verified_local_users','r',"external_issuer='urn:agentstudio:local:v1'",null],['native_auth_update_local_users','w',"external_issuer='urn:agentstudio:local:v1'","external_issuer='urn:agentstudio:local:v1'"],['native_auth_insert_local_users','a',null,"external_issuer='urn:agentstudio:local:v1' AND status='active'"]]){const p=(diagnosticCheck=134,one(v.user_policies,p=>p.name===name));;(diagnosticCheck=135,exact(p,['name','command','roles','permissive','using','check']));;if(p.command!==command||p.permissive!==true)(diagnosticCheck=136,bad());;;(diagnosticCheck=137,eq(p.roles,[Number(auth.oid)]));;;(diagnosticCheck=138,eq(p.using===null?null:(diagnosticCheck=139,expression(p.using)),using===null?null:(diagnosticCheck=140,expression(using))));;;(diagnosticCheck=141,eq(p.check===null?null:(diagnosticCheck=142,expression(p.check)),check===null?null:(diagnosticCheck=143,expression(check))));}
  ;(diagnosticCheck=144,exact(v.violations,['default_acl','event_triggers','extension_members']));;if(Object.values(v.violations).some(x=>x!==0))(diagnosticCheck=145,bad());
  if(completeMode)return extension.receipt
- }catch(error){hostedProfileCatalogRefusal('staff084_quality089',diagnosticCheck);throw error}
+ }catch(error){if(completeMode)emitHostedStaffComplete078ContractRefusal('staff084_quality089',diagnosticCheck,error);hostedProfileCatalogRefusal('staff084_quality089',diagnosticCheck);throw error}
 }
 export async function verifyStaffQuality089AuthSchema(db){const rows=(await db.query(staffQualityAuthCatalogSQL)).rows;if(!Array.isArray(rows)||rows.length!==1)bad();assertStaffQuality089AuthCatalog(rows[0]?.value)}
 

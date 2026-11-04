@@ -1079,6 +1079,8 @@ export function useHome() {
     isSaving,
     savedMsg,
     savedSpecId,
+    nativeCreationOwner:nativeApi?rhUserId:null,
+    nativeSavedRevision:nativeApi&&nativeContext?.id===savedSpecId?nativeContext.revision:null,
     errorMsg,
     specDirty,
     lastSavedAt,

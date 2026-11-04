@@ -1,7 +1,7 @@
 import {complete078Staff084CatalogSQL} from './staff084-complete078-auth-catalog.mjs'
 import {inspectComplete078StaffExtensions} from './staff084-complete078-auth-extension.mjs'
 const complete078StaffToken=Symbol('named_complete069_employee078_staff084')
-import {hostedProfileCatalogRefusal,emitHostedStaffNamespaceAclDifference,emitHostedStaff031InventoryDifference,staff031InventoryObservation} from './hosted-profile-diagnostic.mjs'
+import {emitHostedStaffComplete078ContractRefusal,hostedProfileCatalogRefusal,emitHostedStaffNamespaceAclDifference,emitHostedStaff031InventoryDifference,staff031InventoryObservation} from './hosted-profile-diagnostic.mjs'
 import {createHash} from 'node:crypto'
 import {isProxy} from 'node:util/types'
 import {originalStaff084Tables as tables,originalStaffRevisionGuardSha256} from './original-staff-schema084.mjs'
@@ -72,7 +72,7 @@ export function assertOriginalStaff084Catalog(raw,profileToken){
  if(v.user_policies.length!==3)(diagnosticCheck=124,bad());;for(const [name,command,using,check]of [['native_auth_verified_local_users','r',"external_issuer='urn:agentstudio:local:v1'",null],['native_auth_update_local_users','w',"external_issuer='urn:agentstudio:local:v1'","external_issuer='urn:agentstudio:local:v1'"],['native_auth_insert_local_users','a',null,"external_issuer='urn:agentstudio:local:v1' AND status='active'"]]){const p=(diagnosticCheck=125,one(v.user_policies,p=>p.name===name));;(diagnosticCheck=126,exact(p,['name','command','roles','permissive','using','check']));;if(p.command!==command||p.permissive!==true)(diagnosticCheck=127,bad());;;(diagnosticCheck=128,eq(p.roles,[Number(auth.oid)]));;;(diagnosticCheck=129,eq(p.using===null?null:(diagnosticCheck=130,expression(p.using)),using===null?null:(diagnosticCheck=131,expression(using))));;;(diagnosticCheck=132,eq(p.check===null?null:(diagnosticCheck=133,expression(p.check)),check===null?null:(diagnosticCheck=134,expression(check))));}
  ;(diagnosticCheck=135,exact(v.violations,['default_acl','event_triggers','extension_members']));;if(Object.values(v.violations).some(x=>x!==0))(diagnosticCheck=136,bad());
  if(completeMode)return extension.receipt
- }catch(error){hostedProfileCatalogRefusal('staff084_original',diagnosticCheck);throw error}
+ }catch(error){if(completeMode)emitHostedStaffComplete078ContractRefusal('staff084_original',diagnosticCheck,error);hostedProfileCatalogRefusal('staff084_original',diagnosticCheck);throw error}
 }
 export async function verifyOriginalStaff084Schema(db){const rows=(await db.query(originalStaffCatalog084SQL)).rows;if(!Array.isArray(rows)||rows.length!==1)bad();assertOriginalStaff084Catalog(rows[0]?.value)}
 

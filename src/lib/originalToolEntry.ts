@@ -1,0 +1,4 @@
+import {executionConnectionPreset} from './executionCapabilities.ts'
+export type OriginalToolEntry={kind:'preset';id:'browser-read'|'browser-action'|'desktop-document'}|{kind:'connection';id:string}
+/** URL may select a fixed template or a record ID, never URL/header/body data. */
+export function originalToolEntry(search:string):OriginalToolEntry|null{if(typeof search!=='string'||search.length>2400||search.includes('#'))return null;const params=new URLSearchParams(search);if(params.getAll('preset').length>1||params.getAll('connection').length>1)return null;const preset=executionConnectionPreset(params.get('preset'));if(preset)return{kind:'preset',id:preset.id};const id=params.get('connection');return id&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id)?{kind:'connection',id}:null}

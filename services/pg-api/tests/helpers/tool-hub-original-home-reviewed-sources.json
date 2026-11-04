@@ -347,7 +347,7 @@
     },
     {
       "path": "services/pg-api/src/native-home-knowledge-stats-audit.ts",
-      "sha256": "ea7804b2e177223cf2bdfe45d5e78a789998086d9792930db787ca6856f30337"
+      "sha256": "fa87b9c45ffe2bbb22460e6d6ab2d6ffc87c5204afa9c7ff1d4b3c76a3bd8dbb"
     },
     {
       "path": "services/pg-api/src/native-home-knowledge-stats-pins.ts",
@@ -503,7 +503,7 @@
     },
     {
       "path": "services/pg-api/src/own-operations-repository.ts",
-      "sha256": "092699446d390974ea20cdb62c4d386d82b702dc7cc67526ab08ba5e1f816679"
+      "sha256": "13f2f136c17c596b2d5bb402cc2ca02ad9880421129828aa571f2ad4b89fe3e3"
     },
     {
       "path": "services/pg-api/src/owned-step-decision-context.ts",
@@ -607,7 +607,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-genuine-fixture.mjs",
-      "sha256": "40161a17e920a916363ec9c881dcbd2a418fdd11af6c24185410b1b0c33dea94"
+      "sha256": "56f8692758d9457343b99f410f06dde08caf608cbce587c30fd7f6d757c0131a"
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-genuine-guard.mjs",
@@ -667,7 +667,7 @@
     },
     {
       "path": "tests/helpers/pg-original-toolhub-genuine-fixture.mjs",
-      "sha256": "ee655f92ab551176352feb1fbf21e5e058962e0dcbdc92e14462c4d01535e29b"
+      "sha256": "531ae45a453d01ba175b68b246ae43b75c5ed16ba16364166f23870cf6150eb3"
     },
     {
       "path": "tests/original-toolhub-home-purpose-pure.test.mjs",

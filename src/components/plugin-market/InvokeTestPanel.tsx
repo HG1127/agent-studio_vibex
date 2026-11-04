@@ -1,7 +1,10 @@
 import { AlertTriangle, CheckCircle2, FlaskConical, Loader2, Play, Timer } from "lucide-react"
 import type { ConnectionRow, InvokeOutcome, MarketTool } from "@/pages/PluginMarket/usePluginMarket"
 
+const nativeInvokeStatus:Record<string,string>={queued:'等待独立 Worker',running:'原任务推进中',awaiting_approval:'等待原步骤审批',unknown:'结果未确认',failed:'原任务失败',cancelled:'原任务已取消'}
+
 type InvokeTestPanelProps = {
+  nativeBackend?:boolean
   enabledConnections: ConnectionRow[]
   invokeConnId: string
   invokeConn: ConnectionRow | null
@@ -17,6 +20,7 @@ type InvokeTestPanelProps = {
 }
 
 export function InvokeTestPanel({
+  nativeBackend=false,
   enabledConnections,
   invokeConnId,
   invokeConn,
@@ -38,7 +42,7 @@ export function InvokeTestPanel({
         </span>
         <div>
           <h2 className="text-base font-semibold tracking-tight text-card-foreground">在线试调</h2>
-          <p className="text-xs text-muted-foreground">选插件和工具，填参数，真实调用一次并自动留档</p>
+          <p className="text-xs text-muted-foreground">{nativeBackend?'准备并提交一次原生试调；确认费用并批准原步骤后，由独立 Worker 执行':'选插件和工具，填参数，真实调用一次并自动留档'}</p>
         </div>
       </header>
 
@@ -108,7 +112,7 @@ export function InvokeTestPanel({
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg transition hover:bg-primary/90 hover:shadow-xl disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary"
           >
             {isInvoking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-            {isInvoking ? "正在真实调用…" : "真实调用"}
+            {nativeBackend?(isInvoking?'正在核对…':'准备 / 核对这次试调'):(isInvoking ? '正在真实调用…' : '真实调用')}
           </button>
 
           {invokeOutcome && (
@@ -122,12 +126,12 @@ export function InvokeTestPanel({
                 ) : (
                   <span className="inline-flex items-center gap-1 text-xs font-semibold text-destructive">
                     <AlertTriangle className="h-3.5 w-3.5" />
-                    调用失败{invokeOutcome.error_code ? `（${invokeOutcome.error_code}）` : ""}
+                    {nativeBackend&&invokeOutcome.native_state?(nativeInvokeStatus[invokeOutcome.native_state]??'尚未核实'):'调用失败'}{invokeOutcome.error_code ? `（${invokeOutcome.error_code}）` : ""}
                   </span>
                 )}
                 <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">
                   <Timer className="h-3 w-3" />
-                  {invokeOutcome.latency_ms} ms
+                  {invokeOutcome.latency_ms===null?'耗时未记录':invokeOutcome.latency_ms+' ms'}
                 </span>
                 {invokeOutcome.retried && <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">网络失败已自动重试 1 次</span>}
               </div>

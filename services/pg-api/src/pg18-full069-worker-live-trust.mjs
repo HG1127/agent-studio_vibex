@@ -2,7 +2,7 @@
 import fs from 'node:fs'
 import {measureFull069StablePhase} from './pg18-full069-stable-phase-observation.mjs'
 import path from 'node:path'
-import {createHash,createPublicKey,verify} from 'node:crypto'
+import {createHash,hash as digestBytes,createPublicKey,verify} from 'node:crypto'
 import {getCompileCacheDir} from 'node:module'
 import {execFileSync} from 'node:child_process'
 import {isNativeError} from 'node:util/types'
@@ -11,7 +11,7 @@ import {full069NetworkPolicyDigest} from './pg18-full069-network-policy.mjs'
 import {parseLiveProfile,parseCPreparationPair,closed,hex,uuid,freeze,liveFail} from './pg18-full069-worker-live-contract.mjs'
 import {captureFull069WorkerLiveSources,assertFull069WorkerLiveSources,liveRoot} from './pg18-full069-worker-live-sources.mjs'
 import {assertCompleteProfileOperatorRuntimeEnvironment} from './pg18-complete-operator-runtime.mjs'
-const contexts=new WeakMap(),sha=v=>createHash('sha256').update(v).digest('hex')
+const contexts=new WeakMap(),sha=v=>Buffer.isBuffer(v)?digestBytes('sha256',v,'hex'):createHash('sha256').update(v).digest('hex')
 const trustFailurePhases=new Set(['host_admission','configuration','operator_key','signed_profile','source_capture','source_verify','host_runtime','telemetry_read','telemetry_envelope','telemetry_root_profile','telemetry_binding','writer_scope','credential_read','C_records','handle_publish']),trustCredentialKeys=new Set(['admin','api','native_auth','worker','identity','broker','index_worker','index_broker','review_worker','employee_profile','employee_password','tls_ca','tls_certificate','tls_key','executor']),trustNodeErrorCodes=new Set(['ERR_MODULE_NOT_FOUND','ERR_PACKAGE_PATH_NOT_EXPORTED','ERR_UNSUPPORTED_DIR_IMPORT','ERR_REQUIRE_ESM','ERR_INVALID_ARG_TYPE','ERR_OSSL_EVP_UNSUPPORTED','ENOENT','EACCES','EPERM','EIO','ELOOP','EMFILE','ENFILE','ENOSPC','ETIMEDOUT','ECONNREFUSED','ECONNRESET','EPIPE']),trustErrorClasses=new Map([[Error.prototype,'Error'],[TypeError.prototype,'TypeError'],[RangeError.prototype,'RangeError'],[SyntaxError.prototype,'SyntaxError'],[WorkerHeartbeatControlError.prototype,'WorkerHeartbeatControlError']])
 // Closed observation data only. Never inspect message, stack, paths or values.
 export function full069WorkerLiveTrustFailureData(phase,error,credentialKey=null){

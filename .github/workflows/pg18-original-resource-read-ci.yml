@@ -1,0 +1,103 @@
+name: Agent Studio original ToolHub and Home PG18 isolated verification
+# Additive guard binds this independent workflow file; old F16 guard/name stays.
+on:
+  workflow_dispatch:
+    inputs:
+      run_original_resources:
+        type: boolean
+        required: true
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: original-resource-read-reviewed-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AGENT_STUDIO_TOOL_HUB_GENUINE_CI: YES_DISPOSABLE_F16_19_TOOL_HUB_ONLY
+  AGENT_STUDIO_PG_OWNER_TOOL_HUB_AVAILABLE: 'true'
+  AGENT_STUDIO_PG_OWNER_TOOL_HUB_APPROVED: APPROVE_DISPOSABLE_PG18_OWNER_TOOL_HUB_ONLY
+  AGENT_STUDIO_PG_OWNER_TOOL_TRIALS_ENABLED: 'true'
+  AGENT_STUDIO_PG_PUBLIC_MCP_REGISTRY_ENABLED: 'true'
+  AGENT_STUDIO_PG_PUBLIC_MCP_REGISTRY_APPROVED: APPROVE_DISPOSABLE_PG18_PUBLIC_REGISTRY_READ_ONLY
+  AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED: 'true'
+  AGENT_STUDIO_PG18_UAT_APPROVAL: APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY
+  AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_ENABLED: 'true'
+  AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_EXECUTION_ONLY
+  AGENT_STUDIO_PG_MCP_TOOLS_ENABLED: 'true'
+  AGENT_STUDIO_PG_MCP_TOOLS_APPROVED: APPROVE_DISPOSABLE_PG18_MCP_TOOLS_ONLY
+  AGENT_STUDIO_PG_AUTONOMOUS_AGENT_ENABLED: 'true'
+  AGENT_STUDIO_PG_AUTONOMOUS_AGENT_APPROVED: APPROVE_DISPOSABLE_PG18_AUTONOMOUS_AGENT_ONLY
+  AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+  AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+  AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+  AGENT_STUDIO_PG18_CI_PORT: '5432'
+  AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+  AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+  AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+jobs:
+  pg18-tool-hub-browser:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_original_resources == true && github.ref == 'refs/heads/codex/pg18-worker-heartbeat-20261028'
+    name: Original resource reads / ${{ matrix.case }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        case: [harness, execution_51]
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    env:
+      AGENT_STUDIO_TOOL_HUB_GENUINE_SUITE: browser
+      AGENT_STUDIO_ORIGINAL_RESOURCE_CI: YES_DISPOSABLE_ORIGINAL_RESOURCE_READ_ONLY
+      AGENT_STUDIO_ORIGINAL_RESOURCE_CASE: ${{ matrix.case }}
+      AGENT_STUDIO_ORIGINAL_RESOURCE_EXPECTED_HEAD: ${{ github.sha }}
+      AGENT_STUDIO_ORIGINAL_RESOURCE_SOURCES_SHA256: 'aa23e01c6033d7fe19fe60841a8fe8075a9723958a7228db9f4f7965404ba204'
+      AGENT_STUDIO_ORIGINAL_TOOL_HUB_WORKFLOW_CI: YES_DISPOSABLE_ORIGINAL_TOOLHUB_HOME_BROWSER_ONLY
+      AGENT_STUDIO_ORIGINAL_TOOL_HUB_CI: YES_DISPOSABLE_ORIGINAL_TOOL_HUB_ONLY
+      AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_CI: YES_DISPOSABLE_ORIGINAL_TOOL_HUB_HOME_READ_ONLY
+      AGENT_STUDIO_ORIGINAL_TOOL_HUB_EXPECTED_HEAD: ${{ github.sha }}
+      AGENT_STUDIO_ORIGINAL_TOOL_HUB_SOURCES_SHA256: 'c4bf032b4a89ac4bb7c3163b03d78734a682e90a07944ed2c776e2f9fc4611da'
+      AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_SOURCES_SHA256: '779387c2aa6af472ed345f4ebcce76f53377a02660774030a867398d0539e3bd'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install exact locked dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Original frontend/API compilers and pure refusal guard
+        run: |
+          pnpm exec tsc -p tsconfig.app.json --noEmit
+          pnpm --dir services/pg-api check
+          node --test --test-concurrency=1 services/pg-api/tests/tool-hub-genuine-guard.test.mjs tests/original-resource-fresh-job-guard-pure.test.mjs
+      - name: Install isolated Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: One selected original resource story on its own fresh PG service
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-resource-read-genuine.config.mjs
+      - name: Retain synthetic UI images only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-resource-${{ matrix.case }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-resource-read-genuine-results/**/*.png
+          if-no-files-found: ignore

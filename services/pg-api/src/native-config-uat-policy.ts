@@ -214,7 +214,7 @@ export function permitNativePg18BusinessUatRequest(
   }
   // Read-only owner metadata never inherits a configuration/submission gate.
   // The Native handler still verifies Cookie identity and installed schema.
-  if(pathname==="/api/v2/original-ui/internal-overview"||pathname==="/api/v2/own-overview"||pathname==="/api/v2/own-todos"||pathname==="/api/v2/original-ui/agent-workspace"||pathname==="/api/v2/original-ui/agent-pending")return method==="GET"
+  if(pathname==="/api/v2/original-ui/harness-snapshot"||pathname==="/api/v2/original-ui/internal-overview"||pathname==="/api/v2/own-overview"||pathname==="/api/v2/own-todos"||pathname==="/api/v2/original-ui/agent-workspace"||pathname==="/api/v2/original-ui/agent-pending")return method==="GET"
   // Original employee facades cross the same Native boundary as their older
   // API counterparts. Their own handlers still require the actual Cookie,
   // exact protocol header, employee precondition and transactional owner/CAS.
@@ -298,7 +298,7 @@ export function permitNativePg18BusinessUatRequest(
   if(/^\/api\/v2\/smithery\/(?:key|namespaces|catalog|connections)(?:\/[0-9a-fA-F-]{36}(?:\/(?:refresh|revoke|retry|pause))?)?$/.test(pathname))
     return policy.configurationWrites===true&&policy.smitheryManagementUat===true&&["GET","POST","DELETE"].includes(method)
   if(method==="POST"&&policy.configurationWrites===true&&policy.mcpDiscoveryUat===true&&
-    new RegExp("^/api/v2/mcp-connections/"+uuid+"/discover$").test(pathname))return true
+    (pathname==="/api/v2/original-ui/plugin-market/discover-preview"||new RegExp("^/api/v2/mcp-connections/"+uuid+"/discover$").test(pathname)))return true
   if(method==="DELETE"&&policy.configurationWrites===true&&
     new RegExp("^/api/v2/mcp-connections/"+uuid+"$").test(pathname))return true
   // Draft writes need config UAT. Background authority and occurrence actions
@@ -358,7 +358,7 @@ export function permitNativePg18BusinessUatRequest(
     if(method==="GET"&&new RegExp(
       "^/api/v2/workflow-validations/"+uuid+"$").test(pathname))return true
   }
-  if(method==="GET"&&(pathname==="/api/v2/agent-autonomous-runs"||pathname==="/api/v2/agent-autonomous-runs/history"||new RegExp(
+  if(method==="GET"&&(pathname==="/api/v2/agent-autonomous-runs"||pathname==="/api/v2/agent-autonomous-runs/history"||pathname==="/api/v2/agent-autonomous-runs/latest"||new RegExp(
     "^/api/v2/agent-autonomous-runs/"+uuid+"(?:/(?:steps|human-history))?$").test(pathname)))return true
   if(method==="POST"&&new RegExp("^/api/v2/agent-autonomous-runs/"+uuid+"/(?:cancel|pause-confirm|resume-confirm)$").test(pathname))return true
   if(method==="POST"&&new RegExp("^/api/v2/(?:agent-autonomous-runs|workflow-v2-runs)/"+uuid+"/respond-confirm$").test(pathname))return true

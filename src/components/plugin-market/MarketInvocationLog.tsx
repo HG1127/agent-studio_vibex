@@ -3,6 +3,8 @@ import type { MarketInvocationRow } from "@/pages/PluginMarket/usePluginMarket"
 import { formatMarketTime } from "@/pages/PluginMarket/usePluginMarket"
 
 type MarketInvocationLogProps = {
+  nativeBackend?:boolean
+  nativeLogState?:string
   invokeLog: MarketInvocationRow[]
   isLoadingLog: boolean
   expandedLogId: string
@@ -10,7 +12,7 @@ type MarketInvocationLogProps = {
   invokeStatusMeta: Record<string, { label: string; badge: string }>
 }
 
-export function MarketInvocationLog({ invokeLog, isLoadingLog, expandedLogId, onToggleRow, invokeStatusMeta }: MarketInvocationLogProps) {
+export function MarketInvocationLog({ nativeBackend=false,nativeLogState,invokeLog, isLoadingLog, expandedLogId, onToggleRow, invokeStatusMeta }: MarketInvocationLogProps) {
   return (
     <section className="flex h-full flex-col rounded-2xl border border-border bg-card p-5 shadow-md">
       <header className="flex min-h-14 shrink-0 items-center justify-between gap-2">
@@ -20,7 +22,7 @@ export function MarketInvocationLog({ invokeLog, isLoadingLog, expandedLogId, on
           </span>
           <div>
             <h2 className="text-base font-semibold tracking-tight text-card-foreground">调用留档</h2>
-            <p className="text-xs text-muted-foreground">最近 30 条市场插件调用（含助手运行中的真实调用）</p>
+            <p className="text-xs text-muted-foreground">{nativeBackend?'本人最多500个规范效果窗口中的前30个MCP记录；不代表全部历史，重试与未记录耗时保持未知':'最近 30 条市场插件调用（含助手运行中的真实调用）'}</p>
           </div>
         </div>
         <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs text-secondary-foreground">
@@ -37,7 +39,7 @@ export function MarketInvocationLog({ invokeLog, isLoadingLog, expandedLogId, on
       ) : invokeLog.length === 0 ? (
         <div className="mt-2 flex-1 rounded-xl border border-dashed border-border px-4 py-10 text-center">
           <History className="mx-auto h-6 w-6 text-muted-foreground" />
-          <p className="mt-2 text-sm font-medium text-card-foreground">暂无调用记录</p>
+          <p className="mt-2 text-sm font-medium text-card-foreground">{nativeBackend&&nativeLogState!=='loaded'?'调用来源尚未核实':'此窗口暂无调用记录'}</p>
           <p className="mt-1 text-xs text-muted-foreground">在左侧试调面板真实调用一次，或让助手在运行中使用市场插件工具，记录会自动出现在这里</p>
         </div>
       ) : (
@@ -56,7 +58,7 @@ export function MarketInvocationLog({ invokeLog, isLoadingLog, expandedLogId, on
                   <span className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-card-foreground">{row.tool_name}</span>
                   {row.retried && <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">重试</span>}
                   <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${meta.badge}`}>{meta.label}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">{row.latency_ms}ms</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{row.latency_ms===null?'未记录耗时':row.latency_ms+'ms'}</span>
                   <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">{formatMarketTime(row.created)}</span>
                 </button>
                 {expanded && (

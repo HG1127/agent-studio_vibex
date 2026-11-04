@@ -1,0 +1,48 @@
+{
+  "format": "web-citation-boundaries-sources.v4",
+  "source_baseline": "3011ae464cb4afa412ccdfb73196fba64adfe716",
+  "scope": "10 delta source pins; requires G01/G02/citation-v2/href-v3 first; Root F16 and G01 graphs separately mandatory; no reverse hash edges",
+  "actual_PG_verified": false,
+  "files": [
+    {
+      "path": "services/pg-api/src/model-connection-probe.ts",
+      "sha256": "ff5b6bb27b181cc7054f97b8164598c8ee3b0f07f05bd08f829a99bba1b78ea8"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-effect-failure.ts",
+      "sha256": "eebda0cad929328ede2132630a692ae92b7f9237d5e04f46f9e4cda83fe6262b"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-tool-dispatch.ts",
+      "sha256": "37686e9556eea8b75fff32bb3c8ebb2d3ef501675a5f230377a8dd0f8c354d0b"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-tool-network.ts",
+      "sha256": "58f12257497acaa63bfa1a986679c63712f88a471ae3fdcaaf98e97b416f37bc"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-tool-plan.ts",
+      "sha256": "196b47614e73d5421a6ebe08a29f89372fd07f4a98ff38f5921d7eea9bab012a"
+    },
+    {
+      "path": "services/pg-api/tests/helpers/web-citation-boundaries-genuine-guard.mjs",
+      "sha256": "ecfb5c99bb97c17770d2c258e868a6fe976d3bc00de4c5292feeeca491c7613d"
+    },
+    {
+      "path": "services/pg-api/tests/workflow-web-citation-boundaries-genuine.spec.mjs",
+      "sha256": "e77a7bcc236c955f8b4bdd741433b7ab4f10e8b0464f9f1fed452d34cb3816fe"
+    },
+    {
+      "path": "tests/workflow-web-citation-boundaries-pure.test.mjs",
+      "sha256": "26fbf9461d65a08d94aa2c0686fb8f6d58f3a36ee030f51a16b5abbd19b3bb01"
+    },
+    {
+      "path": "tests/workflow-web-quoted-tag-boundary-pure.test.mjs",
+      "sha256": "ac5f090dc8b3adecd15d490b028e8cfd1836bbc3d591df76b92ddc777ad60fa8"
+    },
+    {
+      "path": "tests/workflow-web-snippet-href-presence-pure.test.mjs",
+      "sha256": "8da9e719cee46233a1b0f6f4d7c2fa07dbb2461be7bd78edef32e3b9990f36f3"
+    }
+  ]
+}

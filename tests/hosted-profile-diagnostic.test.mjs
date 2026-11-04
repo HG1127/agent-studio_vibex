@@ -8,6 +8,7 @@ import {staff084Catalog} from './helpers/original-staff084-catalog-frame.mjs'
 import {staff084QualityCatalog} from './helpers/staff084-composite-catalog-frame.mjs'
 const capture=t=>{const lines=[];t.mock.method(process.stderr,'write',line=>{assert.equal(typeof line,'string');lines.push(line);return true});return lines}
 const hostedSmallDiagnosticEvents=new Set(['hosted_profile_phase','hosted_profile_catalog_refusal','hosted_quality089_step','hosted_quality089_inventory_refusal','hosted_quality089_schema_refusal'])
+const hostedComplete078Fields=new Set(["accounts","auth","check","column_acl","column_acl_shape","command","effective_duplicates","effective_inventory","effective_missing","effective_privilege","effective_relation","effective_shape","inventory","migration","mode","owner","owner_role","parent_members","permissive","policy_name","policy_roles","policy_shape","profile","quality_role","role","using"])
 const hostedCountFields=['relations','columns','constraints','indexes','policies','types','functions'],hostedDetailStates=new Set(['value','missing','unsafe','oversized','normalization_refused']),hostedConstraintDifferences=new Set(['lookup','shape','type','safe','deferrable','deferred','keys','expression','target','target_keys','update','delete','match','index_oid','unclassified'])
 const hostedRecordKeys=(row,keys)=>{assert(row&&typeof row==='object'&&!Array.isArray(row),'diagnostic_object');assert.deepEqual(Object.keys(row).sort(),[...keys].sort(),'diagnostic_closed_keys')}
 const hostedRecordInteger=(value,min,max)=>assert(Number.isSafeInteger(value)&&value>=min&&value<=max,'diagnostic_integer_bound')
@@ -18,13 +19,15 @@ function records(lines){
  const detailCounts=new Map()
  return lines.map(line=>{
   assert.equal(typeof line,'string');assert(Buffer.byteLength(line,'utf8')<=2048,'diagnostic_line_byte_bound')
-  const row=JSON.parse(line),detail=row?.event==='hosted_staff031_inventory_refusal'||row?.event==='hosted_quality015_constraint_refusal'
+  const row=JSON.parse(line),detail=row?.event==='hosted_staff031_inventory_refusal'||row?.event==='hosted_quality015_constraint_refusal'||row?.event==='hosted_staff084_complete078_refusal'
   if(!detail){assert(line.length<=256,'legacy_diagnostic_line_bound');assert(hostedSmallDiagnosticEvents.has(row?.event),'unknown_diagnostic_event');return row}
   // Exact canonical output prevents duplicate keys or escaped private values from
   // disappearing during JSON.parse. Every accepted detail is returned, never filtered.
   assert.equal(line,JSON.stringify(row)+'\n','diagnostic_canonical_line')
   if(row.event==='hosted_staff031_inventory_refusal'){
    hostedRecordKeys(row,['event','profile','check_id','kind','first_difference','actual_counts','expected_counts']);assert.equal(row.profile,'staff084');assert.equal(row.check_id,31);assert.equal(row.kind,'staff_inventory');hostedRecordCounts(row.actual_counts);hostedRecordCounts(row.expected_counts);assert.equal(row.first_difference,hostedCountFields.find(key=>row.actual_counts[key]!==row.expected_counts[key]));assert(hostedCountFields.includes(row.first_difference),'diagnostic_first_difference')
+  }else if(row.event==='hosted_staff084_complete078_refusal'){
+   hostedRecordKeys(row,['event','profile','auditor','check_id','case_index','field']);assert.equal(row.profile,'staff084');assert((row.auditor==='staff084_original'&&row.check_id===54)||(row.auditor==='staff084_quality089'&&row.check_id===55),'diagnostic_complete078_pair');hostedRecordInteger(row.case_index,0,6);assert(hostedComplete078Fields.has(row.field),'diagnostic_complete078_field')
   }else{
    hostedRecordKeys(row,['event','profile','check_id','kind','first_difference','table_ordinal','constraint_ordinal','table_sha256','constraint_sha256','actual','expected']);assert.equal(row.profile,'quality089');assert.equal(row.check_id,15);assert.equal(row.kind,'quality_constraint');assert(hostedConstraintDifferences.has(row.first_difference),'diagnostic_constraint_difference');hostedRecordInteger(row.table_ordinal,1,64);hostedRecordInteger(row.constraint_ordinal,1,256);hostedRecordHash(row.table_sha256);hostedRecordHash(row.constraint_sha256);hostedRecordSummary(row.actual);hostedRecordSummary(row.expected)
   }

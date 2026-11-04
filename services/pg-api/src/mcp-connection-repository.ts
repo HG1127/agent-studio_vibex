@@ -1,3 +1,8 @@
+import {runOriginalPluginPreview,type OriginalPluginPreviewRequest,type OriginalPluginPreviewContext} from './original-plugin-preview.ts'
+import {assertOwnedAdmissionContext} from './repository.ts'
+import type {RegistryRead,RegistryPage} from './public-mcp-registry.ts'
+import {assertOriginalUiEmployee} from './native-original-ui-preconditions.ts'
+import {readMcpInventoryPage,type McpInventoryQuery} from './mcp-inventory-pagination.ts'
 import {HttpError,isUuid,type Identity,type SqlPool,type SqlClient} from "./contracts.ts"
 import {createHmac,randomUUID} from "node:crypto"
 import {withActor} from "./repository.ts"
@@ -36,6 +41,28 @@ export function safeMcpConnectionInput(raw:unknown):McpConnectionInput{
   return {name:checked.name,description:checked.description,url:url.toString(),headers:checked.headers,enabled:checked.enabled}
 }
 export class McpConnectionRepository{
+  private originalUiEmployee?:string
+  forOriginalEmployee(expected:string):this{
+    if(!isUuid(expected)||this.originalUiEmployee!==undefined)throw new HttpError(400,'invalid_original_plugin_employee')
+    // Request-local view: preserve existing shared probes, key and transport;
+    // never mutate the singleton repository or store a caller identity there.
+    const bound=Object.create(this) as this
+    Object.defineProperty(bound,'originalUiEmployee',{value:expected.toLowerCase(),enumerable:false,writable:false,configurable:false})
+    return bound
+  }
+  private originalActor<T>(identity:Identity,body:(db:SqlClient,owner:string)=>Promise<T>):Promise<T>{
+    return withActor(this.pool,identity,async(db,owner)=>{assertOriginalUiEmployee(owner,this.originalUiEmployee);return body(db,owner)})
+  }
+  private originalBrokerActor<T>(identity:Identity,body:(db:SqlClient,owner:string)=>Promise<T>):Promise<T>{
+    if(!this.brokerPool)throw new HttpError(503,'configuration_broker_unavailable')
+    return withModelBrokerActor(this.brokerPool,identity,async(db,owner)=>{assertOriginalUiEmployee(owner,this.originalUiEmployee);return body(db,owner)})
+  }
+  async previewOriginalRegistry(identity:Identity,request:OriginalPluginPreviewRequest,registryRead:(input:RegistryRead,signal:AbortSignal)=>Promise<RegistryPage>,discover:(material:McpMaterial,signal:AbortSignal)=>Promise<McpCatalog>){
+    if(!this.originalUiEmployee)throw new HttpError(403,'native_employee_identity_required')
+    const input=safeMcpConnectionInput({name:'目录能力发现预览',description:'只查询工具清单，不保存连接或执行工具',url:request.url,headers:request.headers,enabled:false});request={...request,url:input.url,headers:input.headers}
+    const context=()=>this.originalActor(identity,async(db,owner):Promise<OriginalPluginPreviewContext>=>{await assertOwnedAdmissionContext(db,owner);const rows=(await db.query<{epoch:unknown}>('SELECT agentstudio.agent_memory_outcome_epoch() AS epoch')).rows,value=rows[0]?.epoch;if(rows.length!==1||value===null)throw new HttpError(401,'session_required');if(!(typeof value==='string'&&/^[1-9][0-9]*$/.test(value)||typeof value==='number')||!Number.isSafeInteger(Number(value))||Number(value)<1||Number(value)>Number.MAX_SAFE_INTEGER-2)throw new HttpError(503,'original_plugin_context_unavailable');return{employee:owner,epoch:String(value)}})
+    return runOriginalPluginPreview(identity,request,{context,registryRead,discover,audit:(source,input)=>this.originalActor(identity,async(db,owner)=>{const rows=(await db.query<{epoch:unknown}>('SELECT agentstudio.agent_memory_outcome_epoch() AS epoch')).rows;if(owner!==source.employee||rows.length!==1||String(rows[0]?.epoch)!==source.epoch)throw new HttpError(409,'employee_session_changed');await this.audit(db,owner,input.request_id,'mcp.registry_preview_discovery',{server:input.source.name,version:input.source.version,source_sha256:input.source.source_sha256,header_count:input.headers.length,execution_enabled:false,connection_saved:false})})})
+  }
   readonly pool:SqlPool;readonly brokerPool:SqlPool|undefined;readonly key:Buffer;readonly probes=new Set<string>()
   constructor(pool:SqlPool,key:string|Buffer,brokerPool?:SqlPool){
     this.pool=pool;this.brokerPool=brokerPool;this.key=Buffer.isBuffer(key)?key:parseModelEncryptionKey(key)
@@ -82,18 +109,19 @@ export class McpConnectionRepository{
     await db.query("INSERT INTO agentstudio.audit_events(owner_user_id,actor_user_id,action,target_kind,target_id,result,metadata) "+
       "VALUES($1::uuid,$1::uuid,$2::text,'mcp_connection',$3::text,$4::text,$5::jsonb)",[owner,action,connection,result,JSON.stringify(metadata)])
   }
-  list(identity:Identity){return withActor(this.pool,identity,async(db,owner)=>{
+  listInventoryPage(identity:Identity,query:McpInventoryQuery,expectedEmployee:string){return readMcpInventoryPage({pool:this.pool,key:this.key,identity,query,expectedEmployee})}
+  list(identity:Identity){return this.originalActor(identity,async(db,owner)=>{
     const rows=(await db.query<Stored>("SELECT "+columns+" FROM agentstudio.mcp_connections WHERE owner_user_id=$1::uuid ORDER BY updated_at DESC,id LIMIT 50",[owner])).rows
     const result:McpConnectionRow[]=[];for(const row of rows)result.push(await this.publicRow(db,owner,row));return result
   })}
-  get(identity:Identity,connection:string){id(connection);return withActor(this.pool,identity,async(db,owner)=>{
+  get(identity:Identity,connection:string){id(connection);return this.originalActor(identity,async(db,owner)=>{
     const row=(await db.query<Stored>("SELECT "+columns+" FROM agentstudio.mcp_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid",[connection,owner])).rows[0]
     return row?this.publicRow(db,owner,row):null
   })}
   create(identity:Identity,raw:unknown,requestId:string=randomUUID()){
     id(requestId);requestId=requestId.toLowerCase()
     const input=safeMcpConnectionInput(raw),fingerprint=createHmac("sha256",this.key).update(JSON.stringify(input)).digest("hex")
-    return withActor(this.pool,identity,async(db,owner)=>{
+    return this.originalActor(identity,async(db,owner)=>{
     await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))",[owner+":"+requestId])
     const existing=(await db.query<Stored&{creation_fingerprint:string}>("SELECT "+columns+",creation_fingerprint FROM agentstudio.mcp_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid",[requestId,owner])).rows[0]
     if(existing){
@@ -107,7 +135,7 @@ export class McpConnectionRepository{
     return this.publicRow(db,owner,row)
   }).catch(error=>{if(error?.code==="23505")throw new HttpError(409,"mcp_create_request_conflict");throw error})}
   update(identity:Identity,connection:string,raw:unknown,expected:number){id(connection);revision(expected);const input=safeMcpConnectionInput(raw)
-    return withActor(this.pool,identity,async(db,owner)=>{
+    return this.originalActor(identity,async(db,owner)=>{
       await this.requireUnmanaged(db,owner,connection)
       const row=(await db.query<Stored>("UPDATE agentstudio.mcp_connections SET name=$3::text,description=$4::text,url=$5::text,enabled=$6::boolean,"+
         "catalog='{}',status='untested',last_checked_at=NULL,last_error='',revision=revision+1,updated_at=clock_timestamp() WHERE id=$1::uuid AND owner_user_id=$2::uuid AND revision=$7::bigint RETURNING "+columns,
@@ -117,7 +145,7 @@ export class McpConnectionRepository{
       return this.publicRow(db,owner,row)
     })
   }
-  delete(identity:Identity,connection:string,expected:number){id(connection);revision(expected);return withActor(this.pool,identity,async(db,owner)=>{
+  delete(identity:Identity,connection:string,expected:number){id(connection);revision(expected);return this.originalActor(identity,async(db,owner)=>{
     await this.requireUnmanaged(db,owner,connection)
     const removed=(await db.query("DELETE FROM agentstudio.mcp_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid AND revision=$3::bigint RETURNING id",[connection,owner,expected])).rows[0]
     if(!removed)throw new HttpError((await db.query("SELECT id FROM agentstudio.mcp_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid",[connection,owner])).rows.length?409:404,"mcp_connection_changed")
@@ -130,7 +158,7 @@ export class McpConnectionRepository{
     if(this.probes.has(probeKey))throw new HttpError(429,"mcp_discovery_rate_limited")
     this.probes.add(probeKey)
     try{
-      const selected=await withActor(this.pool,identity,async(db,owner)=>{
+      const selected=await this.originalActor(identity,async(db,owner)=>{
         const row=(await db.query<Stored>("SELECT "+columns+" FROM agentstudio.mcp_connections WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[connection,owner])).rows[0]
         if(!row)throw new HttpError(404,"mcp_connection_not_found")
         if(Number(row.revision)!==expected)throw new HttpError(409,"revision_conflict")
@@ -139,7 +167,7 @@ export class McpConnectionRepository{
         const headers=(await db.query<Pick<Header,"id"|"header_name"|"updated_at">>("SELECT id,header_name,updated_at FROM agentstudio.mcp_connection_headers WHERE mcp_connection_id=$1::uuid AND owner_user_id=$2::uuid ORDER BY header_name",[connection,owner])).rows
         return {row,headers}
       })
-      const material=await withModelBrokerActor(this.brokerPool,identity,async(db,owner)=>{
+      const material=await this.originalBrokerActor(identity,async(db,owner)=>{
         const headers=(await db.query<Header>("SELECT id,header_name,updated_at,value_ciphertext,value_nonce,value_tag FROM agentstudio.mcp_connection_headers WHERE mcp_connection_id=$1::uuid AND owner_user_id=$2::uuid ORDER BY header_name",[connection,owner])).rows
         if(headers.length!==selected.headers.length||headers.some((header,index)=>header.id!==selected.headers[index]!.id||header.header_name!==selected.headers[index]!.header_name||String(header.updated_at)!==String(selected.headers[index]!.updated_at)))throw new HttpError(409,"mcp_connection_changed")
         return {url:selected.row.url,headers:headers.map(header=>{
@@ -156,7 +184,7 @@ export class McpConnectionRepository{
         timer=setTimeout(()=>{controller.abort();reject(Error("mcp_discovery_timeout"))},20000)
       })]))}catch{/* No remote error text or secrets escape. */}
       finally{if(timer)clearTimeout(timer);controller.abort()}
-      return await withActor(this.pool,identity,async(db,owner)=>{
+      return await this.originalActor(identity,async(db,owner)=>{
         const row=(await db.query<Stored>("UPDATE agentstudio.mcp_connections SET status=$4::text,catalog=$5::jsonb,last_error=$6::text,last_checked_at=clock_timestamp(),"+
           "revision=revision+1,updated_at=clock_timestamp() WHERE id=$1::uuid AND owner_user_id=$2::uuid AND revision=$3::bigint RETURNING "+columns,
           [connection,owner,expected,catalog?"ok":"error",JSON.stringify(catalog??{}),catalog?"":"mcp_discovery_failed"])).rows[0]

@@ -17,7 +17,7 @@ import {checkedWorkflowV2StoredState} from "./workflow-v2-run-repository.ts"
 import {verifyWorkflowEffectLease,reserveWorkflowEffectDispatch,finishWorkflowEffectDispatch,WorkflowV2EffectLeaseIdentity} from "./workflow-v2-dispatch-guard.ts"
 import {safeWorkflowV2ToolRequest,type WorkflowV2ToolRequest} from "./workflow-v2-tool-contract.ts"
 import {prepareWorkflowTool,type WorkflowToolPlan,type ToolArguments} from "./workflow-v2-tool-plan.ts"
-import {prepareWorkflowToolHttp,redactWorkflowToolResponse,type WorkflowToolHttpMaterial} from "./workflow-v2-tool-network.ts"
+import {prepareWorkflowToolHttp,redactWorkflowToolResponse,type WorkflowToolHttpMaterial,type WorkflowToolBeforeDial} from "./workflow-v2-tool-network.ts"
 import {resolveMcpBinding} from "./mcp-binding-resources.ts"
 import {validateMcpArguments} from "./mcp-validation.ts"
 import {prepareMcpEgress} from "./mcp-network.ts"
@@ -34,8 +34,8 @@ export type WorkflowToolExecutor={
   monitorWebFetch?:ReturnType<typeof import("./workflow-v2-tool-network.ts").createWorkflowToolNetwork>["monitorWebFetch"]
   mcp?(material:McpCallMaterial,args:ToolArguments,signal:AbortSignal):Promise<McpCallResult>
   http?(material:WorkflowToolHttpMaterial,args:ToolArguments,signal:AbortSignal):Promise<string>
-  webFetch?(url:string,signal:AbortSignal):Promise<string>
-  webSearch?(query:string,limit:number,signal:AbortSignal):Promise<string>
+  webFetch?(url:string,signal:AbortSignal,beforeDial?:WorkflowToolBeforeDial):Promise<string>
+  webSearch?(query:string,limit:number,signal:AbortSignal,beforeDial?:WorkflowToolBeforeDial):Promise<string>
   summarize?(material:SelectedModelMaterial,prompt:string,signal:AbortSignal):Promise<string>
 }
 function changed():never{throw new HttpError(409,"workflow_tool_configuration_changed")}
@@ -204,8 +204,8 @@ export class WorkflowV2ToolDispatch{
           return this.executor.summarize!(material,plan.prompt,controller.signal)
         }
         await recheck()
-        if(plan.kind==="web_fetch"){if(capture){capturedResponse=await this.executor.monitorWebFetch!(plan.url,controller.signal);return "完整响应已接收，正在核实证据。"}return this.executor.webFetch!(plan.url,controller.signal)}
-        if(plan.kind==="web_search")return this.executor.webSearch!(plan.query,plan.limit,controller.signal)
+        if(plan.kind==="web_fetch"){if(capture){capturedResponse=await this.executor.monitorWebFetch!(plan.url,controller.signal,recheck);return "完整响应已接收，正在核实证据。"}return this.executor.webFetch!(plan.url,controller.signal,recheck)}
+        if(plan.kind==="web_search")return this.executor.webSearch!(plan.query,plan.limit,controller.signal,recheck)
         throw Error("workflow_tool_operation_unavailable")
       }
       text=await Promise.race([execute(),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{

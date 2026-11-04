@@ -153,3 +153,15 @@ export function quality015ConstraintObservation(table,constraint,actual,normaliz
  }
  return difference('unclassified',a,k)
 }
+
+// Failure-only fixed contract tags; the original catalog decision is unchanged.
+const complete078ContractFields=new Set(["accounts","auth","check","column_acl","column_acl_shape","command","effective_duplicates","effective_inventory","effective_missing","effective_privilege","effective_relation","effective_shape","inventory","migration","mode","owner","owner_role","parent_members","permissive","policy_name","policy_roles","policy_shape","profile","quality_role","role","using"])
+export function emitHostedStaffComplete078ContractRefusal(auditor,check,error){
+ if(!((auditor==='staff084_original'&&check===54)||(auditor==='staff084_quality089'&&check===55)))return
+ hostedCatalogDetail('staff084','hosted_staff084_complete078_refusal',check,()=>{
+  if(error===null||(typeof error!=='object'&&typeof error!=='function')||isProxy(error))return null
+  const code=Object.getOwnPropertyDescriptor(error,'code'),index=Object.getOwnPropertyDescriptor(error,'case_index'),field=Object.getOwnPropertyDescriptor(error,'field')
+  if(!code||!index||!field||!Object.hasOwn(code,'value')||!Object.hasOwn(index,'value')||!Object.hasOwn(field,'value')||code.value!=='COMPLETE078_STAFF084_CONTRACT'||!Number.isSafeInteger(index.value)||index.value<0||index.value>6||!complete078ContractFields.has(field.value))return null
+  return {auditor,case_index:index.value,field:field.value}
+ },value=>value)
+}
