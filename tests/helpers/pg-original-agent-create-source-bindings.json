@@ -75,7 +75,7 @@
     },
     {
       "path": "ops/build-pg18-native-api-preflight-bundle.mjs",
-      "sha256": "9c235066e114342b81030170fbca18fe7698a6b3cd3e636fabd1c4214ca72f1f"
+      "sha256": "64a75a37c2a6c1481f6cd7929e61315aa7437ac26e20ceb0a10a520afcb97d31"
     },
     {
       "path": "ops/pg18-original-home070-review-plan.mjs",
@@ -215,7 +215,7 @@
     },
     {
       "path": "tests/helpers/pg-original-agent-create-guard.mjs",
-      "sha256": "af0d0148609fbb1457503a06a094b25b26f5161812a95461fab798489a6d739f"
+      "sha256": "8120d061f114b32af9128cb43d1c66169539f242cbd3dae1bc1a40fe7fba4538"
     },
     {
       "path": "tests/helpers/pg-original-agent-create-reviewed-check.mjs",
@@ -247,7 +247,7 @@
     },
     {
       "path": "tests/pg-original-agent-create-fresh-source-pure.test.mjs",
-      "sha256": "76b922f6a4b197bdf603d4fe74546b0c886d0935af50932b74b02e1598e9a003"
+      "sha256": "209057bea42a6e8b64fff559d956ae655c19c149812bb78545b964b71e693086"
     },
     {
       "path": "tests/original-agent-create-read-pure.test.mjs",
@@ -255,7 +255,7 @@
     },
     {
       "path": "tests/pg-original-agent-create-fixture-contract-pure.test.mjs",
-      "sha256": "b5818abe4947fabfd2b93f727839f6c16d67a0cae4ea61c094452e2fbd199758"
+      "sha256": "f71beadc2570e46f7606a3de95355c23808961b16ec0e1706df9c9f71a7f06f4"
     }
   ,
     {"path": "services/pg-api/src/mcp-inventory-http.ts", "sha256": "369000eafbab4baa7806beb889d0d799c63da846f7796fabd2d97a02c29542d3"},
@@ -283,7 +283,7 @@
     {"path": "src/pages/Harness/HarnessPage.tsx", "sha256": "673422f8cde552edaec9181831ff710285328087264c6c634d98ff25034e1820"},
     {"path": "src/pages/Harness/useHarness.ts", "sha256": "6c435ebe1017a50302e8379016ea6f863d3256ea27f547c35e1b0a531b35e8d5"},
     {"path": "src/pages/Harness/usePgHarness.ts", "sha256": "7a3854d98dce1207866b1ec6abcc026993a0523bc8104278b90ced5be2526de7"},
-    {"path": "services/pg-api/src/quality089-release-parent-audit.ts", "sha256": "875c919e81b218e3a46f1bd5c018db0f48ea0cb0fc215d97f8ba5cce629f83b9"},
+    {"path": "services/pg-api/src/quality089-release-parent-audit.ts", "sha256": "f387c6cdf9ac47640ae7175039dd3edac51e3bf0af47e662400ea0b98b7b09c6"},
     {"path": "services/pg-api/src/quality089-knowledge-parent-audit.ts", "sha256": "571fd265ad021a0b45b411a12326a8e8fafa5b3301a240bd28080a7f42e3f0ef"},
     {"path": "services/pg-api/src/original-plugin-market-http.ts", "sha256": "9b02b8db92911d0323bba6ec11ba999a9b8933a83d0266a1f41142750fb2aee1"},
     {"path": "services/pg-api/src/original-plugin-preview.ts", "sha256": "03ad0fb5c74129931e454010b650779579b5e5f0549c94bd84e383e60ca66c73"},
@@ -295,5 +295,8 @@
     {"path": "src/lib/originalPluginModelChoice.ts", "sha256": "5a269b131634ada0ee99815d8b252a85889679ff422945ef47ab89c4b3331762"},
     {"path": "src/lib/smitheryMarketplace.ts", "sha256": "6de56db392908029a686ceefcc686351f6cf988f926dce60e3a8ef6bde24c8eb"},
     {"path": "src/pages/PluginMarket/usePgOriginalPluginMarket.ts", "sha256": "c74831ce35167a382be14c1bf82a320849908f9e058aeaaa6634de6d954cc34f"}
+,
+    {"path": "services/pg-api/tests/helpers/original-page-ci-entry.mjs", "sha256": "11df109f92c5848dde5f559df66286d3fd2a8f002e17208416a9386b7e253dc1"},
+    {"path": "tests/original-page-registered-entry-pure.test.mjs", "sha256": "b47c9ecc946ade2860ad5f623e9d41226a5835de33498d23786a980f6a783fad"}
 ]
 }

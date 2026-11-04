@@ -1,5 +1,19 @@
 name: Agent Studio original agent-create fresh PG18 browser verification
 on:
+  workflow_call:
+    inputs:
+      run_original_create:
+        type: boolean
+        required: true
+        default: false
+      registered_original_page_entry:
+        type: boolean
+        required: true
+        default: false
+      registered_original_page:
+        type: string
+        required: true
+        default: ''
   workflow_dispatch:
     inputs:
       run_original_create:
@@ -30,10 +44,12 @@ jobs:
           --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
           --health-interval 10s --health-timeout 5s --health-retries 15
     env:
+      AGENT_STUDIO_REGISTERED_ORIGINAL_PAGE_ENTRY: '${{ inputs.registered_original_page_entry == true }}'
+      AGENT_STUDIO_REGISTERED_ORIGINAL_PAGE: '${{ inputs.registered_original_page }}'
       AGENT_STUDIO_ORIGINAL_AGENT_CREATE_CI: YES_DISPOSABLE_ORIGINAL_AGENT_CREATE_FRESH_ONLY
       AGENT_STUDIO_ORIGINAL_AGENT_CREATE_STORY: original-agent-create-fresh
       AGENT_STUDIO_ORIGINAL_AGENT_CREATE_EXPECTED_HEAD: '${{ github.sha }}'
-      AGENT_STUDIO_ORIGINAL_AGENT_CREATE_SOURCES_SHA256: '4dee590e53965d6ad8977a0346dd62ecafe7090b662dcb4814b5611602840171'
+      AGENT_STUDIO_ORIGINAL_AGENT_CREATE_SOURCES_SHA256: '1d7b8f6d86dd4c986d2499286fabf05185f72127d735726dd92238b744697aaa'
       AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
       AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
       AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
@@ -51,19 +67,86 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Validate actual caller and executing job metadata before imports
+        env:
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_ENABLED: '${{ github.event.inputs.run_original_pages }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_PAGE: '${{ github.event.inputs.original_page }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_LEGACY: ${{ github.event.inputs.run_original_toolhub == 'true' }}
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_ID: '${{ github.job }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REF: '${{ job.workflow_ref }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_SHA: '${{ job.workflow_sha }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REPOSITORY: '${{ job.workflow_repository }}'
+        run: >-
+          node --input-type=module -e "import('./services/pg-api/tests/helpers/original-page-ci-entry.mjs').then(m=>console.log(JSON.stringify(m.requireOriginalPageCiEntry(process.env,'create'))))"
       - name: Verify separately reviewed source binding before driver or service imports
+        env:
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_ENABLED: '${{ github.event.inputs.run_original_pages }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_PAGE: '${{ github.event.inputs.original_page }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_LEGACY: ${{ github.event.inputs.run_original_toolhub == 'true' }}
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_ID: '${{ github.job }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REF: '${{ job.workflow_ref }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_SHA: '${{ job.workflow_sha }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REPOSITORY: '${{ job.workflow_repository }}'
         run: node --input-type=module -e "import('./tests/helpers/pg-original-agent-create-reviewed-check.mjs').then(m=>m.verifyOriginalAgentCreateSources())"
       - name: Locked root dependencies without lifecycle scripts
+        env:
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_ENABLED: '${{ github.event.inputs.run_original_pages }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_PAGE: '${{ github.event.inputs.original_page }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_LEGACY: ${{ github.event.inputs.run_original_toolhub == 'true' }}
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_ID: '${{ github.job }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REF: '${{ job.workflow_ref }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_SHA: '${{ job.workflow_sha }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REPOSITORY: '${{ job.workflow_repository }}'
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Locked API dependencies without lifecycle scripts
+        env:
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_ENABLED: '${{ github.event.inputs.run_original_pages }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_PAGE: '${{ github.event.inputs.original_page }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_LEGACY: ${{ github.event.inputs.run_original_toolhub == 'true' }}
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_ID: '${{ github.job }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REF: '${{ job.workflow_ref }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_SHA: '${{ job.workflow_sha }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REPOSITORY: '${{ job.workflow_repository }}'
         run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
       - name: Original page privacy contract and source boundaries
-        run: node --test --test-concurrency=1 tests/original-agent-create-read-pure.test.mjs tests/pg-original-agent-create-fresh-source-pure.test.mjs tests/pg-original-agent-create-fixture-contract-pure.test.mjs
+        env:
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_ENABLED: '${{ github.event.inputs.run_original_pages }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_PAGE: '${{ github.event.inputs.original_page }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_LEGACY: ${{ github.event.inputs.run_original_toolhub == 'true' }}
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_ID: '${{ github.job }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REF: '${{ job.workflow_ref }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_SHA: '${{ job.workflow_sha }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REPOSITORY: '${{ job.workflow_repository }}'
+        run: node --test --test-concurrency=1 tests/original-agent-create-read-pure.test.mjs tests/pg-original-agent-create-fresh-source-pure.test.mjs tests/pg-original-agent-create-fixture-contract-pure.test.mjs tests/original-page-registered-entry-pure.test.mjs
       - name: Build the existing main App with the original PG adapter
+        env:
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_ENABLED: '${{ github.event.inputs.run_original_pages }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_PAGE: '${{ github.event.inputs.original_page }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_LEGACY: ${{ github.event.inputs.run_original_toolhub == 'true' }}
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_ID: '${{ github.job }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REF: '${{ job.workflow_ref }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_SHA: '${{ job.workflow_sha }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REPOSITORY: '${{ job.workflow_repository }}'
         run: pnpm build:pg18:original-ui
       - name: Install locked Chromium under the exact fresh-story purpose
+        env:
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_ENABLED: '${{ github.event.inputs.run_original_pages }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_PAGE: '${{ github.event.inputs.original_page }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_LEGACY: ${{ github.event.inputs.run_original_toolhub == 'true' }}
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_ID: '${{ github.job }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REF: '${{ job.workflow_ref }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_SHA: '${{ job.workflow_sha }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REPOSITORY: '${{ job.workflow_repository }}'
         run: node tests/helpers/install-original-agent-create-chromium.mjs
       - name: Original agent-create current spec, real Worker receipt and ACL privacy story
+        env:
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_ENABLED: '${{ github.event.inputs.run_original_pages }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_PAGE: '${{ github.event.inputs.original_page }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_LEGACY: ${{ github.event.inputs.run_original_toolhub == 'true' }}
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_ID: '${{ github.job }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REF: '${{ job.workflow_ref }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_SHA: '${{ job.workflow_sha }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REPOSITORY: '${{ job.workflow_repository }}'
         run: node node_modules/@playwright/test/cli.js test --config tests/pg-original-agent-create-fresh-genuine.config.mjs
       - uses: actions/upload-artifact@v4
         if: always()

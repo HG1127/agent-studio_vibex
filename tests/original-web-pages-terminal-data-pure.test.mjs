@@ -1,6 +1,7 @@
 // AST-extracted production declarations and explicit terminal DATA only.
 // No actual Actor/verifier, SQL, Pool, Worker, Native API or browser executes.
 import test from 'node:test';
+import { originalPageCiIdentity } from '../services/pg-api/tests/helpers/original-page-ci-entry.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -21,8 +22,11 @@ function declarations(ast, names) {
   }).join('\n');
 }
 const guard = source('services/pg-api/tests/helpers/original-web-pages-genuine-guard.mjs');
-const purpose = new vm.Script(declarations(guard, ['originalWebPageCases', 'selectOriginalWebPagePurpose', 'validateOriginalWebDataPorts']) + '\n({select:selectOriginalWebPagePurpose,ports:validateOriginalWebDataPorts})').runInNewContext({ Object, Error });
+const purpose = new vm.Script(declarations(guard, ['originalWebPageCases', 'selectOriginalWebPagePurpose', 'validateOriginalWebDataPorts']) + '\n({select:selectOriginalWebPagePurpose,ports:validateOriginalWebDataPorts})').runInNewContext({ Object, Error, originalPageCiIdentity });
 const explicitCiData = () => ({
+  GITHUB_REPOSITORY: 'HG1127/agent-studio_vibex', GITHUB_WORKFLOW: 'Agent Studio original ToolHub and Home PG18 isolated verification',
+  AGENT_STUDIO_ORIGINAL_TOOL_HUB_SOURCES_SHA256: '2'.repeat(64), AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_SOURCES_SHA256: '2'.repeat(64),
+  AGENT_STUDIO_WEB_EGRESS_GUARD_SOURCES_SHA256: '2'.repeat(64), AGENT_STUDIO_WEB_CITATION_BOUNDARIES_SOURCES_SHA256: '2'.repeat(64),
   AGENT_STUDIO_ORIGINAL_WEB_PAGES_CI: 'YES_DISPOSABLE_ORIGINAL_WEB_PAGES_ONLY', AGENT_STUDIO_ORIGINAL_WEB_PAGES_CASE: 'search_citations',
   GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF: 'refs/heads/codex/pg18-worker-heartbeat-20261028',
   GITHUB_WORKFLOW_REF: 'HG1127/agent-studio_vibex/.github/workflows/pg18-original-web-pages-ci.yml@refs/heads/codex/pg18-worker-heartbeat-20261028',

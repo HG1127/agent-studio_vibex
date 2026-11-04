@@ -1,6 +1,20 @@
 name: Agent Studio original ToolHub and Home PG18 isolated verification
 # Additive guard binds this independent workflow file; old F16 guard/name stays.
 on:
+  workflow_call:
+    inputs:
+      run_original_resources:
+        type: boolean
+        required: true
+        default: false
+      registered_original_page_entry:
+        type: boolean
+        required: true
+        default: false
+      registered_original_page:
+        type: string
+        required: true
+        default: ''
   workflow_dispatch:
     inputs:
       run_original_resources:
@@ -59,17 +73,19 @@ jobs:
           --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
           --health-interval 10s --health-timeout 5s --health-retries 15
     env:
+      AGENT_STUDIO_REGISTERED_ORIGINAL_PAGE_ENTRY: '${{ inputs.registered_original_page_entry == true }}'
+      AGENT_STUDIO_REGISTERED_ORIGINAL_PAGE: '${{ inputs.registered_original_page }}'
       AGENT_STUDIO_TOOL_HUB_GENUINE_SUITE: browser
       AGENT_STUDIO_ORIGINAL_RESOURCE_CI: YES_DISPOSABLE_ORIGINAL_RESOURCE_READ_ONLY
       AGENT_STUDIO_ORIGINAL_RESOURCE_CASE: ${{ matrix.case }}
       AGENT_STUDIO_ORIGINAL_RESOURCE_EXPECTED_HEAD: ${{ github.sha }}
-      AGENT_STUDIO_ORIGINAL_RESOURCE_SOURCES_SHA256: 'aa23e01c6033d7fe19fe60841a8fe8075a9723958a7228db9f4f7965404ba204'
+      AGENT_STUDIO_ORIGINAL_RESOURCE_SOURCES_SHA256: '596df44199eb2075859aac0d6c9c75c16a96bb74bbfd3cec1ca75b3dada3c36a'
       AGENT_STUDIO_ORIGINAL_TOOL_HUB_WORKFLOW_CI: YES_DISPOSABLE_ORIGINAL_TOOLHUB_HOME_BROWSER_ONLY
       AGENT_STUDIO_ORIGINAL_TOOL_HUB_CI: YES_DISPOSABLE_ORIGINAL_TOOL_HUB_ONLY
       AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_CI: YES_DISPOSABLE_ORIGINAL_TOOL_HUB_HOME_READ_ONLY
       AGENT_STUDIO_ORIGINAL_TOOL_HUB_EXPECTED_HEAD: ${{ github.sha }}
-      AGENT_STUDIO_ORIGINAL_TOOL_HUB_SOURCES_SHA256: 'c4bf032b4a89ac4bb7c3163b03d78734a682e90a07944ed2c776e2f9fc4611da'
-      AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_SOURCES_SHA256: '779387c2aa6af472ed345f4ebcce76f53377a02660774030a867398d0539e3bd'
+      AGENT_STUDIO_ORIGINAL_TOOL_HUB_SOURCES_SHA256: '71ff7c0473b434ee05cc34a202c41d6858fa05ccfcdb7cd8af2e9ac9bedaac51'
+      AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_SOURCES_SHA256: '5246f6a6cc1c29becdc47ecb5097bf0980c8e1b503ddd9df73fcd91c06ee69c2'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -80,18 +96,61 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Validate actual caller and executing job metadata before imports
+        env:
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_ENABLED: '${{ github.event.inputs.run_original_pages }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_PAGE: '${{ github.event.inputs.original_page }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_LEGACY: ${{ github.event.inputs.run_original_toolhub == 'true' }}
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_ID: '${{ github.job }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REF: '${{ job.workflow_ref }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_SHA: '${{ job.workflow_sha }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REPOSITORY: '${{ job.workflow_repository }}'
+        run: >-
+          node --input-type=module -e "import('./services/pg-api/tests/helpers/original-page-ci-entry.mjs').then(m=>console.log(JSON.stringify(m.requireOriginalPageCiEntry(process.env,'resource'))))"
       - name: Install exact locked dependencies without lifecycle scripts
+        env:
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_ENABLED: '${{ github.event.inputs.run_original_pages }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_PAGE: '${{ github.event.inputs.original_page }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_LEGACY: ${{ github.event.inputs.run_original_toolhub == 'true' }}
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_ID: '${{ github.job }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REF: '${{ job.workflow_ref }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_SHA: '${{ job.workflow_sha }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REPOSITORY: '${{ job.workflow_repository }}'
         run: |
           pnpm install --frozen-lockfile --ignore-scripts
           pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
       - name: Original frontend/API compilers and pure refusal guard
+        env:
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_ENABLED: '${{ github.event.inputs.run_original_pages }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_PAGE: '${{ github.event.inputs.original_page }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_LEGACY: ${{ github.event.inputs.run_original_toolhub == 'true' }}
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_ID: '${{ github.job }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REF: '${{ job.workflow_ref }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_SHA: '${{ job.workflow_sha }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REPOSITORY: '${{ job.workflow_repository }}'
         run: |
           pnpm exec tsc -p tsconfig.app.json --noEmit
           pnpm --dir services/pg-api check
-          node --test --test-concurrency=1 services/pg-api/tests/tool-hub-genuine-guard.test.mjs tests/original-resource-fresh-job-guard-pure.test.mjs
+          node --test --test-concurrency=1 services/pg-api/tests/tool-hub-genuine-guard.test.mjs tests/original-resource-fresh-job-guard-pure.test.mjs tests/original-page-registered-entry-pure.test.mjs
       - name: Install isolated Chromium
+        env:
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_ENABLED: '${{ github.event.inputs.run_original_pages }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_PAGE: '${{ github.event.inputs.original_page }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_LEGACY: ${{ github.event.inputs.run_original_toolhub == 'true' }}
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_ID: '${{ github.job }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REF: '${{ job.workflow_ref }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_SHA: '${{ job.workflow_sha }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REPOSITORY: '${{ job.workflow_repository }}'
         run: pnpm exec playwright install --with-deps chromium
       - name: One selected original resource story on its own fresh PG service
+        env:
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_ENABLED: '${{ github.event.inputs.run_original_pages }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_PAGE: '${{ github.event.inputs.original_page }}'
+          AGENT_STUDIO_REGISTERED_PAGE_EVENT_LEGACY: ${{ github.event.inputs.run_original_toolhub == 'true' }}
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_ID: '${{ github.job }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REF: '${{ job.workflow_ref }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_SHA: '${{ job.workflow_sha }}'
+          AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REPOSITORY: '${{ job.workflow_repository }}'
         run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-resource-read-genuine.config.mjs
       - name: Retain synthetic UI images only
         if: always()

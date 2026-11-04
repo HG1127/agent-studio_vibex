@@ -1,3 +1,4 @@
+import { originalPageCiIdentity } from './original-page-ci-entry.mjs';
 import { requireToolHubOriginalHomeCi } from './tool-hub-original-home-guard.mjs';
 
 export const originalWebPageCases = Object.freeze(['search_citations', 'fetch_cancel', 'search_unknown_recovery']);
@@ -6,7 +7,7 @@ export function selectOriginalWebPagePurpose(env) {
   if (env.AGENT_STUDIO_ORIGINAL_WEB_PAGES_CI !== 'YES_DISPOSABLE_ORIGINAL_WEB_PAGES_ONLY' ||
       !originalWebPageCases.includes(env.AGENT_STUDIO_ORIGINAL_WEB_PAGES_CASE) ||
       env.GITHUB_EVENT_NAME !== 'workflow_dispatch' || env.GITHUB_REF !== ref ||
-      env.GITHUB_WORKFLOW_REF !== 'HG1127/agent-studio_vibex/.github/workflows/pg18-original-web-pages-ci.yml@' + ref ||
+      !originalPageCiIdentity(env, 'web') ||
       env.GITHUB_JOB !== 'pg18-tool-hub-browser' || env.AGENT_STUDIO_TOOL_HUB_GENUINE_SUITE !== 'browser' ||
       !/^[a-f0-9]{40}$/.test(env.GITHUB_SHA ?? '') || env.AGENT_STUDIO_ORIGINAL_WEB_PAGES_EXPECTED_HEAD !== env.GITHUB_SHA ||
       !/^[a-f0-9]{64}$/.test(env.AGENT_STUDIO_ORIGINAL_WEB_PAGES_SOURCES_SHA256 ?? '') ||

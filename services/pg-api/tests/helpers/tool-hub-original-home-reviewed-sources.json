@@ -681,5 +681,8 @@
       "path": "tests/pg-original-toolhub-home-genuine.spec.mjs",
       "sha256": "1d89a60fdb0d542e0ec744129a7c9a2c0919d5481c3eb1e7099733598cf45632"
     }
-  ]
+  ,
+    {"path": "services/pg-api/tests/helpers/original-page-ci-entry.mjs", "sha256": "11df109f92c5848dde5f559df66286d3fd2a8f002e17208416a9386b7e253dc1"},
+    {"path": "tests/original-page-registered-entry-pure.test.mjs", "sha256": "b47c9ecc946ade2860ad5f623e9d41226a5835de33498d23786a980f6a783fad"}
+]
 }

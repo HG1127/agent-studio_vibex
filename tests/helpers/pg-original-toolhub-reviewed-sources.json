@@ -1325,7 +1325,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-genuine-source-pins.mjs",
-      "sha256": "ab0989249f6a4f3231ddfa6814b0a8760523a9e1691b16a4343fc77eb8b318e7"
+      "sha256": "9e3ce8792bdb6c2ea73c08d323fc04c9d42b5ef202a8c0c0d2a635bcd3c77bd0"
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-original-home-guard.mjs",
@@ -1333,7 +1333,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-original-home-reviewed-sources.json",
-      "sha256": "779387c2aa6af472ed345f4ebcce76f53377a02660774030a867398d0539e3bd"
+      "sha256": "5246f6a6cc1c29becdc47ecb5097bf0980c8e1b503ddd9df73fcd91c06ee69c2"
     },
     {
       "path": "services/pg-api/tests/helpers/workflow-v2-agent-fixture.mjs",
@@ -1377,7 +1377,7 @@
     },
     {
       "path": "shared/native-employee-inventory.mjs",
-      "sha256": "b4853302ddb76ae92d2b887fa5ffe32e04da4949c5809a562074d1bbd6c77290"
+      "sha256": "544dce02e7055c104699ce3ad398ab20e03a46b51b29a69581590e006f6e9fcd"
     },
     {
       "path": "shared/native-guided-contract.mjs",
@@ -2309,7 +2309,7 @@
     },
     {
       "path": "src/lib/nativeLocalEmployeeApi.ts",
-      "sha256": "08990f32e662e636d1b4c8224dc0a8268d1b8aff86d3fec1908ed411fab0e336"
+      "sha256": "d94379fae8d7c19047fbf897ebccc3322c557c1d825d35e0a3fc33f4fcea03ec"
     },
     {
       "path": "src/lib/originalAccountApi.ts",
@@ -3571,5 +3571,8 @@
       "path": "tests/original-toolhub-workflow-lifecycle-source-pure.test.mjs",
       "sha256": "7c4aecf7592d27d0b01527d938eeb55e9cf708a455c9d70447dd2442aedeee73"
     }
-  ]
+  ,
+    {"path": "services/pg-api/tests/helpers/original-page-ci-entry.mjs", "sha256": "11df109f92c5848dde5f559df66286d3fd2a8f002e17208416a9386b7e253dc1"},
+    {"path": "tests/original-page-registered-entry-pure.test.mjs", "sha256": "b47c9ecc946ade2860ad5f623e9d41226a5835de33498d23786a980f6a783fad"}
+]
 }

@@ -15,8 +15,8 @@ export function readNativeEmployeeInventory(value,expected){
 }
 /** Read-only SDK. The expected owner is an additional fence; only the real
  * Cookie-authenticated /me response supplies verified server identity. */
-export function createNativeEmployeeInventoryReader({transport=fetch,getContext,timeoutMs=15000}){
- if(typeof transport!=='function'||typeof getContext!=='function'||!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>15000)fail()
+export function createNativeEmployeeInventoryReader({transport=fetch,getContext,timeoutMs=15000,liveTelemetry=false}){
+ if(typeof liveTelemetry!=='boolean'||typeof transport!=='function'||typeof getContext!=='function'||!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>15000)fail()
  async function read(signal,expected=getContext()){
   const selected=scope(expected),combined=AbortSignal.any([AbortSignal.timeout(timeoutMs),...(signal?[signal]:[])])
   const check=()=>{combined.throwIfAborted();const current=scope(getContext());if(current.owner!==selected.owner||current.epoch!==selected.epoch)fail('native_local_inventory_session_changed',0)}
@@ -61,7 +61,7 @@ export function createNativeEmployeeInventoryReader({transport=fetch,getContext,
    const items=[]
    for(const device of devices){
     const prior=old.get(device.id),pair=states.get(device.id)
-    if(!prior||!pair||localCanonical(prior)!==localCanonical(device))fail('native_local_inventory_changed')
+    if(!prior||!pair||device.seen_ms<prior.seen_ms||localCanonical(liveTelemetry?{...prior,seen_ms:device.seen_ms}:prior)!==localCanonical(device))fail('native_local_inventory_changed')
     if(!pair.paired&&device.seen_ms>0)fail()
     if(await localDigest(device.catalog)!==device.catalog_sha256)fail();check()
     items.push({backend:'native_pg',id:device.id,name:device.name,revoked:device.revoked,seen_ms:device.seen_ms,catalog:JSON.stringify(device.catalog),catalog_sha256:device.catalog_sha256,version:device.version,paired:pair.paired,pairing_expires_ms:pair.pairing_expires_ms})
@@ -75,4 +75,11 @@ export function createNativeEmployeeInventoryReader({transport=fetch,getContext,
   snapshots.add(inventory);return inventory
  }
  return Object.freeze({read})
+}
+
+/** Original employee read-only inventory: accept advancing heartbeat telemetry
+ * while owner, epoch, pairing, configuration, catalog and version stay fenced.
+ * The original strict reader keeps its default full-row stability contract. */
+export function createNativeEmployeeLiveInventoryReader({transport=fetch,getContext,timeoutMs=15000}){
+ return createNativeEmployeeInventoryReader({transport,getContext,timeoutMs,liveTelemetry:true})
 }

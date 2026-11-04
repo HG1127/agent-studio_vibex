@@ -9,6 +9,22 @@ on:
         type: boolean
         required: true
         default: false
+      run_original_pages:
+        description: Run one separately guarded original page family
+        type: boolean
+        required: true
+        default: false
+      original_page:
+        description: Select exactly one original page family
+        type: choice
+        required: true
+        default: none
+        options:
+          - none
+          - resource
+          - create
+          - plugin
+          - web
 permissions:
   contents: read
 concurrency:
@@ -66,8 +82,8 @@ jobs:
       AGENT_STUDIO_ORIGINAL_TOOL_HUB_CI: YES_DISPOSABLE_ORIGINAL_TOOL_HUB_ONLY
       AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_CI: YES_DISPOSABLE_ORIGINAL_TOOL_HUB_HOME_READ_ONLY
       AGENT_STUDIO_ORIGINAL_TOOL_HUB_EXPECTED_HEAD: ${{ github.sha }}
-      AGENT_STUDIO_ORIGINAL_TOOL_HUB_SOURCES_SHA256: 'c4bf032b4a89ac4bb7c3163b03d78734a682e90a07944ed2c776e2f9fc4611da'
-      AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_SOURCES_SHA256: '779387c2aa6af472ed345f4ebcce76f53377a02660774030a867398d0539e3bd'
+      AGENT_STUDIO_ORIGINAL_TOOL_HUB_SOURCES_SHA256: '71ff7c0473b434ee05cc34a202c41d6858fa05ccfcdb7cd8af2e9ac9bedaac51'
+      AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_SOURCES_SHA256: '5246f6a6cc1c29becdc47ecb5097bf0980c8e1b503ddd9df73fcd91c06ee69c2'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -104,3 +120,47 @@ jobs:
             .tmp/original-toolhub-home-genuine-results/**/*.png
             .tmp/original-toolhub-genuine-results/**/*.png
           if-no-files-found: ignore
+
+  original-resource-pages:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_original_pages == true && inputs.run_original_toolhub != true && inputs.original_page == 'resource' && github.ref == 'refs/heads/codex/pg18-worker-heartbeat-20261028'
+    name: Registered original resource page entry
+    permissions:
+      contents: read
+    uses: ./.github/workflows/pg18-original-resource-read-ci.yml
+    with:
+      run_original_resources: true
+      registered_original_page_entry: true
+      registered_original_page: resource
+
+  original-agent-create-page:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_original_pages == true && inputs.run_original_toolhub != true && inputs.original_page == 'create' && github.ref == 'refs/heads/codex/pg18-worker-heartbeat-20261028'
+    name: Registered original create page entry
+    permissions:
+      contents: read
+    uses: ./.github/workflows/pg18-original-agent-create-fresh-ci.yml
+    with:
+      run_original_create: true
+      registered_original_page_entry: true
+      registered_original_page: create
+
+  original-plugin-market-pages:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_original_pages == true && inputs.run_original_toolhub != true && inputs.original_page == 'plugin' && github.ref == 'refs/heads/codex/pg18-worker-heartbeat-20261028'
+    name: Registered original plugin page entry
+    permissions:
+      contents: read
+    uses: ./.github/workflows/pg18-original-plugin-market-ci.yml
+    with:
+      run_original_plugin_market: true
+      registered_original_page_entry: true
+      registered_original_page: plugin
+
+  original-web-pages:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_original_pages == true && inputs.run_original_toolhub != true && inputs.original_page == 'web' && github.ref == 'refs/heads/codex/pg18-worker-heartbeat-20261028'
+    name: Registered original web page entry
+    permissions:
+      contents: read
+    uses: ./.github/workflows/pg18-original-web-pages-ci.yml
+    with:
+      run_original_web_pages: true
+      registered_original_page_entry: true
+      registered_original_page: web

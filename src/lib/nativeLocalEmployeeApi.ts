@@ -1,7 +1,7 @@
 import {decodeRhToken,verifyStudioSession} from './studioAuth'
 import {ORIGINAL_PG_UI_ENABLED} from './studioBackend'
 import {invalidateStudioSessionPrivacy,subscribeStudioSessionPrivacy} from './studioSessionPrivacy'
-import {createNativeEmployeeInventoryReader,NativeEmployeeInventoryError,type NativeEmployeeInventoryScope} from '../../shared/native-employee-inventory.mjs'
+import {createNativeEmployeeLiveInventoryReader,NativeEmployeeInventoryError,type NativeEmployeeInventoryScope} from '../../shared/native-employee-inventory.mjs'
 export type LocalDeviceSessionScope=NativeEmployeeInventoryScope
 let epoch=0
 const pending=new Set<AbortController>()
@@ -9,7 +9,7 @@ subscribeStudioSessionPrivacy(()=>{epoch++;for(const controller of pending)contr
 export function getLocalDeviceSessionScope():LocalDeviceSessionScope{return {owner:decodeRhToken()?.sub||'',epoch:ORIGINAL_PG_UI_ENABLED?epoch:0}}
 export function sameLocalDeviceSessionScope(expected:LocalDeviceSessionScope):boolean{const current=getLocalDeviceSessionScope();return !!expected.owner&&current.owner===expected.owner&&current.epoch===expected.epoch}
 export const subscribeLocalDeviceSessionPrivacy=subscribeStudioSessionPrivacy
-const reader=createNativeEmployeeInventoryReader({getContext:getLocalDeviceSessionScope,transport:(route,init)=>fetch(route,init)})
+const reader=createNativeEmployeeLiveInventoryReader({getContext:getLocalDeviceSessionScope,transport:(route,init)=>fetch(route,init)})
 /** Read facts through the genuine Cookie session. Other original-page actions
  * retain their own receipt contracts; discovery never writes or selects. */
 export async function nativeLocalEmployeeApi<T>(route:string,body?:unknown,signal?:AbortSignal,expected=getLocalDeviceSessionScope()):Promise<T>{

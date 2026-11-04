@@ -23,7 +23,7 @@ test('the actual Native collector resolves original business interaction and opt
  c.includeSource('services/pg-api/src/native-server.ts')
  for(const entry of ['knowledge-index-service.ts','agent-assessment-service.ts','native-local-executor-service-preflight-cli.mjs'])assert(!c.visited.has('services/pg-api/src/'+entry),entry+' remains opt-in')
  for(const entry of ['knowledge-index-service.ts','agent-assessment-service.ts','native-local-executor-service-preflight-cli.mjs','native-local-executor-service-preflight.ts','native-local-executor-operator-plan.mjs','native-local-executor-operator-plan.d.mts'])c.includeSource('services/pg-api/src/'+entry)
- for(const name of ['business-schemas.mjs','monitor-semantics.mjs','monitor-execution-budget.mjs','ordinary-case-run-contract.ts','original-run-interaction-contract.ts'])assert(c.included.has('shared/'+name),name)
+ for(const name of ['business-schemas.mjs','monitor-semantics.mjs','monitor-execution-budget.mjs','ordinary-case-run-contract.ts','original-run-interaction-contract.ts','original-harness-contract.ts','mcp-inventory-pagination-contract.ts'])assert(c.included.has('shared/'+name),name)
   assert(c.included.has('shared/original-staff-contract.mjs'));c.includeSource('shared/original-staff-contract.d.mts');assert(c.included.has('shared/original-staff-contract.d.mts'))
  for(const name of ['008_claim_workflow_v2.sql','009_claim_autonomous_agent.sql'])assert(c.included.has('db/postgres/'+name),name)
  assert.deepEqual([...c.foundExternals].sort(),['ajv','jszip','mammoth','pdfjs-dist','pg'])
@@ -32,7 +32,7 @@ test('the actual Native collector resolves original business interaction and opt
 })
 test('the default Native bundle still refuses arbitrary shared files, SQL and traversal',()=>{
  const c=collector()
-  for(const p of ['shared/unreviewed-contract.ts','shared/original-agent-run-options-private.ts','shared/native-guided-private.mjs','shared/other-original.ts','shared/original-staff-private.ts','shared/original-staff-contract-private.mjs','shared/../.env','/shared/business-schemas.mjs','db/postgres/001_stage_schema.sql','db/postgres/010_unreviewed.sql','db/postgres/../postgres/008_claim_workflow_v2.sql','db/postgres/migrations/pg_v9_084_original_staff.sql'])assert.throws(()=>c.validatedPath(p),/native_preflight_bundle_refused/)
+  for(const p of ['shared/mcp-inventory-pagination-contract-private.ts','shared/mcp-inventory-pagination-contract.mjs','shared/original-harness-contract-private.ts','shared/original-harness-contract.mjs','shared/other-harness-contract.ts','shared/unreviewed-contract.ts','shared/original-agent-run-options-private.ts','shared/native-guided-private.mjs','shared/other-original.ts','shared/original-staff-private.ts','shared/original-staff-contract-private.mjs','shared/../.env','/shared/business-schemas.mjs','db/postgres/001_stage_schema.sql','db/postgres/010_unreviewed.sql','db/postgres/../postgres/008_claim_workflow_v2.sql','db/postgres/migrations/pg_v9_084_original_staff.sql'])assert.throws(()=>c.validatedPath(p),/native_preflight_bundle_refused/)
 })
 test('the explicitly selected employee bundle includes the real additive profile modules while default remains closed',()=>{
   const defaultBundle=collector(),employeeBundle=collector()
