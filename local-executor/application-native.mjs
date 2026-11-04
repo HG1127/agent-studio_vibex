@@ -134,6 +134,8 @@ public static class StudioApplications {
  }
  static bool TargetFocused(AutomationElement target){
   try{
+   // Electron may report the top-level Chromium window as FocusedElement even when an Edit has keyboard focus.
+   if(target.Current.HasKeyboardFocus)return true;
    var cursor=AutomationElement.FocusedElement;
    if(cursor==null||Sensitive(cursor))return false;
    string id=Runtime(target);
@@ -152,11 +154,20 @@ public static class StudioApplications {
   MouseInput(2);MouseInput(4);
  }
  static void FocusTarget(IntPtr h,Win w,AutomationElement e,AutomationElement.AutomationElementInformation c,uint epoch){
+  // The local approval dialog can become the foreground window. Restore the
+  // approved application after approval before trusting UIA's focused element.
+  RequireForeground(h,epoch);
   if(TargetFocused(e))return;
   if(c.IsKeyboardFocusable){try{e.SetFocus();}catch(InvalidOperationException){}}
-  if(TargetFocused(e))return;
+  if(!ForegroundMatches(h))RequireForeground(h,epoch);
+  if(TargetFocused(e)&&ForegroundMatches(h))return;
+  if(!ForegroundMatches(h))RequireForeground(h,epoch);
   ClickTarget(h,w,e,c,epoch);
   System.Threading.Thread.Sleep(75);
+  if(!ForegroundMatches(h))RequireForeground(h,epoch);
+  // ClickTarget's own SendInput is part of this approved operation; after it,
+  // rely on the pinned foreground and focused-editor checks, not a stale input
+  // epoch that can mistake our synthetic click for user takeover.
   if(!ForegroundMatches(h)||!TargetFocused(e))throw new Exception("application_focus_changed");
  }
  public static void Act(string id,string exe,string title,string action,int element,string name,string runtime,string text,string key){
@@ -298,7 +309,7 @@ try{
  [Console]::Write((@{ok=$true;value=$result}|ConvertTo-Json -Depth 8 -Compress))
 }catch{$errorCode=[string]$_.Exception.Message;$match=[regex]::Match($errorCode,'application_[a-z_]+');if($match.Success){$errorCode=$match.Value}else{$errorCode='application_native_unavailable'};[Console]::Write((@{ok=$false;error=$errorCode}|ConvertTo-Json -Compress));exit 1}`
 
-export function applicationNative(input,{execute=execFile,signal,platform=process.platform,timeout=['observe','activate_observe'].includes(input.action)?45000:20000,windowProbe=bundledWindowProbe,observer=bundledObserver}={}){
+export function applicationNative(input,{execute=execFile,signal,platform=process.platform,timeout=['observe','activate_observe'].includes(input.action)?45000:input.action==='act'?60000:20000,windowProbe=bundledWindowProbe,observer=bundledObserver}={}){
  if(platform!=='win32')return Promise.reject(Error('application_windows_required'))
  signal?.throwIfAborted()
  const compiled=input.action==='windows'?windowProbe:['observe','activate_observe'].includes(input.action)?observer:null

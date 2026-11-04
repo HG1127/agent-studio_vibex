@@ -23,6 +23,20 @@ test('explicit approved foreground observer uses only pinned compiled helper and
  assert.match(APPLICATION_NATIVE_CODE,/ControlType\.Edit\|\|e\.ControlType==ControlType\.Document/);
  assert.match(APPLICATION_NATIVE_CODE,/actions\.Contains\("type"\)&&!actions\.Contains\("key"\)/);
 })
+test('editor focus is restored to the approved application after the native confirmation dialog closes',()=>{
+ const focus=APPLICATION_NATIVE_CODE.split('public static void Act(')[0].split('static void FocusTarget(').at(-1);
+ assert.match(APPLICATION_NATIVE_CODE,/if\(target\.Current\.HasKeyboardFocus\)return true/);
+ assert.ok(focus&&focus.length>0); assert.match(focus,/RequireForeground\(h,epoch\);\s*if\(TargetFocused\(e\)\)return/);
+ assert.match(focus,/if\(!ForegroundMatches\(h\)\)RequireForeground\(h,epoch\)/);
+ assert.match(focus,/if\(TargetFocused\(e\)&&ForegroundMatches\(h\)\)return/);
+ assert.match(focus,/ClickTarget\(h,w,e,c,epoch\);[\s\S]*?if\(!ForegroundMatches\(h\)\|\|!TargetFocused\(e\)\)throw new Exception\("application_focus_changed"\)/);
+ assert.doesNotMatch(focus,/if\(InputEpoch\(\)!=epoch\)/);})
+test('approved native application actions receive a bounded 60-second UIA budget',async()=>{
+ let seen;
+ const input={action:'act',path:'C:\\\\Apps\\\\safe.exe',window:'123',title:'Safe',kind:'type',element:1,name:'Editor',runtime:'1.2.3',text:'acceptance'};
+ await applicationNative(input,{platform:'win32',execute:(exe,args,options,done)=>{seen={timeout:options.timeout,shell:options.shell,windowsHide:options.windowsHide};done(null,'{\"ok\":true,\"value\":{\"accepted\":true}}')}});
+ assert.deepEqual(seen,{timeout:60000,shell:false,windowsHide:true});
+})
 test('compiled window queries use a fixed executable with data-only input; actions retain their protected controller',async()=>{
  const probe='C:\\packaged\\native\\application-window-probe.exe',input={action:'windows',path:'C:\\Apps\\Literal $(not a command).exe',reveal:true}
  const result=await applicationNative(input,{platform:'win32',windowProbe:probe,execute:(exe,args,options,done)=>{
