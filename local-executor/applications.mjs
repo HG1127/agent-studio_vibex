@@ -69,6 +69,24 @@ export async function discoverApplications({native=applicationNative}={}){
 const exact=(args,allowed,required=allowed)=>{if(!args||typeof args!=='object'||Array.isArray(args)||Object.keys(args).some(k=>!allowed.includes(k))||required.some(k=>!Object.hasOwn(args,k)))throw Error('invalid_application_arguments')}
 const schema=(properties,required=Object.keys(properties))=>({type:'object',properties,required,additionalProperties:false})
 const str={type:'string'},integer={type:'integer'}
+
+/** Prefer actionable, semantically identifiable UIA controls to anonymous
+ * Chromium containers. Native IDs remain unchanged for the one-use token. */
+export function prioritizeApplicationControls(rows){
+ const score=c=>{
+  const t=String(c.type||''),named=String(c.name||'').trim()&&c.name!=='[protected]',actions=c.actions||[]
+  const role=/\.Edit$/.test(t)?115:/\.Button$/.test(t)?100:/\.TabItem$/.test(t)?98:/\.(ComboBox|CheckBox|RadioButton)$/.test(t)?96:/\.Hyperlink$/.test(t)?92:/\.MenuItem$/.test(t)?85:/\.Document$/.test(t)?65:/\.Text$/.test(t)?30:0
+  return role+(named?20:0)+(actions.includes('type')?40:0)+(actions.includes('click')?5:0)-(c.password||!c.enabled?150:0)
+ }
+ let anonymous=0
+ return [...rows].sort((a,b)=>score(b)-score(a)||Number(a.id)-Number(b.id)).filter(c=>{
+  if(!c.name?.trim()&&!c.actions?.includes('type')&&/\.(Custom|Group|Pane|Text)$/.test(c.type||''))return anonymous++<12
+  return true
+ }).slice(0,250)
+}
+export function hasActionableElectronControls(rows){
+ return rows.some(c=>c.enabled&&!c.password&&/\.(Edit|Button|TabItem|ComboBox|ListItem|CheckBox|RadioButton)$/.test(c.type||'')&&Array.isArray(c.actions)&&c.actions.some(a=>a==='click'||a==='type'||a==='key'))
+}
 export function registerApplications({add,config,native=applicationNative,launch=spawn,confirm=confirmManaged,clock=Date.now,launchWaitMs=25000,pollMs=600}){
  const permission=validateApplicationControl(config.applications)
  if(!permission.enabled||!permission.grants.length)return {close:async()=>{}}
@@ -100,18 +118,35 @@ export function registerApplications({add,config,native=applicationNative,launch
    return JSON.stringify({application:g.name,accepted:true,status:'waiting_window',windows:[],retryLaunch:false,message:'启动请求已受理，但尚未发现可操作窗口。请刷新窗口检查启动弹窗；不会重复启动。'})
   })
   addTool('apps.windows','列出已授权应用的可见窗口。只返回该应用的窗口，不枚举其他应用的数据。',{app:appSchema(desktop)},async(args,signal)=>{exact(args,['app']);const g=await checked(args.app);return JSON.stringify({application:g.name,windows:(await windows(g,signal)).map(({path,...w})=>w)})})
-  addTool('apps.observe','观察已授权应用的指定窗口，返回控件编号和一次性观察凭据；已授权截图时仅截取此窗口。输入前必须重新观察，凭据30秒有效。',{app:appSchema(desktop),window:str},async(args,signal)=>{
-   exact(args,['app','window']);const g=await checked(args.app);if(typeof args.window!=='string'||!/^\d{1,20}$/.test(args.window))throw Error('application_window_changed')
+  addTool('apps.observe','只读观察已授权窗口；后台窗口不会盲读 Electron 控件。需要在同一次操作中激活并观察时，明确传 activate:true，须本机确认后才切换前台。凭据30秒有效。',{app:appSchema(desktop),window:str,activate:{type:'boolean'}},async(args,signal)=>{
+   exact(args,['app','window','activate'],['app','window']);const g=await checked(args.app);if(typeof args.window!=='string'||!/^\d{1,20}$/.test(args.window))throw Error('application_window_changed');if(args.activate!==undefined&&typeof args.activate!=='boolean')throw Error('invalid_application_arguments');if(args.activate===true&&!g.control)throw Error('application_control_denied')
    observations.delete(g.id)
    const changed=async list=>JSON.stringify({application:g.name,status:list.length?'window_changed':'waiting_window',requestedWindow:args.window,windows:list.map(({path,...w})=>w),actionable:false,retryAction:false,message:'原窗口已关闭或重建。请使用刷新后的窗口编号重新观察；未重新启动、点击或输入。'})
-   if(!windowCache.get(g.id)?.has(args.window)){const list=await windows(g,signal);if(!list.some(w=>w.id===args.window))return changed(list)}
+   const current=await windows(g,signal);const selected=current.find(w=>w.id===args.window);if(!selected)return changed(current)
+   if(args.activate!==true&&selected.foreground===false&&!permission.images)return JSON.stringify({application:g.name,status:'window_background',actionable:false,retryAction:false,requestedWindow:args.window,windows:current.map(({path,...w})=>w),message:'应用当前在后台，尚未读取输入框，也未执行操作。可选择 activate:true 并在本机确认切换前台后一次性观察；请勿在后台重复点击。'})
+   if(args.activate===true){const started=clock();const message='应用：'+g.name+'\n窗口：'+selected.title+'\n操作：激活窗口并读取可访问控件（不点击控件、不输入、不发送）\n请先保存其他应用中的草稿并确认暂时停止键鼠操作。';if(!await confirm({message,kind:'application'},signal))throw Error('application_action_declined');if(clock()-started>90000)throw Error('application_observation_expired');await checked(g.id);signal?.throwIfAborted()}
    // The native observer revalidates the window's current executable identity.
    // A known handle saves a redundant helper spawn, never an authorization check.
    let view
-   try{view=await native({action:'observe',path:g.windowPath||g.path,window:args.window,images:permission.images},{signal})}
+   try{view=await native({action:args.activate===true?'activate_observe':'observe',path:g.windowPath||g.path,window:args.window,images:permission.images},{signal})}
    catch(error){if(error.message==='application_window_changed')return changed(await windows(g,signal));throw error}
-   const token=randomBytes(16).toString('hex'),controls=(view.controls||[]).sort((a,b)=>Number(/Edit|Document/.test(b.type||''))-Number(/Edit|Document/.test(a.type||''))).slice(0,250)
-   const output={application:g.name,window:{id:view.window.id,title:redactApplicationText(view.window.title),width:view.window.width,height:view.window.height},observation:token,expiresInSeconds:30,truncated:view.controlsTruncated===true||(view.controls||[]).length>250,diagnostic:g.accessibility==='electron'&&!(view.controls||[]).some(c=>/Edit|Document|Text|List|DataGrid/.test(c.type||''))?'应用窗口已找到，但正文控件尚不可访问。请先保存应用内工作并关闭应用，再从本软件启动以启用控件支持；不要把窗口就绪当作任务完成。':undefined,controls:controls.map(c=>({id:c.id,name:redactApplicationText(c.name).slice(0,200),type:c.type,password:c.password,enabled:c.enabled,rect:c.rect,actions:c.actions,value:c.password?undefined:c.value===undefined?undefined:redactApplicationText(c.value)}))}
+       if(view.window?.foreground===false){
+     // A background Chromium surface is not a safe input source. Keep its
+     // already-authorized screenshot (preview21 feature) but issue no action token.
+     const output={application:g.name,status:'window_background',actionable:false,retryAction:false,requestedWindow:args.window,windows:[{id:view.window.id,title:redactApplicationText(view.window.title),width:view.window.width,height:view.window.height,foreground:false}],message:'应用在后台，未读取控件或授予任何点击输入凭据。若已授权截图，可查看此窗口的只读截图；要操作须由本人审批 activate:true。'}
+     if(view.image&&view.imageWidth>0&&view.imageHeight>0)output.imageSize={width:view.imageWidth,height:view.imageHeight,scaled:view.imageWidth!==view.window.width||view.imageHeight!==view.window.height}
+     if(view.imageError)output.imageDiagnostic={code:Object.hasOwn(APPLICATION_FAILURE_MESSAGES,view.imageError)?view.imageError:'application_capture_failed',message:APPLICATION_FAILURE_MESSAGES[view.imageError]||APPLICATION_FAILURE_MESSAGES.application_capture_failed}
+     const text=JSON.stringify(output)
+     return view.image?mcpResult({content:[{type:'text',text},{type:'image',mimeType:'image/png',data:view.image}]},true):text
+    }
+   // A root Chromium Document (often holding file:///...) is not an
+   // actionable editor. Never issue an observation token that an Agent can
+   // spend clicking an inaccessible page in a loop.
+   if(g.control&&g.accessibility==='electron'&&!hasActionableElectronControls(view.controls||[])){
+    return JSON.stringify({application:g.name,status:'accessibility_unavailable',actionable:false,retryAction:false,requestedWindow:args.window,windows:[{id:view.window.id,title:redactApplicationText(view.window.title),width:view.window.width,height:view.window.height}],message:'已找到应用窗口，但只能读取内部页面，无法识别新建任务、输入框或发送按钮。请先保存应用中的未发送内容，完全退出应用，再从 Agent Studio 的“启动应用”重新打开以启用 Electron 控件支持；本次没有点击、输入或提交，不应重复尝试同一操作。'})
+   }
+   const token=randomBytes(16).toString('hex'),controls=prioritizeApplicationControls(view.controls||[])
+   const output={application:g.name,window:{id:view.window.id,title:redactApplicationText(view.window.title),width:view.window.width,height:view.window.height,foreground:view.window.foreground===true},observation:token,expiresInSeconds:30,truncated:view.controlsTruncated===true||(view.controls||[]).length>controls.length,diagnostic:g.accessibility==='electron'&&!hasActionableElectronControls(view.controls||[])?'应用窗口已找到，但正文控件尚不可访问。请先保存应用内工作并关闭应用，再从本软件启动以启用控件支持；不要把窗口就绪当作任务完成。':undefined,controls:controls.map(c=>({id:c.id,name:redactApplicationText(c.name).slice(0,200),type:c.type,password:c.password,enabled:c.enabled,rect:c.rect,actions:c.actions,value:c.password?undefined:c.value===undefined?undefined:redactApplicationText(c.value)}))}
    if(view.image&&view.imageWidth>0&&view.imageHeight>0)output.imageSize={width:view.imageWidth,height:view.imageHeight,scaled:view.imageWidth!==view.window.width||view.imageHeight!==view.window.height};
    if(view.imageError){output.imageDiagnostic={code:Object.hasOwn(APPLICATION_FAILURE_MESSAGES,view.imageError)?view.imageError:'application_capture_failed',message:APPLICATION_FAILURE_MESSAGES[view.imageError]||APPLICATION_FAILURE_MESSAGES.application_capture_failed};output.imageDiagnostic.controlsOnly=true}
    while(JSON.stringify(output).length>10500){output.controls.pop();output.truncated=true}

@@ -5,9 +5,24 @@ import path from 'node:path'
 import os from 'node:os'
 import {execFile} from 'node:child_process'
 import {promisify} from 'node:util'
-import {applicationNative} from '../local-executor/application-native.mjs'
+import {applicationNative,APPLICATION_NATIVE_CODE} from '../local-executor/application-native.mjs'
 import {buildApplicationWindowProbe} from '../ops/build-application-window-probe.mjs'
 
+test('explicit approved foreground observer uses only pinned compiled helper and offers focused editor keyboard action',async()=>{
+ const observer='C:\\packaged\\native\\application-observer.exe';
+ const input={action:'activate_observe',path:'C:\\Apps\\safe.exe',window:'123',images:false};
+ const result=await applicationNative(input,{platform:'win32',observer,execute:(exe,args,options,done)=>{
+  assert.equal(exe,observer);
+  assert.deepEqual(args,[]);
+  assert.equal(options.shell,false);
+  assert.equal(options.env.STUDIO_APPLICATION_CODE,undefined);
+  assert.deepEqual(JSON.parse(Buffer.from(options.env.STUDIO_APPLICATION_INPUT,'base64').toString()),input);
+  done(null,'{"ok":true,"value":{"window":{"foreground":true},"controls":[]}}')
+ }});
+ assert.equal(result.window.foreground,true);
+ assert.match(APPLICATION_NATIVE_CODE,/ControlType\.Edit\|\|e\.ControlType==ControlType\.Document/);
+ assert.match(APPLICATION_NATIVE_CODE,/actions\.Contains\("type"\)&&!actions\.Contains\("key"\)/);
+})
 test('compiled window queries use a fixed executable with data-only input; actions retain their protected controller',async()=>{
  const probe='C:\\packaged\\native\\application-window-probe.exe',input={action:'windows',path:'C:\\Apps\\Literal $(not a command).exe',reveal:true}
  const result=await applicationNative(input,{platform:'win32',windowProbe:probe,execute:(exe,args,options,done)=>{

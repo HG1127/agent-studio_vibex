@@ -11,12 +11,13 @@ import {readGuidedProfile} from '../local-executor/profiles.mjs'
 import {codexTaskArguments,createCodexTasks} from '../local-executor/codex-tasks.mjs'
 import {createRuntime} from '../local-executor/runtime.mjs'
 
-async function fixture(t,{codex=false,control=true,confirm=async()=>true,clock=Date.now}={}){
+async function fixture(t,{codex=false,control=true,electron=false,images=false,confirm=async()=>true,clock=Date.now}={}){
  const base=path.resolve('.tmp/application-unit');await fs.mkdir(base,{recursive:true});const home=await fs.mkdtemp(path.join(base,'disposable-')),exe=path.join(home,codex?'codex.exe':'fixture.exe');await fs.writeFile(exe,'MZ-synthetic-no-program')
+ if(electron)await fs.writeFile(path.join(home,'LICENSE.electron.txt'),'Electron acceptance fixture')
  const grant=await inspectApplication(exe,{name:codex?'Codex fixture':'Synthetic fixture',adapter:codex?'codex':'desktop',control}),tools=new Map(),calls=[],children=[]
  let view={window:{id:'123',title:'Isolated fixture',width:800,height:600},input:42,controls:[{id:0,name:'Editor',type:'ControlType.Edit',runtime:'42.1',enabled:true,password:false,rect:[10,10,100,50]},{id:1,name:'[protected]',runtime:'42.2',password:true,enabled:true}]}
- const config={roots:[{name:'work',path:home,readOnly:false}],applications:{format:'agent-studio-applications-v1',enabled:true,images:false,grants:[grant]}}
- const native=async input=>{calls.push(input);if(input.action==='windows')return [{id:'123',path:exe,title:view.window.title}];if(input.action==='observe')return structuredClone(view);if(input.action==='act')return {accepted:true};return []}
+ const config={roots:[{name:'work',path:home,readOnly:false}],applications:{format:'agent-studio-applications-v1',enabled:true,images,grants:[grant]}}
+ const native=async input=>{calls.push(input);if(input.action==='windows')return [{id:'123',path:exe,title:view.window.title,foreground:view.window.foreground}];if(input.action==='observe'||input.action==='activate_observe')return structuredClone(input.action==='activate_observe'?{...view,window:{...view.window,foreground:true}}:view);if(input.action==='act')return {accepted:true};return []}
  const launch=(...args)=>{const c=new EventEmitter();c.stdout=new PassThrough();c.stderr=new PassThrough();c.stdin=new PassThrough();c.unref=()=>{};c.kill=()=>{c.emit('close',1)};children.push({c,args});queueMicrotask(()=>c.emit('spawn'));return c}
  const runtime=registerApplications({config,add:(name,description,schema,fn)=>tools.set(name,{description,schema,fn}),native,launch,confirm,clock})
  t.after(async()=>{await runtime.close();assert.ok(path.resolve(home).startsWith(base+path.sep));await fs.rm(home,{recursive:true,force:true,maxRetries:5,retryDelay:100})})
@@ -61,6 +62,77 @@ test('model-visible observations mask URL credentials while action identity stay
  await f.call('act',{observation:view.observation,element:0,action:'click'})
  const action=f.calls.find(c=>c.action==='act');assert.equal(action.name,url);assert.equal(action.title,'WorkBuddy?access_token=window-secret');assert.equal(action.runtime,'1.2')
  assert.equal(redactApplicationText('Research AI workbench design'), 'Research AI workbench design')
+})
+test('Electron root Document and file URL cannot be treated as actionable WorkBuddy controls',async t=>{
+ const f=await fixture(t,{electron:true})
+ f.setView({window:{id:'123',title:'WorkBuddy',width:1802,height:800},controls:[{id:0,name:'WorkBuddy',type:'ControlType.Document',value:'file:///D:/HR',runtime:'1.1',enabled:true,password:false,actions:['click'],rect:[0,0,1802,800]}]})
+ const view=await f.call('observe',{window:'123'})
+ assert.equal(view.status,'accessibility_unavailable')
+ assert.equal(view.actionable,false)
+ assert.equal(view.retryAction,false)
+ assert.equal(view.observation,undefined)
+ assert.equal(view.controls,undefined)
+ assert.match(view.message,/完全退出应用/)
+ await assert.rejects(f.call('act',{observation:'0'.repeat(32),element:0,action:'click'}),/application_observation_expired/)
+ assert.ok(!f.calls.some(c=>c.action==='act'))
+})
+test('Electron menu bar alone cannot qualify inaccessible content as actionable',async t=>{
+ const f=await fixture(t,{electron:true})
+ f.setView({window:{id:'123',title:'WorkBuddy',width:1000,height:700},controls:[
+  {id:0,name:'WorkBuddy',type:'ControlType.Document',value:'file:///D:/HR',runtime:'1.1',enabled:true,password:false,actions:['click'],rect:[0,0,1000,700]},
+  {id:1,name:'编辑(E)',type:'ControlType.MenuItem',runtime:'1.2',enabled:true,password:false,actions:['click'],rect:[10,10,70,24]},
+ ]})
+ const observed=await f.call('observe',{window:'123'})
+ assert.equal(observed.status,'accessibility_unavailable')
+ assert.equal(observed.observation,undefined)
+ assert.ok(!f.calls.some(c=>c.action==='act'))
+})
+test('background Electron observation is fast, read-only and cannot issue stale control credentials',async t=>{
+ const f=await fixture(t,{electron:true})
+ f.setView({window:{id:'123',title:'WorkBuddy fixture',width:1000,height:700,foreground:false},controls:[{id:0,name:'Input',type:'ControlType.Edit',runtime:'100',password:false,enabled:true,actions:['type'],rect:[10,10,500,100]}]})
+ const result=await f.call('observe',{window:'123'})
+ assert.equal(result.status,'window_background')
+ assert.equal(result.actionable,false)
+ assert.equal(result.observation,undefined)
+ assert.equal(f.calls.filter(x=>x.action==='observe').length,0,'background UIA must not enumerate')
+ await assert.rejects(f.call('act',{observation:'0'.repeat(32),element:0,action:'type',text:'x'}),/application_observation_expired/)
+})
+test('authorized background screenshots survive without accessibility scans or action tokens',async t=>{
+ const f=await fixture(t,{electron:true,images:true})
+ const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg=='
+ f.setView({window:{id:'123',title:'WorkBuddy fixture',width:1000,height:700,foreground:false},image:png,imageWidth:1,imageHeight:1,controls:[]})
+ const result=await f.call('observe',{window:'123'})
+ assert.ok(result.images?.length===1,'previously authorized screenshot must be retained')
+ assert.equal(result.images[0].mimeType,'image/png')
+ const metadata=JSON.parse(result.text)
+ assert.equal(metadata.status,'window_background')
+ assert.equal(metadata.actionable,false)
+ assert.equal(metadata.observation,undefined)
+ assert.equal(metadata.controls,undefined)
+ assert.equal(f.calls.filter(x=>x.action==='observe').length,1,'native observes image without UIA when background')
+ assert.ok(!f.calls.some(x=>x.action==='act'))
+ await assert.rejects(f.call('act',{observation:'0'.repeat(32),element:0,action:'click'}),/application_observation_expired/)
+})
+test('explicit focus and observe requires local consent and cannot write without separate one-use approval',async t=>{
+ let approvals=0
+ const f=await fixture(t,{electron:true,confirm:async()=>{approvals++;return approvals===2}})
+ f.setView({window:{id:'123',title:'WorkBuddy fixture',width:1000,height:700,foreground:false},controls:[{id:0,name:'Input',type:'ControlType.Edit',runtime:'100',password:false,enabled:true,actions:['type'],rect:[10,10,500,100]}]})
+ await assert.rejects(f.call('observe',{window:'123',activate:true}),/application_action_declined/)
+ assert.equal(f.calls.filter(x=>x.action==='activate_observe').length,0)
+ await assert.rejects(f.call('observe',{window:'123',activate:'yes'}),/invalid_application_arguments/)
+ const result=await f.call('observe',{window:'123',activate:true})
+ assert.equal(result.status,undefined)
+ assert.match(result.observation,/^[a-f0-9]{32}$/)
+ assert.equal(f.calls.filter(x=>x.action==='activate_observe').length,1)
+ assert.equal(f.calls.filter(x=>x.action==='act').length,0)
+ assert.equal(approvals,2)
+ await assert.rejects(f.call('act',{observation:result.observation,element:0,action:'type',text:'x'}),/application_action_declined/)
+ assert.equal(f.calls.filter(x=>x.action==='act').length,0)
+})
+test('launch-only app cannot request foreground activation through a read tool',async t=>{
+ const f=await fixture(t,{electron:true,control:false})
+ await assert.rejects(f.call('observe',{window:'123',activate:true}),/application_control_denied/)
+ assert.equal(f.calls.filter(x=>x.action==='activate_observe').length,0)
 })
 test('launch never accepts renderer/model command-line arguments; window list excludes other executables',async t=>{
  const f=await fixture(t);await assert.rejects(f.call('launch',{args:['--eval','bad']}),/invalid_application_arguments/);assert.equal(f.children.length,0)
