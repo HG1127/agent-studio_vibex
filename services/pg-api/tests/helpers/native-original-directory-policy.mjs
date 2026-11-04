@@ -12,9 +12,10 @@ export function originalDirectoryRoute(method,raw,body){
  if(raw.startsWith('/__pb')||raw.startsWith('/api/'))return 'legacy'
  const u=new URL(raw,'https://original-directory.invalid')
  if(!raw.startsWith('/')||u.origin!=='https://original-directory.invalid')return 'denied'
+ if(u.pathname==='/__pg_native/api/native-auth/login-status')return method==='GET'&&raw===u.pathname?'native':'denied'
  if(raw.startsWith('/__pg_native/')){
   const p=u.pathname.slice('/__pg_native'.length);if(u.search)return 'denied'
-  if(method==='GET'&&['/api/native-auth/me','/api/native-auth/capabilities','/api/v2/local-devices'].includes(p))return 'native'
+  if(method==='GET'&&['/api/native-auth/me','/api/native-auth/capabilities','/api/v2/local-devices','/api/v2/local-device-pairings'].includes(p))return 'native'
   if(method==='GET'&&new RegExp('^/api/v2/local-devices/jobs/'+uuid+'$').test(p))return 'native'
   if(method==='POST'&&['/api/native-auth/login','/api/native-auth/logout'].includes(p))return 'native'
   if(method==='POST'&&['/api/v2/local-devices','/api/v2/local-devices/confirm'].includes(p)){

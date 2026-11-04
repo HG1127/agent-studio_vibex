@@ -34,6 +34,16 @@ test('canonical ToolHub views: actual owner Home, calc/approval, numbered activi
   const approved=await f.request('alice','/api/v2/workflow-v2-runs/'+id+'/decision',{decision:'approved',step_key:pending.step_key,input_sha256:pending.input_sha256},{headers});expect(approved.status).toBe(200)
   expect((await f.drive(id,['succeeded','failed','paused'])).run.status).toBe('succeeded')
  }
+ // Each UI filter invalidates the previous read scope. Observe the exact
+ // real pair before the action, consume both bodies, then await current UI.
+ const activityReady=async(query,action)=>{
+  const list=page.waitForResponse(r=>r.request().method()==='GET'&&r.url()===f.browserOrigin+'/__pg_native/api/v2/tool-hub/invocations?'+query,{timeout:15000})
+  const stats=page.waitForResponse(r=>r.request().method()==='GET'&&r.url()===f.browserOrigin+'/__pg_native/api/v2/tool-hub/stats',{timeout:15000})
+  const pair=Promise.all([list,stats]);void pair.catch(()=>{})
+  await action();const [rows,counts]=await pair
+  expect(await rows.finished()).toBeNull();expect(await counts.finished()).toBeNull()
+  await expect(page.getByRole('button',{name:'刷新调用记录',exact:true})).toBeEnabled()
+ }
  try{
   expect(f.originalHomeReadOnly).toBe(true);const resources=await f.prepareResources('alice')
   for(const who of ['alice','bob']){const reply=await f.request(who,'/api/v2/original-ui/agent-specs?limit=50');expect(reply.status).toBe(200);expect(reply.body.items.some(row=>row.id===f.resources[who].spec.id)).toBe(true);expect(reply.body.items.every(row=>row.owner_user_id===f.users[who])).toBe(true)}
@@ -44,8 +54,8 @@ test('canonical ToolHub views: actual owner Home, calc/approval, numbered activi
   const receipt=(await f.trials.list(await f.identityFor('alice'),undefined,50)).items[0];phase='actual_original_worker_approval';expect((await f.drive(receipt.run_id)).run.status).toBe('awaiting_approval');await run();await expect.poll(async()=> (await f.runs.get(await f.identityFor('alice'),receipt.run_id)).approvals.find(a=>a.step_key)?.status).toBe('approved');expect((await f.drive(receipt.run_id,['succeeded','failed','paused'])).run.status).toBe('succeeded');await page.getByRole('button',{name:'刷新当前视图',exact:true}).click();await expect(debug.getByText('调用成功',{exact:true})).toBeVisible();await expect(debug.locator('pre')).toContainText('42')
   phase='actual_ledger_for_second_page';for(let i=0;i<20;i++)await seedCalc()
   phase='canonical_activity';await page.locator('nav[aria-label="执行资源操作流程"] a[href*="view=activity"]').click();await expect(page.getByRole('heading',{name:'调用记录与故障定位',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:/下一页/})).toBeEnabled();await page.getByRole('button',{name:/下一页/}).click();await expect(page.locator('section[aria-label="工具调用记录"]')).toContainText('2 / 2');await expect(page.locator('section[aria-label="工具调用记录"] li')).toHaveCount(1)
-  await page.getByRole('textbox',{name:'搜索工具名称',exact:true}).fill('calculate');await page.getByRole('button',{name:'搜索',exact:true}).click();await page.getByRole('combobox',{name:'筛选调用状态',exact:true}).selectOption('success');await page.getByRole('combobox',{name:'筛选调用来源',exact:true}).selectOption('debug');await expect(page.locator('section[aria-label="工具调用记录"]')).toContainText('1 / 2')
-  phase='canonical_run_filter';await page.goto(f.browserOrigin+'/tool-hub?view=activity&runId='+receipt.run_id);await expect(page.getByText('当前运行：'+receipt.run_id,{exact:true})).toBeVisible();await expect(page.locator('section[aria-label="工具调用记录"] li')).toHaveCount(1);await page.screenshot({path:testInfo.outputPath('canonical-original-toolhub-activity-real-pg.png'),fullPage:true})
+  await page.getByRole('textbox',{name:'搜索工具名称',exact:true}).fill('calculate');await activityReady('view=original_page_v1&page=1&q=calculate',()=>page.getByRole('button',{name:'搜索',exact:true}).click());await activityReady('view=original_page_v1&page=1&q=calculate&status=success',()=>page.getByRole('combobox',{name:'筛选调用状态',exact:true}).selectOption('success'));await activityReady('view=original_page_v1&page=1&q=calculate&status=success&source=debug',()=>page.getByRole('combobox',{name:'筛选调用来源',exact:true}).selectOption('debug'));await expect(page.locator('section[aria-label="工具调用记录"]')).toContainText('1 / 2')
+  phase='canonical_run_filter';await activityReady('view=original_page_v1&page=1&run_id='+receipt.run_id,()=>page.goto(f.browserOrigin+'/tool-hub?view=activity&runId='+receipt.run_id));await expect(page.getByText('当前运行：'+receipt.run_id,{exact:true})).toBeVisible();await expect(page.locator('section[aria-label="工具调用记录"] li')).toHaveCount(1);await page.screenshot({path:testInfo.outputPath('canonical-original-toolhub-activity-real-pg.png'),fullPage:true})
   phase='canonical_monitor';await page.locator('nav[aria-label="执行资源操作流程"] a[href*="view=monitor"]').click();await expect(page.getByRole('heading',{name:'运行状态与治理监控',exact:true})).toBeVisible();await expect(page.getByText('当前接口未提供状态',{exact:true})).toBeVisible()
   expect(traffic.filter(r=>r.view==='debug').every(r=>!r.path.includes('/tool-hub/stats')&&!r.path.includes('/tool-hub/harness')&&!r.path.includes('/tool-hub/invocations'))).toBe(true)
   expect(traffic.filter(r=>r.view==='activity').every(r=>!r.path.includes('/tool-connections')&&!r.path.includes('/original-ui/agent-specs')&&!r.path.includes('/tool-hub/harness'))).toBe(true)

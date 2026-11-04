@@ -905,7 +905,7 @@
     },
     {
       "path": "services/pg-api/src/original-quality089-static.mjs",
-      "sha256": "785e075263fabee8b4b7d78d858c48137fac565268e6eea05b6f7617981773e5"
+      "sha256": "e5011e4dee9520771fc3ad4b4b9ef297a24403d22b43f2d2db8484ef20d01d1e"
     },
     {
       "path": "services/pg-api/src/original-role-capabilities.ts",
@@ -1325,7 +1325,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-genuine-source-pins.mjs",
-      "sha256": "571883374899e977097d6a3357cdfa5ac4440eb1d0a91fc425d778dd3b346ef8"
+      "sha256": "8bd2a8bf87d73ea19744876dfc521c49453a537ce16a067c9050b1c3a5a6d36e"
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-original-home-guard.mjs",
@@ -2985,7 +2985,7 @@
     },
     {
       "path": "src/pages/AgentRun/usePgOriginalAgentRun.ts",
-      "sha256": "cf6514b706939940366515a0dd7bc4656e2451b15ce2c41973b1aa1dc4963930"
+      "sha256": "ef3086fe87a626d44766e36569a0b44e2d92dbffb1e2544dcdefcb1eda419f27"
     },
     {
       "path": "src/pages/AgentRun/usePocketBaseAgentRun.ts",
@@ -3557,7 +3557,7 @@
     },
     {
       "path": "tests/pg-original-toolhub-genuine.spec.mjs",
-      "sha256": "d09e6ac5c5b3096f52ebfde53ba9b6d6e82845992ac9d3dbe2e8a8355dfadda4"
+      "sha256": "d5bd5b755e4fb018f1da7d74fb9b7317ed4950e2f1088effecd2878f001aa0d6"
     },
     {
       "path": "tests/pg-original-toolhub-home-genuine.config.mjs",

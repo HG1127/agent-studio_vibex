@@ -352,8 +352,8 @@ export const originalQuality089Static=freeze({
           "expression": "state='missing' OR checks_sha256=agentstudio.quality089_rules_sha(checks)",
           "keys": [
             "state",
-            "checks",
-            "checks_sha256"
+            "checks_sha256",
+            "checks"
           ]
         },
         {
@@ -473,8 +473,8 @@ export const originalQuality089Static=freeze({
           "name": "q089_receipts_after_revision_ck",
           "type": "c",
           "keys": [
-            "before_revision",
-            "after_revision"
+            "after_revision",
+            "before_revision"
           ],
           "expression": "after_revision=before_revision+1"
         },
@@ -823,8 +823,8 @@ export const originalQuality089Static=freeze({
           "expression": "(kind='save' AND version_id IS NULL AND expected_new_source IS NULL) OR (kind='restore' AND version_id IS NOT NULL AND expected_new_source IS NOT NULL AND expected_new_source~'^[a-f0-9]{64}$')",
           "keys": [
             "kind",
-            "expected_new_source",
-            "version_id"
+            "version_id",
+            "expected_new_source"
           ]
         },
         {
@@ -832,8 +832,8 @@ export const originalQuality089Static=freeze({
           "type": "c",
           "expression": "consumed_revision IS NULL OR consumed_revision=before_revision+1",
           "keys": [
-            "before_revision",
-            "consumed_revision"
+            "consumed_revision",
+            "before_revision"
           ]
         },
         {
@@ -841,8 +841,8 @@ export const originalQuality089Static=freeze({
           "type": "c",
           "expression": "checks_sha256=agentstudio.quality089_rules_sha(checks)",
           "keys": [
-            "checks",
-            "checks_sha256"
+            "checks_sha256",
+            "checks"
           ]
         },
         {
