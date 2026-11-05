@@ -14,7 +14,7 @@
     },
     {
       "path": "services/pg-api/src/workflow-v2-tool-dispatch.ts",
-      "sha256": "37686e9556eea8b75fff32bb3c8ebb2d3ef501675a5f230377a8dd0f8c354d0b"
+      "sha256": "dcdccd02a6383868bb82dbefcab9e0b3b05f1f9c4cf1c1e56d545e377a324c75"
     },
     {
       "path": "services/pg-api/src/workflow-v2-tool-network.ts",
@@ -44,5 +44,7 @@
       "path": "tests/workflow-web-snippet-href-presence-pure.test.mjs",
       "sha256": "8da9e719cee46233a1b0f6f4d7c2fa07dbb2461be7bd78edef32e3b9990f36f3"
     }
-  ]
+  ,
+    {"path": "services/pg-api/src/workflow-v2-web-cancel-fence.ts", "sha256": "89c61f2e6b81cd13ee382cd0ebe4456716ebb78b68c0247b8e66e8c27075005b"}
+]
 }

@@ -4,15 +4,15 @@
 import {nativeLocalDeviceGenuineFrozenSources} from './native-local-device-genuine-fixture.mjs'
 import {originalLoginReviewedSources} from '../../../../tests/helpers/pg-original-login-reviewed-sources.mjs'
 export const nativeOriginalDirectoryReviewedSources=Object.freeze({...nativeLocalDeviceGenuineFrozenSources,...originalLoginReviewedSources,...{
-  ".github/workflows/pg18-original-computer-directory-ci.yml": "a1d5890f1b40901834b9ee2a0a22651a2f5b363307a79c20912f187fc094eece",
+  ".github/workflows/pg18-original-computer-directory-ci.yml": "0c8d783d6b6aa25009a71e3bf13dae15b9f879b6bee3f6fcef86d24079228941",
   "services/pg-api/src/native-local-device-http.ts": "5e4bbf72f71a2d51d3c9d46695afc59d0183ec152fe224ec69c38c3bc2235ca2",
   "services/pg-api/src/native-local-device-repository.ts": "32c682cd5c33267dde43535f589e31fe9dc213aee76cf4b84de5c603c0a2f37c",
-  "services/pg-api/tests/helpers/native-local-device-genuine-fixture.mjs": "930cae0c0d6269ef0df8ae3c056f09fb26ffb942f15897cc0d8772eb64774f6c",
+  "services/pg-api/tests/helpers/native-local-device-genuine-fixture.mjs": "6b28569c41aaa8268557342ebb6fca30fe71566dbf711015033ce8420469b283",
   "services/pg-api/tests/helpers/native-local-device-genuine-guard.mjs": "94a2b49d9af8f6e1a4c6d94b5fcd8b08f597c497e9218639daed1f546441a8db",
   "services/pg-api/tests/helpers/native-original-directory-executor.mjs": "ba4d53d25ef500feac42ecd28cf0cdb03a6fbd5bf3c1ef7c61b55f4d9454ad18",
   "services/pg-api/tests/helpers/native-original-directory-fixture.mjs": "34679d2ffe203fe0d186bc26a51b97af7d2d5afab0f909193e39437d4b7c85d4",
   "services/pg-api/tests/helpers/native-original-directory-network.mjs": "71379f0a753754029ec80d2eec4a7eb8ea3b99516b27485e721129d0dbe3854f",
-  "services/pg-api/tests/helpers/native-original-directory-policy.mjs": "32759334d6ae3a1f62de9fe1f80e6e71ba1f2799ccf829a4c6e85b743e23cfde",
+  "services/pg-api/tests/helpers/native-original-directory-policy.mjs": "7bf4ffd5de1990f35f4f8938fa0f24ad3ef797a30473b5de2616f74258768e77",
   "services/pg-api/tests/helpers/native-original-directory-source-preflight.mjs": "180c6384d5c03a7fd5faad024a7eb104cb3a82c60a7d8fa75d3551197f893fa8",
   "services/pg-api/tests/native-original-directory-source-pure.test.mjs": "24836af1c087863ca5c01bd3c03a2080db91765568becac659e88b794ac04976",
   "shared/native-directory-jobs.d.mts": "e12c7e79f16b5bee3a1145f8baa02e3018df7c22afaeaf3e9e1f46303d51bdc6",
@@ -39,15 +39,15 @@ export const nativeOriginalDirectoryReviewedSources=Object.freeze({...nativeLoca
   "src/pages/ToolHub/useToolHub.ts": "f2cc4954b2339ea2ba8c37abdaa1fbfc6b6a2e1fb4f7b204618366da1a756f4e",
   "tests/pg-native-browser/original-computer-directory-pg18.spec.mjs": "7a27dddbd23409663186207ab23f15430cc92421b6a32408a72ac178f6164b9f",
   "tests/pg-native-browser/original-computer-directory.config.mjs": "cf291056fecb09e01a56009de814c3407ec098922597c55669d6fe9608ed8e2e",
-  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "a54adf684756f99481c3a6f89726b7e1723d30e63ba617f72b4e909d477ec7b0",
+  "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs": "f48d710fbdc9ccd17c6dd9fdc2e7817a1a78c45406c508423fbb943ad82c20ba",
   "services/pg-api/src/original-role-catalog.mjs": "292c68bc41254d81264845474036312867887c8e4b4e80c6ec5e438e5c7e7daa",
-  ".github/workflows/pg18-original-role-ab-sql-ci.yml": "088647eaa0a1a36d712fac39f116e19cbe13560b524c5f24df630e7a5a00c697",
-  "services/pg-api/tests/helpers/original-role-ab-sql-sources.json": "b146cbd57180a57d1293efcd753bb3e523bf67d443c1c271ab263e92cbe7c4b3",
+  ".github/workflows/pg18-original-role-ab-sql-ci.yml": "e503b930f4684e1c058ddc4a4d09b70b46fad1c7396fbf4efcd70f74deef0088",
+  "services/pg-api/tests/helpers/original-role-ab-sql-sources.json": "2bc9c036bd6722517d7ec1146debb73221232f9f36a3fdfa4682b3c22008963d",
   "tests/original-role-catalog-query-source-pure.test.mjs": "fdaa132f161b43233ef15172271419fabab9a510209523dcd6370f06726903e1",
   "services/pg-api/src/original-role-constraint-diagnostic.mjs": "6bfee223cd037dfe2ef5da57e7840d056f70400c6085522b9b328020d51dd7bc"
 ,
-  "services/pg-api/tests/helpers/tool-hub-original-home-reviewed-sources.json": "dac4de03814d6473d4184d21bd402d0c0aad05668c57feae08d48c5e620f54ad",
-  "tests/helpers/pg-original-login-reviewed-sources.mjs": "f6df20d7ea449e8350d63796039eeb64168ad72c7f28c2b008251b370e3dd644",
+  "services/pg-api/tests/helpers/tool-hub-original-home-reviewed-sources.json": "3dbe7cb5a8b717514900b1d8fa2464bc0ad3655629c6252ff7cb305496d4664e",
+  "tests/helpers/pg-original-login-reviewed-sources.mjs": "2ff449a44e34981c4326c70c5cc2b9cf4c51540d016262d62f4460169d899207",
   "services/pg-api/tests/helpers/native-original-directory-ui-source.mjs": "5b01f72d20e8cefe68f379cd8a3520f41ba800acd6240cd206ee49cb60ac93f3",
   "services/pg-api/tests/native-original-directory-ui-source.test.mjs": "506686aa00ee1ff5c661c6de7a5ec12f9251312fb3b9eda6ebbcd29860e1c57d"
 }})

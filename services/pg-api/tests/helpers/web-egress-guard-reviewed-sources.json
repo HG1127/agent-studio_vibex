@@ -5,7 +5,7 @@
   "files": [
     {
       "path": "services/pg-api/src/workflow-v2-tool-dispatch.ts",
-      "sha256": "37686e9556eea8b75fff32bb3c8ebb2d3ef501675a5f230377a8dd0f8c354d0b"
+      "sha256": "dcdccd02a6383868bb82dbefcab9e0b3b05f1f9c4cf1c1e56d545e377a324c75"
     },
     {
       "path": "services/pg-api/src/workflow-v2-tool-network.ts",
@@ -23,5 +23,8 @@
       "path": "tests/workflow-web-egress-guard-pure.test.mjs",
       "sha256": "7f5ddcd5b0c37e239c28540b326bdf8b529044502db7da75f4ae90f217c475f5"
     }
-  ]
+  ,
+    {"path": "services/pg-api/src/workflow-v2-web-cancel-fence.ts", "sha256": "89c61f2e6b81cd13ee382cd0ebe4456716ebb78b68c0247b8e66e8c27075005b"},
+    {"path": "tests/workflow-web-before-dial-cancel-pure.test.mjs", "sha256": "a48130249431040917286c0189085ea3131c1f368c2364a92b5a08abde828c00"}
+]
 }

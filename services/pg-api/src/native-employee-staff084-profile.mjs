@@ -30,3 +30,6 @@ export async function createStaffCompositeNativeAuthRepository(pool,env){
  return new class extends NativeAuthRepository{async inspectEmployeeGovernance(){await verify();return true}}(pool)
 }
 export async function inspectStaffCompositeReleaseSchema(api,auth,env){if(!selectNativeEmployeeStaff084Profile(env))bad();await inspectNativeEmployeeStaff084Profile(api,auth,env);return true}
+
+// Selected server profile only; every invocation performs the fresh API audit.
+export async function inspectStaffCompositeStatisticsSchema(pool,env){const selected=selectNativeEmployeeStaff084Profile(env);if(!selected)bad();const {inspectEmployeeStaff084StatisticsPool}=await import('./employee-staff084-profile.mjs');return await inspectEmployeeStaff084StatisticsPool(pool,selected)}

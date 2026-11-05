@@ -1,0 +1,3 @@
+export type UnifiedRoleMetadata=Readonly<{name:string;login:boolean;super:boolean;bypass:boolean;inherit:boolean;createdb:boolean;createrole:boolean;replication:boolean;config:unknown;limit:number;valid_until:unknown}>;
+export type UnifiedRoleMembership=Readonly<{role:string;member:string;grantor:string;admin:boolean;inherit:boolean;set:boolean}>;
+export function assertUnifiedOriginalRoleLoginCatalog(roles:readonly UnifiedRoleMetadata[],members:readonly UnifiedRoleMembership[]):Readonly<{original_14_LOGIN_metadata_verified:true;whole_final_profile_verified:false;actual_LOGIN_connections_verified:false;authorizes_install:false;production_GO:false}>;

@@ -4,3 +4,4 @@ export function selectNativeEmployeeQuality089Profile(env:NodeJS.ProcessEnv):Rea
 export function inspectNativeEmployeeQuality089Profile(pool:SqlPool,env:NodeJS.ProcessEnv):Promise<unknown>
 
 export function inspectNativeQuality089ReleaseSchema(pool:SqlPool,env:NodeJS.ProcessEnv):Promise<true>
+export function inspectNativeQuality089StatisticsSchema(pool:SqlPool,env:NodeJS.ProcessEnv):Promise<'absent'|'installed'>

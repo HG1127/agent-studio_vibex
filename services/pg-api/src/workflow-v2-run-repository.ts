@@ -1,3 +1,4 @@
+import {cancelWorkflowWebBeforeDial,type WorkflowWebUnresolvedEffect} from './workflow-v2-web-cancel-fence.ts'
 import {parseOriginalRunAdmission,originalRunAdmissionOnClient,type OriginalRunAdmission} from './original-agent-run-options-policy.ts'
 import {existingOrdinaryCaseAgentBinding} from './native-ordinary-case-binding.ts'
 import {hasMonitorBusinessAgentTools} from './native-monitor-business-contract.ts'
@@ -471,14 +472,19 @@ export class WorkflowV2RunRepository{
         "WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR UPDATE",[id,owner])).rows[0]!
       if(row.status==="cancelled")return this.assemble(db,owner,row,true)
       if(["succeeded","failed"].includes(row.status))throw new HttpError(409,"workflow_run_terminal")
-      const effects=await db.query("SELECT step_key FROM agentstudio.external_effects WHERE run_id=$1::uuid "+
-        "AND owner_user_id=$2::uuid AND status IN ('started','unknown')",[id,owner])
-      if(effects.rows.length)throw new HttpError(409,"workflow_effect_in_flight")
+      const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction)
+      const effects=await db.query<WorkflowWebUnresolvedEffect>("SELECT step_key,tool_name,arguments_sha256,status,result_reference FROM agentstudio.external_effects WHERE run_id=$1::uuid "+
+        "AND owner_user_id=$2::uuid AND status IN ('started','unknown') ORDER BY step_key FOR UPDATE",[id,owner])
+      if(effects.rows.length){
+        const stopped=await cancelWorkflowWebBeforeDial(db,owner,id,workflowV2ExecutionRequest(state),effects.rows)
+        if(!stopped)throw new HttpError(409,"workflow_effect_in_flight")
+        await auditWorkflowV2(db,owner,id,"workflow.v2_cancel_before_web_dial",stopped)
+      }
       await db.query("UPDATE agentstudio.jobs SET status='cancelled',lease_owner=NULL,lease_token=NULL,lease_until=NULL,updated_at=clock_timestamp() "+
         "WHERE id=$1::uuid AND owner_user_id=$2::uuid",[job.id,owner])
       await db.query("UPDATE agentstudio.approvals SET status='rejected',decided_by=$2::uuid,decided_at=clock_timestamp() "+
         "WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND status='pending'",[id,owner])
-      const state=checkedWorkflowV2StoredState(row.checkpoint,row.instruction);state.stage=this.root.stage+"cancelled"
+      state.stage=this.root.stage+"cancelled"
       const next=(await db.query<WorkflowV2RunRow>("UPDATE agentstudio.runs SET status='cancelled',checkpoint=$3::jsonb,finished_at=clock_timestamp(),updated_at=clock_timestamp() "+
         "WHERE id=$1::uuid AND owner_user_id=$2::uuid RETURNING "+workflowV2RunColumns,[id,owner,JSON.stringify(state)])).rows[0]!
       await auditWorkflowV2(db,owner,id,"workflow.v2_cancel",{});return this.assemble(db,owner,next,false)

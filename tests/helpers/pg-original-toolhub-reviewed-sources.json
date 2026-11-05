@@ -709,7 +709,7 @@
     },
     {
       "path": "services/pg-api/src/native-home-agent-specs-runtime.ts",
-      "sha256": "6abbb1e3606ee91bb8378863c0db637f0be2f3003b999fe6dab6e080d72f7021"
+      "sha256": "6b53a4f9b6f3b8c60955fa9b9402588ce4eb84653fe541581c2b969a897d0727"
     },
     {
       "path": "services/pg-api/src/native-home-authoring-audit.ts",
@@ -725,7 +725,7 @@
     },
     {
       "path": "services/pg-api/src/native-home-knowledge-stats-runtime.ts",
-      "sha256": "249e533ed5c477abc4189c4e676948d01f3b81b5cbc31cca8b1032df3be4f353"
+      "sha256": "01ae286b4d95bd1eaace99c25648b4ede53e2bd4ec46e66855b19bae2b7db01e"
     },
     {
       "path": "services/pg-api/src/native-home-resources-contract.ts",
@@ -1249,7 +1249,7 @@
     },
     {
       "path": "services/pg-api/src/workflow-v2-run-repository.ts",
-      "sha256": "229e361bc687f215d46f6d4035ef434fef358694bd9c924488b790266d46b51a"
+      "sha256": "01d9acb67fc82fd40eabdee5816fdf8c0877d2806652ce4718861e90cfe7f35c"
     },
     {
       "path": "services/pg-api/src/workflow-v2-tool-client.ts",
@@ -1261,7 +1261,7 @@
     },
     {
       "path": "services/pg-api/src/workflow-v2-tool-dispatch.ts",
-      "sha256": "37686e9556eea8b75fff32bb3c8ebb2d3ef501675a5f230377a8dd0f8c354d0b"
+      "sha256": "dcdccd02a6383868bb82dbefcab9e0b3b05f1f9c4cf1c1e56d545e377a324c75"
     },
     {
       "path": "services/pg-api/src/workflow-v2-tool-handler.ts",
@@ -1317,7 +1317,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-genuine-fixture.mjs",
-      "sha256": "56f8692758d9457343b99f410f06dde08caf608cbce587c30fd7f6d757c0131a"
+      "sha256": "0182a2ec803dfd329247b8869f185fb39fe50ccf8da4042e902a29622df86165"
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-genuine-guard.mjs",
@@ -1325,7 +1325,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-genuine-source-pins.mjs",
-      "sha256": "1039a600b804037cd8159c5f6eed1ad63762e520263e8efad1176eb3ff1d6433"
+      "sha256": "c9ddc421c822b5a8ee2b953c06712acd236fa58aebe8ad6e8866edfd37fa918f"
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-original-home-guard.mjs",
@@ -1333,7 +1333,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-original-home-reviewed-sources.json",
-      "sha256": "dac4de03814d6473d4184d21bd402d0c0aad05668c57feae08d48c5e620f54ad"
+      "sha256": "3dbe7cb5a8b717514900b1d8fa2464bc0ad3655629c6252ff7cb305496d4664e"
     },
     {
       "path": "services/pg-api/tests/helpers/workflow-v2-agent-fixture.mjs",
@@ -3579,5 +3579,39 @@
     {"path": "tests/original-directory-terminal-recheck-pure.test.mjs", "sha256": "2d9ffcc91113672bf31ec00a7d4c75f2f3116729628ab9e18cf555056d04b683"},
     {"path": "tests/helpers/original-create-owned-pg-source-reference.json", "sha256": "431c85995713fe87cd8825fbc1f2083a26d420f3565a8ed0f7e746785b57d398"},
     {"path": "tests/pg-original-agent-create-owned-pg-source.test.mjs", "sha256": "4409c6ed8ab429e11553f740bd336179cb3e1aec26738a6266223b18952ce48a"}
+,
+    {"path": "services/pg-api/src/workflow-v2-web-cancel-fence.ts", "sha256": "89c61f2e6b81cd13ee382cd0ebe4456716ebb78b68c0247b8e66e8c27075005b"},
+    {"path": "tests/workflow-web-before-dial-cancel-pure.test.mjs", "sha256": "a48130249431040917286c0189085ea3131c1f368c2364a92b5a08abde828c00"},
+    {"path": "tests/original-reviewed-member-admission-pure.test.mjs", "sha256": "2fc5eed88eec094453cbbb07e2742ffa9c4ac08e7f369a67fce8a3c717152fbc"},
+    {"path": "tests/original-schedules-weekday-window.test.mjs", "sha256": "0a7b89a7628b29aa0c91de0ca0bce6c5979be32f091c78e0bc6ff72d3cfa02aa"},
+    {"path": "services/pg-api/src/original-ui-unified-catalog.d.mts", "sha256": "ac9ebb35efabc9e116a67ba3fbbb6fe00b192e573621cc4ba5cf2bf09b053e15"},
+    {"path": "services/pg-api/src/original-ui-unified-catalog.mjs", "sha256": "b695ef955b744e9cf75a26e948fcda8ce6b51eb1bbbd2ff8c07a3d591ea6e3c0"},
+    {"path": "services/pg-api/src/original-ui-unified-role-catalog.d.mts", "sha256": "7cc7d3615e508d3dc356e051efa1805e1186a6b0e62a301f4751c144bab8c40f"},
+    {"path": "services/pg-api/src/original-ui-unified-role-catalog.mjs", "sha256": "cb629583bbea6a74cd4e92df04fd69845eeb66f0a6cd4aa9071387a249ae86a9"},
+    {"path": "services/pg-api/src/original-ui-unified-role-delta.d.mts", "sha256": "ab90c437f6c10bb2506106662d7449830ae6cc145a6e78dd8d9c34b33c93494b"},
+    {"path": "services/pg-api/src/original-ui-unified-role-delta.mjs", "sha256": "df910a54c0467db7ac96b0db25c74d35c75ab6f13ca81d55ab8d2ea8751882e4"},
+    {"path": "services/pg-api/src/original-ui-unified-role-install-catalog.d.mts", "sha256": "1806e8ad7e42c0588e2b7077338a551c7e54a3ccff79b48012128552e165ac68"},
+    {"path": "services/pg-api/src/original-ui-unified-role-install-catalog.mjs", "sha256": "ce8276b54b9ebdaacd908c357090993f086b95392450c900fa6fd8f399d3f139"},
+    {"path": "services/pg-api/src/original-ui-unified-role-login-catalog.d.mts", "sha256": "87cb1f5a28a81fba9e7e38ce7660185b90e77a23da8fa3f2882af089d1062e4f"},
+    {"path": "services/pg-api/src/original-ui-unified-role-login-catalog.mjs", "sha256": "17d996f4add255e139ffee006db81b9c833772dfb6ba0ff2a4fa22f5fbafcad0"},
+    {"path": "services/pg-api/src/staff084-complete078-api-audit.d.mts", "sha256": "933b9531c876a8fd0f3515fa152277bf4b974eb029ac3d03c54039176919732a"},
+    {"path": "services/pg-api/src/staff084-complete078-api-audit.mjs", "sha256": "50f8c45bbf5b6d9ca2c5e4d030440da8755cd2ee43d51f482655e958d955f2fa"},
+    {"path": "services/pg-api/src/staff084-home-knowledge-stats-audit.ts", "sha256": "da55cd707e18d09dc714b716141612c371e5b49f9b925b732cb9fab9614593a0"},
+    {"path": "services/pg-api/src/staff084-knowledge-parent-audit.ts", "sha256": "3a7fbc8bf1b58cf986c971a7283ce05aef3dd3254a69bf067abd0316eaf84b27"},
+    {"path": "services/pg-api/src/staff084-quality089-api-audit.d.mts", "sha256": "6c4e2de3ab749315925532e1bc8ecdff1bbacb52f6fbf26ab5984ed48033a126"},
+    {"path": "services/pg-api/src/staff084-quality089-api-audit.mjs", "sha256": "a8b85c831936b67020fb225a77e75d94d1fe6e75c82cc0398766cde84f8096d4"},
+    {"path": "services/pg-api/tests/complete069-source-directory-cycle-source-pure.test.mjs", "sha256": "c9d5444847dec0b4b0445af37649b112a5819b43a760b2a1e91f7f19222208a9"},
+    {"path": "services/pg-api/tests/full069-node-executable-stream-hash-source-pure.test.mjs", "sha256": "7acfb19897e25e09b0155806906719c5668f27626663129eed92f4f688258c45"},
+    {"path": "services/pg-api/tests/original-create-parent-sequence-source-pure.test.mjs", "sha256": "29287c3092497730b4471c014e99a22f9375c5cfa86d3ffb5951472efeef26fd"},
+    {"path": "services/pg-api/tests/original-ui-unified-catalog-source-pure.test.mjs", "sha256": "384231eb9ebc79d36c280d0bd4ae50cffa810856803a2f515c3cebe4d2918cce"},
+    {"path": "services/pg-api/tests/original-ui-unified-role-delta-source-pure.test.mjs", "sha256": "ee8898aff3aaed64f3173ce71f92d803ad34dddc1541e7f18dd9e407a4df6d97"},
+    {"path": "services/pg-api/tests/quality089-release-trigger-integrity-source-pure.test.mjs", "sha256": "1e9b4698e4fcd5cc922a0beb9b237d9b2c02dc2c95da7291b1dd0431eb3a3339"},
+    {"path": "services/pg-api/tests/staff084-statistics-api-source-pure.test.mjs", "sha256": "a65718351ef4b19e4814fb935c2a7076b4b511266d6d15deea015fed4c204d5c"},
+    {"path": "services/pg-api/tests/worker-heartbeat-reader-directory-cycle-source-pure.test.mjs", "sha256": "5a217906851ef5e56dc71c9c5c72f87adca063cc40d21dc11f8eebbc796a747b"},
+    {"path": "tests/profile-phases-source-pure.test.mjs", "sha256": "778f53674a1079281c582a206d249f0e890690d5cec6c946bbffafd20a602774"},
+    {"path": "services/pg-api/src/employee-quality089-contract.d.mts", "sha256": "f14e2253b1a587e23fb60473f90f3ef0d25a8a4bc69af63180cb83a89d35822a"},
+    {"path": "services/pg-api/src/employee-staff084-profile.d.mts", "sha256": "b3099615397feb93508f6ca370f97a84666dd80b31df5c26bc327f5b78006c25"},
+    {"path": "services/pg-api/tests/original-statistics-selected-boundary-source-pure.test.mjs", "sha256": "56d8bc2eefb7c6b1e45d7246ec91f4fad987ca43d1d85a275969623867534956"},
+    {"path": "services/pg-api/tests/helpers/original-directory-policy-source-inverse.mjs", "sha256": "941f3773b06820a6fc7d534fc7d01b2168e1c32c6c47dc4e55580bcb0eaa4b6c"}
 ]
 }

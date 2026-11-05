@@ -192,6 +192,24 @@ function sameChain(a,b){
   if(a.length!==b.length)fail()
   for(let i=0;i<a.length;i++){const before=a[i],after=b[i];if(before.path!==after.path||before.dev!==after.dev||before.ino!==after.ino||before.mode!==after.mode||before.uid!==after.uid||before.gid!==after.gid)fail()}
 }
+// Constructor provenance only. Each cycle is local to one synchronous tree
+// assertion, freshly observes every ancestor, and is retired before return.
+const runtimeAncestorCycles=new WeakSet()
+function freshRuntimeAncestorCycle(parentLists){
+ const directories=Object.create(null)
+ for(const parents of parentLists){if(!Array.isArray(parents)||!parents.length)fail();for(const directory of parents){if(typeof directory!=='string')fail();if(Object.hasOwn(directories,directory))continue;const st=lstatSync(directory);trustedMetadata(meta(st),'ancestor');directories[directory]={stamp:stamp(st),chain:Object.freeze({path:directory,dev:st.dev,ino:st.ino,mode:st.mode,uid:st.uid,gid:st.gid})}}}
+ if(!Object.keys(directories).length)fail()
+ const cycle=Object.freeze({directories});runtimeAncestorCycles.add(cycle);return cycle
+}
+function runtimeAncestorCycleChain(cycle,parents){
+ if(!runtimeAncestorCycles.has(cycle)||!Array.isArray(parents)||!parents.length)fail()
+ return parents.map(directory=>{if(!Object.hasOwn(cycle.directories,directory))fail();return cycle.directories[directory].chain})
+}
+function finishRuntimeAncestorCycle(cycle){
+ if(!runtimeAncestorCycles.has(cycle))fail()
+ for(const [directory,before]of Object.entries(cycle.directories)){const st=lstatSync(directory);trustedMetadata(meta(st),'ancestor');trustedStatStable(before.stamp,st)}
+}
+
 function readExactBoundBytes(fd,size){
   // Read the current FD afresh, including one extra byte/EOF probe. The view
   // never exposes the uninitialized tail; growth/truncation still fail closed.
@@ -200,21 +218,22 @@ function readExactBoundBytes(fd,size){
   if(offset!==size)fail()
   return allocation.subarray(0,offset)
 }
-function readBound(file,expected,kind,expectedBytes,expectedParents){
-  const chain=ancestors(file,kind==='manifest',expectedParents),before=lstatSync(file)
-  trustedMetadata(meta(before),kind)
-  if(realpathSync.native(file)!==file||expectedBytes!==undefined&&before.size!==expectedBytes)fail()
-  const fd=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK)
-  try{
-    // Reuse only this captured Stats value, never a filesystem observation.
-    const beforeStamp=stamp(before)
-    trustedStatStable(beforeStamp,fstatSync(fd))
-    const bytes=readExactBoundBytes(fd,before.size)
-    if(bytes.length!==before.size||sha(bytes)!==expected)fail()
-    trustedStatStable(beforeStamp,fstatSync(fd));trustedStatStable(beforeStamp,lstatSync(file))
-    sameChain(chain,ancestors(file,kind==='manifest',expectedParents));assertUtf8Bytes(bytes,kind==='manifest'?2*1024*1024:16*1024*1024)
-    return {bytes,stamp:beforeStamp,chain}
-  }finally{closeSync(fd)}
+function readBound(file,expected,kind,expectedBytes,expectedParents,cycle){
+   if(cycle&&kind!=='code')fail()
+   const chain=cycle?runtimeAncestorCycleChain(cycle,expectedParents):ancestors(file,kind==='manifest',expectedParents),before=lstatSync(file)
+   trustedMetadata(meta(before),kind)
+   if(realpathSync.native(file)!==file||expectedBytes!==undefined&&before.size!==expectedBytes)fail()
+   const fd=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK)
+   try{
+     // Reuse only this captured Stats value, never a filesystem observation.
+     const beforeStamp=stamp(before)
+     trustedStatStable(beforeStamp,fstatSync(fd))
+     const bytes=readExactBoundBytes(fd,before.size)
+     if(bytes.length!==before.size||sha(bytes)!==expected)fail()
+     trustedStatStable(beforeStamp,fstatSync(fd));trustedStatStable(beforeStamp,lstatSync(file))
+     if(!cycle)sameChain(chain,ancestors(file,kind==='manifest',expectedParents));assertUtf8Bytes(bytes,kind==='manifest'?2*1024*1024:16*1024*1024)
+     return {bytes,stamp:beforeStamp,chain}
+   }finally{closeSync(fd)}
 }
 function external(file){
   if(typeof file!=='string'||file.length>4096||!path.isAbsolute(file)||path.normalize(file)!==file||/[\\\x00-\x1f\x7f]/.test(file)||file===root||file.startsWith(root+path.sep)||file.split(path.sep).some(p=>['node_modules','.pnpm','.git','.codex','.agents'].includes(p.toLowerCase())))fail()
@@ -370,7 +389,7 @@ function verifyTree(state,initial=false,timing){
   // earlier duplicate root-type JSON decode is omitted. No cross-assert cache.
   /* READER_RUNTIME_TIMING_BEGIN */markRuntimeTiming(frame,"tree");/* READER_RUNTIME_TIMING_END */
   const {rootPackages,allowed,dirs,paths,parents}=runtimeTreeLayout(state,initial)
-  const seen=new Set();let count=0
+  const cycle=freshRuntimeAncestorCycle(parents.values()),seen=new Set();let count=0
   const walk=relative=>{
     const directoryPath=paths.get(relative)??path.join(root,relative),directory=lstatSync(directoryPath),directoryStamp=stamp(directory)
     trustedMetadata(meta(directory),'directory')
@@ -383,7 +402,7 @@ function verifyTree(state,initial=false,timing){
       if(st.isDirectory()){if(!dirs.has(next))fail();walk(next)}
       else{
         const record=allowed.get(next);if(!record||seen.has(next))fail()
-        const bound=readBound(actual,record.sha256,'code',record.bytes,parents.get(next)),old=state.stamps.get(next)
+        const bound=readBound(actual,record.sha256,'code',record.bytes,parents.get(next),cycle),old=state.stamps.get(next)
         if(next.endsWith('/package.json')&&!next.startsWith(prefix+'typescript/')&&!rootPackages.has(next)){
           const p=json(bound.bytes)
           if(p.type!==undefined&&p.type!=='commonjs'&&(p.type!=='module'||!next.includes('/esm/')))fail()
@@ -397,7 +416,7 @@ function verifyTree(state,initial=false,timing){
     }
     trustedStatStable(directoryStamp,lstatSync(directoryPath))
   }
-  walk(prefix.slice(0,-1));assertWorkerHeartbeatActivationControlRuntimeInventory([...allowed.keys()],[...seen])
+  try{walk(prefix.slice(0,-1));finishRuntimeAncestorCycle(cycle)}finally{runtimeAncestorCycles.delete(cycle)};assertWorkerHeartbeatActivationControlRuntimeInventory([...allowed.keys()],[...seen])
   /* READER_RUNTIME_TIMING_BEGIN */markRuntimeTiming(frame,"packages");/* READER_RUNTIME_TIMING_END */
   for(const name of Object.keys(graph))packageInfo(state,name)
   /* READER_RUNTIME_TIMING_BEGIN */markRuntimeTiming(frame,"cache");/* READER_RUNTIME_TIMING_END */

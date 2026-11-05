@@ -62,7 +62,7 @@ jobs:
           pnpm install --frozen-lockfile --ignore-scripts
           pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
       - name: Original guards and closed directory contracts
-        run: node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/native-original-directory-source-pure.test.mjs services/pg-api/tests/native-directory-employee.test.mjs services/pg-api/tests/native-directory-workspace.test.mjs tests/original-directory-terminal-recheck-pure.test.mjs
+        run: node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/native-original-directory-source-pure.test.mjs services/pg-api/tests/native-directory-employee.test.mjs services/pg-api/tests/native-directory-workspace.test.mjs tests/original-directory-terminal-recheck-pure.test.mjs tests/original-reviewed-member-admission-pure.test.mjs
       - name: Refuse missing canonical shell, PG adapter, or reviewed exact source
         run: node --experimental-strip-types services/pg-api/tests/helpers/native-original-directory-source-preflight.mjs --check
       - name: Build the actual unchanged index and main App entry

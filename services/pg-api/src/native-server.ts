@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import {selectOriginalRunOptions} from './original-agent-run-options-runtime.ts'
-import {inspectNativeEmployeeStaff084Profile,selectNativeEmployeeStaff084Profile,createStaffCompositeNativeAuthRepository,inspectStaffCompositeReleaseSchema} from './native-employee-staff084-profile.mjs'
+import {inspectNativeEmployeeStaff084Profile,selectNativeEmployeeStaff084Profile,createStaffCompositeNativeAuthRepository,inspectStaffCompositeReleaseSchema,inspectStaffCompositeStatisticsSchema} from './native-employee-staff084-profile.mjs'
 import {prepareOriginalRoleExecutionPool} from './original-role-ui-policy.ts'
 import {prepareOriginalRoleUiRuntime} from './original-role-ui-runtime.ts'
 import {prepareOriginalStaffRuntime} from './original-staff-runtime.mjs'
@@ -424,6 +424,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     await verifyPgRuntimeTarget(business,cfg.api)
     await verifyDatabaseRole(business)
     if(!await inspectNativeEmployeeStaff084Profile(business,adapter(authPool),env)){if(env.AGENT_STUDIO_PG18_EMPLOYEE_UI_PROFILE==='complete069-employee-ui-quality089'){const {inspectNativeEmployeeQuality089Profile}=await import('./native-employee-quality089-profile.mjs');await inspectNativeEmployeeQuality089Profile(business,env)}else await inspectNativeEmployeeUi078Profile(business,env)}
+    const originalStatisticsInspector=selectNativeEmployeeStaff084Profile(env)?(pool:SqlPool)=>inspectStaffCompositeStatisticsSchema(pool,env):env.AGENT_STUDIO_PG18_EMPLOYEE_UI_PROFILE==='complete069-employee-ui-quality089'?async(pool:SqlPool)=>(await import('./native-employee-quality089-profile.mjs')).inspectNativeQuality089StatisticsSchema(pool,env):undefined
     if(localDevices.available){if(!localExecutorPool)throw Error("native_local_executor_credentials_required");await inspectNativeLocalDevicePool(business,"agentstudio_api");await inspectNativeLocalDevicePool(adapter(localExecutorPool),"agentstudio_local_executor")}
     const verifiedActiveAdmins=await verifyNativeAuthService(adapter(authPool))
     if(brokerPool){
@@ -534,7 +535,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(ordinaryCase&&!monitorLive)throw Error("ordinary_case_original_business_facade_required")
     const agentCatalog=await prepareNativeAgentCatalog({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,allowMonitorBusinessSpecs:monitorLive!==null})
     const originalMonitorInbox=await prepareNativeMonitorInbox({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin})
-    await inspectOriginalHomeKnowledgeStatisticsStartup({pool:business,env,allowedOrigin:cfg.allowedOrigin})
+    await inspectOriginalHomeKnowledgeStatisticsStartup({pool:business,env,allowedOrigin:cfg.allowedOrigin,inspectSelectedSchema:originalStatisticsInspector})
     const originalRunOptionsEnabled=selectOriginalRunOptions(env)
     if(originalRunOptionsEnabled&&(!capabilities.configurationWrites||!capabilities.autonomousAgentUat))throw Error('original_run_options_runtime_not_approved')
     const modelConnections=new ModelConnectionRepository(business,modelEncryptionKey,brokerPool?adapter(brokerPool):business)
@@ -738,7 +739,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const roleUi=await prepareOriginalRoleUiRuntime({pool:business,env,listen,configurationWrites:capabilities.configurationWrites,autonomousSubmission:capabilities.autonomousAgentUat===true,humanInput:humanInputAvailable,allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest})
     roleUiClose=roleUi?.close
     if(roleUi){const fallback=businessHandler;businessHandler=async(req,res)=>{if(await roleUi.handler(req,res))return;await fallback(req,res)}}
-    const originalHomeHttp=await prepareNativeHomeAgentSpecs({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,allowNativeLocalAgentSpecs:localDevices.available,allowMonitorBusinessSpecs:monitorLive!==null,authenticateRequest:native.authenticateRequest})
+    const originalHomeHttp=await prepareNativeHomeAgentSpecs({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,allowNativeLocalAgentSpecs:localDevices.available,allowMonitorBusinessSpecs:monitorLive!==null,inspectStatisticsSchema:originalStatisticsInspector,authenticateRequest:native.authenticateRequest})
     if(originalHomeHttp){
       const originalHomeFallback=businessHandler
       businessHandler=async(req,res)=>{if(await originalHomeHttp(req,res))return;await originalHomeFallback(req,res)}

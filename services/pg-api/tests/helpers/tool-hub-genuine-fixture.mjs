@@ -4,6 +4,10 @@ import {requireOriginalResourceReadCi,originalResourceBefore069} from './origina
 // Only final provider/public-registry contents are synthetic. No PGlite runs.
 import {requireToolHubGenuineCi} from './tool-hub-genuine-guard.mjs'
 import {requireToolHubOriginalHomeCi,toolHubOriginalHomeBefore069,toolHubOriginalHomeAfter069,isToolHubOriginalHomeRoute} from './tool-hub-original-home-guard.mjs'
+export function originalToolHubHomeSourcePath(value){
+ return typeof value==='string'&&!value.split('/').some(part=>!part||part==='.'||part==='..')&&
+  (/^(?:services\/pg-api|db\/postgres\/migrations|tests|shared)\/[A-Za-z0-9_./-]+$/.test(value)||value==='src/lib/nativeDirectoryTerminalReceipt.ts')
+}
 export async function toolHubGenuineFixture(env=process.env,{browserMode=false,originalHomeReadOnly=false,originalResourceReadOnly=null,pluginPageDataPorts=null,webDataPorts=null}={}){
  if(originalResourceReadOnly!==null){if(browserMode!==true||originalHomeReadOnly!==false)throw Error('original_resource_purpose_must_be_separate');requireOriginalResourceReadCi(env,originalResourceReadOnly)}
  if(typeof originalHomeReadOnly!=='boolean')throw Error('original_toolhub_home_option_invalid')
@@ -21,7 +25,7 @@ export async function toolHubGenuineFixture(env=process.env,{browserMode=false,o
  if(originalHomeReadOnly){
   const raw=fs.readFileSync(path.join(root,'services/pg-api/tests/helpers/tool-hub-original-home-reviewed-sources.json'));if(crypto.createHash('sha256').update(raw).digest('hex')!==env.AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_SOURCES_SHA256)throw Error('original_toolhub_home_reviewed_manifest_changed')
   const reviewed=JSON.parse(raw);if(reviewed.format!=='original-toolhub-home-source-graph.v1'||!Array.isArray(reviewed.files)||reviewed.files.length<10)throw Error('original_toolhub_home_source_graph_required')
-  const seen=new Set();for(const pin of reviewed.files){if(!/^(?:services\/pg-api|db\/postgres\/migrations|tests|shared)\/[A-Za-z0-9_./-]+$/.test(pin.path)||pin.path.split('/').includes('..')||seen.has(pin.path)||!/^[a-f0-9]{64}$/.test(pin.sha256)||crypto.createHash('sha256').update(fs.readFileSync(path.join(root,pin.path))).digest('hex')!==pin.sha256)throw Error('original_toolhub_home_reviewed_source_changed');seen.add(pin.path)}
+  const seen=new Set();for(const pin of reviewed.files){if(!originalToolHubHomeSourcePath(pin.path)||pin.path.split('/').includes('..')||seen.has(pin.path)||!/^[a-f0-9]{64}$/.test(pin.sha256)||crypto.createHash('sha256').update(fs.readFileSync(path.join(root,pin.path))).digest('hex')!==pin.sha256)throw Error('original_toolhub_home_reviewed_source_changed');seen.add(pin.path)}
  }
 
  let resourceRuntimeModule

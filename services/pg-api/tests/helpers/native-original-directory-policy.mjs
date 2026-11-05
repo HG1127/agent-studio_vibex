@@ -8,7 +8,7 @@ export function requireOriginalDirectoryCi(env=process.env,platform=process.plat
  return target
 }
 export function originalDirectoryRoute(method,raw,body){
- if(typeof raw!=='string'||raw.length>4096||/[\\\x00-\x20\x7f#]/.test(raw)||raw.split('?')[0].includes('%'))return 'denied'
+ if(typeof raw!=='string'||raw.length>4096||/[\\\x00-\x20\x7f#]/.test(raw)||raw.split('?')[0].includes('%')||raw.split('?')[0].split('/').some(part=>part==='.'||part==='..'))return 'denied'
  if(raw.startsWith('/__pb')||raw.startsWith('/api/'))return 'legacy'
  const u=new URL(raw,'https://original-directory.invalid')
  if(!raw.startsWith('/')||u.origin!=='https://original-directory.invalid')return 'denied'
@@ -27,7 +27,7 @@ export function originalDirectoryRoute(method,raw,body){
  if(u.pathname==='/login'&&(!u.search||u.search==='?next='+encodeURIComponent('/tool-hub?view=devices')))return 'page'
  if(u.pathname==='/tool-hub'&&(!u.search||u.search==='?view=devices'))return 'page'
  if(u.pathname==='/'&&!u.search)return 'page'
- if(!u.search&&/^\/(?:assets\/[A-Za-z0-9_.\/-]+|favicon\.(?:svg|ico))$/.test(u.pathname)&&!u.pathname.split('/').includes('..')&&!/\.map$/.test(u.pathname))return 'asset'
+ if(!u.search&&/^\/(?:assets\/[A-Za-z0-9_.\/-]+|favicon\.(?:svg|ico)|agent-studio\.svg)$/.test(u.pathname)&&!u.pathname.split('/').includes('..')&&!/\.map$/.test(u.pathname))return 'asset'
  return 'denied'
 }
 export async function directoryReceiptIdentity(body,reply){

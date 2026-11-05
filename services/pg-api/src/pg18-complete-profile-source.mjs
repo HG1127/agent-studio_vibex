@@ -17,13 +17,32 @@ const parserSha='3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e767
 const captured=new WeakSet(),sha=raw=>createHash('sha256').update(raw).digest('hex')
 function fail(){throw Error('complete069_source_refused')}
 function freeze(value){if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value)}return value}
-function bytes(relative){
+function bytes(relative,cycle){
  if(typeof relative!=='string'||! /^(?:services\/pg-api\/src|shared|db\/postgres)\/[A-Za-z0-9_./-]+$/.test(relative)||relative.split('/').some(p=>!p||p==='.'||p==='..'))fail()
  let current=root
- for(const part of relative.split('/')){if(fs.lstatSync(current).isSymbolicLink())fail();current=path.join(current,part)}
- const st=fs.lstatSync(current);if(st.isSymbolicLink()||!st.isFile()||st.size<1||st.size>16*1024*1024||fs.realpathSync.native(current)!==current)fail()
- return fs.readFileSync(current)
+ for(const part of relative.split('/')){if(cycle){if(!cycle.directories.has(current))fail()}else if(fs.lstatSync(current).isSymbolicLink())fail();current=path.join(current,part)}
+ const st=fs.lstatSync(current)
+ if(st.isSymbolicLink()||!st.isFile()||st.size<1||st.size>16*1024*1024||fs.realpathSync.native(current)!==current||cycle?.deployment&&(st.uid!==0||st.gid!==0||(st.mode&0o022)!==0))fail()
+ const value=fs.readFileSync(current)
+ if(cycle?.deployment)cycle.files.push({file:current,before:st,bytes:value.length})
+ return value
 }
+// Local to ONE synchronous assertion. Only directory observations are batched;
+// each source row still opens/reads/hashes its current file independently.
+function completeSourceDirectoryCycle(pins,deployment){
+ if(deployment&&(process.platform!=='linux'||process.getuid?.()!==0||process.getgid?.()!==0))fail()
+ const directories=new Map(),keys=['dev','ino','size','mtimeMs','ctimeMs','uid','gid','mode','nlink']
+ for(const pin of pins){const relative=pin.path;if(typeof relative!=='string'||! /^(?:services\/pg-api\/src|shared|db\/postgres)\/[A-Za-z0-9_./-]+$/.test(relative)||relative.split('/').some(p=>!p||p==='.'||p==='..'))fail();let at=path.dirname(path.join(root,relative));for(;;){directories.set(at,null);const parent=path.dirname(at);if(at===parent)break;at=parent}}
+ for(const directory of directories.keys()){const st=fs.lstatSync(directory);if(!st.isDirectory()||st.isSymbolicLink()||deployment&&(st.uid!==0||st.gid!==0||(st.mode&0o022)!==0))fail();const fields={};for(const key of keys){if(!Number.isFinite(st[key]))fail();fields[key]=st[key]}directories.set(directory,fields)}
+ return {directories,keys,deployment,files:[]}
+}
+function finishCompleteSourceDirectoryCycle(cycle){
+ // Retain the original late deployment file-owner check, after all reads and
+ // frozen predecessor assertions, and bind it to that row's fresh read Stat.
+ for(const observed of cycle.files){const st=fs.lstatSync(observed.file);if(st.isSymbolicLink()||!st.isFile()||st.uid!==0||st.gid!==0||(st.mode&0o022)!==0||observed.bytes!==observed.before.size||cycle.keys.some(key=>observed.before[key]!==st[key]))fail()}
+ for(const [directory,before]of cycle.directories){const st=fs.lstatSync(directory);if(!st.isDirectory()||st.isSymbolicLink()||cycle.deployment&&(st.uid!==0||st.gid!==0||(st.mode&0o022)!==0)||cycle.keys.some(key=>before[key]!==st[key]))fail()}
+}
+
 function utf8(raw){const text=raw.toString('utf8');if(!Buffer.from(text).equals(raw)||text.startsWith('\uFEFF')||text.includes('\0'))fail();return text}
 // Literal raw pins make this an exact outer-transaction removal, not a SQL
 // rewriting/retargeting mechanism. Every function-body byte is retained.
@@ -75,15 +94,14 @@ export async function captureCompleteProfileSources(){
  const snapshot=freeze({manifest,source_sha256:sha(JSON.stringify(manifest)),fresh,generated,descriptive,steps,tables:[...tables].sort(),roles:[...freshRuntimeRoles,...completeProfileAdditionalRoles].sort(),versions:[...fresh.versions,...steps.map(s=>s.version)].sort()})
  captured.add(snapshot);return snapshot
 }
-export function assertCompleteProfileSnapshot(snapshot,expected){
+function assertCompleteProfileSnapshotCore(snapshot,expected,deployment){
  if(!captured.has(snapshot)||typeof expected!=='string'||!/^[a-f0-9]{64}$/.test(expected)||snapshot.source_sha256!==expected||sha(JSON.stringify(snapshot.manifest))!==expected)fail()
- for(const pin of [...snapshot.manifest.sources,...snapshot.manifest.sql_sources])if(sha(bytes(pin.path))!==pin.sha256)fail()
+ const pins=[...snapshot.manifest.sources,...snapshot.manifest.sql_sources],cycle=completeSourceDirectoryCycle(pins,deployment)
+ for(const pin of pins)if(sha(bytes(pin.path,cycle))!==pin.sha256)fail()
  assertGeneratedOperatorSnapshot(snapshot.generated,old059);assertDescriptivePatchOperatorSnapshot(snapshot.descriptive,old060)
+ finishCompleteSourceDirectoryCycle(cycle)
 }
-export function assertCompleteProfileDeployment(snapshot,expected){
- assertCompleteProfileSnapshot(snapshot,expected)
- if(process.platform!=='linux'||process.getuid?.()!==0||process.getgid?.()!==0)fail()
- for(const pin of [...snapshot.manifest.sources,...snapshot.manifest.sql_sources]){let at=path.join(root,pin.path);for(;;){const st=fs.lstatSync(at);if(st.isSymbolicLink()||st.uid!==0||st.gid!==0||(st.mode&0o022)!==0)fail();const parent=path.dirname(at);if(at===parent)break;at=parent}}
-}
+export function assertCompleteProfileSnapshot(snapshot,expected){assertCompleteProfileSnapshotCore(snapshot,expected,false)}
+export function assertCompleteProfileDeployment(snapshot,expected){assertCompleteProfileSnapshotCore(snapshot,expected,true)}
 export function completeProfileReceiptBody(snapshot){assertCompleteProfileSnapshot(snapshot,snapshot.source_sha256);return JSON.stringify({profile:completeProfileName,source_sha256:snapshot.source_sha256,default_fresh_source_sha256:snapshot.fresh.source_sha256,latest_migration:'pg_v9_069',sql_sources:snapshot.manifest.sql_sources,legacy_rows_copied:0})}
 export function completeProfilePlan(snapshot){assertCompleteProfileSnapshot(snapshot,snapshot.source_sha256);return freeze({mode:'plan',profile:completeProfileName,source_sha256:snapshot.source_sha256,...snapshot.manifest,versions:[...snapshot.versions,'pg18_fresh_runtime_001',completeProfileReceipt].sort(),tables:snapshot.tables,roles:snapshot.roles,atomic_fresh_schema_transaction:true,already_existing_050_upgrade_supported:false,default_050_unchanged:true,all_services_disabled:true,actual_login_audit_required:true,network_used:false,secret_read:false,writes_performed:false,production_cutover_allowed:false})}

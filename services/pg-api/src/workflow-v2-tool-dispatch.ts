@@ -1,3 +1,4 @@
+import {reserveWorkflowWebDial,beginWorkflowWebDial} from './workflow-v2-web-cancel-fence.ts'
 import {readOrdinaryCaseEffectProof} from './native-ordinary-case-effect.ts'
 import type {OrdinaryCaseCapturePort,OrdinaryCaseCaptureSlot,OrdinaryCaseCapturedResponse} from './native-ordinary-case-capture.ts'
 import {enqueueNativeLocalTool,waitNativeLocalTool} from './native-local-device-execution.ts'
@@ -118,6 +119,7 @@ export class WorkflowV2ToolDispatch{
         }catch{throw new WorkflowKnownEffectFailure("workflow_tool_input_invalid")}
       }
       await reserveWorkflowEffectDispatch(db,owner,request,"tool")
+      if(plan.kind==="web_fetch"||plan.kind==="web_search")await reserveWorkflowWebDial(db,owner,request,plan.kind)
       const localJob=plan.kind==="local_computer"?await enqueueNativeLocalTool(db,request,plan.input):undefined
       if(plan.kind==="knowledge_search"&&!plan.retrieval&&plan.ids.length){
         const evidence=await gatherWorkflowKeywordEvidence(db,owner,plan.ids,plan.query,request)
@@ -135,6 +137,7 @@ export class WorkflowV2ToolDispatch{
       if(selected.proof!==undefined)capture=await this.ordinaryCaseCapture!.begin(request,selected.proof)
       const recheck=()=>withActor(this.pool,identity,async(db,owner)=>{
         await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent,this.allowAutonomous,this.allowMemory,this.allowLocalDevices,this.allowCallers,false,this.allowOrdinaryCase)
+        if(selected.plan.kind==="web_fetch"||selected.plan.kind==="web_search")await beginWorkflowWebDial(db,owner,request,selected.plan.kind)
       })
       const execute=async()=>{
         const plan=selected.plan
@@ -203,7 +206,7 @@ export class WorkflowV2ToolDispatch{
           await recheck()
           return this.executor.summarize!(material,plan.prompt,controller.signal)
         }
-        await recheck()
+        if(plan.kind!=="web_fetch"&&plan.kind!=="web_search")await recheck()
         if(plan.kind==="web_fetch"){if(capture){capturedResponse=await this.executor.monitorWebFetch!(plan.url,controller.signal,recheck);return "完整响应已接收，正在核实证据。"}return this.executor.webFetch!(plan.url,controller.signal,recheck)}
         if(plan.kind==="web_search")return this.executor.webSearch!(plan.query,plan.limit,controller.signal,recheck)
         throw Error("workflow_tool_operation_unavailable")

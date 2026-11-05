@@ -1,0 +1,6 @@
+export const unifiedRoleDeltaBindingsSQL:string;
+export type UnifiedRoleDeltaBindings=Readonly<{classes:Readonly<Record<'namespace'|'relation'|'type'|'constraint'|'function'|'default'|'policy'|'trigger'|'rewrite',string>>;ri:Readonly<Record<'check_insert'|'check_update'|'parent_delete'|'parent_update',string>>}>;
+export type UnifiedRoleDeltaComponent=Readonly<{role_catalog_delta_verified:true;profile_component_only:true;added_tables:number;added_functions:number;added_constraints:number;full_new_Role_semantics_verified:false;whole_final_profile_verified:false;authorizes_install:false;production_GO:false}>;
+export function readUnifiedRoleDeltaBindings(db:{query(sql:string):Promise<{rows:unknown[]}>}):Promise<UnifiedRoleDeltaBindings>;
+export function assertUnifiedRoleCatalogDelta(before:unknown,after:unknown,bindings:UnifiedRoleDeltaBindings):UnifiedRoleDeltaComponent;
+export function verifyUnifiedRoleCatalogDelta(db:{query(sql:string):Promise<{rows:unknown[]}>},before:unknown):Promise<Readonly<{catalog:Record<string,unknown>;delta:UnifiedRoleDeltaComponent;semantic:Readonly<Record<string,unknown>>;profile_component_only:true;whole_final_profile_verified:false;authorizes_install:false;production_GO:false}>>;

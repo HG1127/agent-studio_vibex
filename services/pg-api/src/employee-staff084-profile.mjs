@@ -1,5 +1,8 @@
 
 import {prepareStaffCompositeAdditionalLogins} from './employee-staff084-logins.mjs'
+import {isProxy} from 'node:util/types'
+import {verifyComplete078Staff084ApiSchema} from './staff084-complete078-api-audit.mjs'
+import {verifyComplete078StaffQuality089ApiSchema} from './staff084-quality089-api-audit.mjs'
 import {staffCompositeMode,staffCompositeReceipt,staffCompositeLogins,staffCompositeTarget,staffCompositeReceiptBody,staffCompositeSha,assertStaffComposite14Logins,assertStaffCompositeDelta} from './employee-staff084-contract.mjs'
 import {captureEmployeeStaff084Sources,assertEmployeeStaff084Snapshot} from './employee-staff084-source.mjs'
 import {employeeUi078CatalogSql,employeeUi078CatalogDigest,employeeUi078Canonical as canonical,employeeUi078FunctionOidsSql} from './pg18-employee-ui078-catalog.mjs'
@@ -65,6 +68,16 @@ export async function verifyEmployeeStaff084AuthClient(db){
  if(snapshot.mode.quality)await verifyComplete078StaffQuality089AuthSchema(db);else await verifyComplete078Staff084Schema(db)
  const after=await audit(db,snapshot,target,'agentstudio_native_auth');if(canonical(before)!==canonical(after))bad('auth_catalog_changed');return true
 }
+export async function verifyEmployeeStaff084ApiClient(db,selected){
+ const closed=value=>{if(!value||typeof value!=='object'||isProxy(value)||Object.getPrototypeOf(value)!==Object.prototype)bad('api_selection');const d=Object.getOwnPropertyDescriptors(value);if(Reflect.ownKeys(d).some(k=>typeof k!=='string'||!d[k].enumerable||!Object.hasOwn(d[k],'value')))bad('api_selection');return d}
+ const d=closed(selected);if(Object.keys(d).sort().join(',')!=='profile,source_sha256,target')bad('api_selection');const t=closed(d.target.value);if(Object.keys(t).sort().join(',')!=='database_oid,system_identifier')bad('api_selection')
+ const mode=staffCompositeMode(d.profile.value),snapshot=await captureEmployeeStaff084Sources(mode.profile);assertEmployeeStaff084Snapshot(snapshot,d.source_sha256.value);const target=staffCompositeTarget({system_identifier:t.system_identifier.value,database_oid:t.database_oid.value})
+ const tx=(await db.query("SELECT current_setting('transaction_read_only')='on' AND current_setting('transaction_isolation')='repeatable read' AS safe")).rows;if(!Array.isArray(tx)||tx.length!==1||tx[0]?.safe!==true)bad('api_readonly_snapshot')
+ const before=await audit(db,snapshot,target,'agentstudio_api')
+ if(snapshot.mode.quality)await verifyComplete078StaffQuality089ApiSchema(db);else await verifyComplete078Staff084ApiSchema(db)
+ const after=await audit(db,snapshot,target,'agentstudio_api');if(canonical(before)!==canonical(after))bad('api_catalog_changed');return Object.freeze({profile:mode.profile,quality:snapshot.mode.quality})
+}
+
 export async function verifyEmployeeStaff084Pool(pool,s,expected,target,kind){
  assertEmployeeStaff084Snapshot(s,expected);if(!['api','auth'].includes(kind))bad('LOGIN_kind')
  const db=await pool.connect();let begun=false,discard=false,primary
@@ -95,3 +108,6 @@ export async function installEmployeeStaff084Profile(admin,api,auth,s,expected,t
  finally{if(begun&&!committed)try{await db.query('ROLLBACK')}catch{discard=true}try{db.release(discard)}catch{if(primary===undefined)bad('install_release_unconfirmed')}if(discard&&primary===undefined)bad('install_rollback_unconfirmed')}
  const apiProof=await verifyEmployeeStaff084Pool(api,s,expected,target,'api'),authProof=await verifyEmployeeStaff084Pool(auth,s,expected,target,'auth');return {api:apiProof,auth:authProof,actual_extra_LOGIN_connections_verified:false,services_started:false,production_GO:false}
 }
+
+// Kept behind the existing selected employee-profile import boundary.
+export async function inspectEmployeeStaff084StatisticsPool(pool,selected){const {inspectStaff084OriginalHomeKnowledgeStatisticsSchema}=await import('./staff084-home-knowledge-stats-audit.ts');return await inspectStaff084OriginalHomeKnowledgeStatisticsSchema(pool,selected)}

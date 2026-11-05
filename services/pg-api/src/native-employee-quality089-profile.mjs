@@ -14,3 +14,6 @@ export async function inspectNativeEmployeeQuality089Profile(pool,env){const sel
 
 /** Independent named combination: original046 was audited before extension and all its original catalog rows remain sealed plus exact089 delta. No old inspector is filtered or weakened. */
 export async function inspectNativeQuality089ReleaseSchema(pool,env){await inspectNativeEmployeeQuality089Profile(pool,env);return true}
+
+// Selected server profile only; preserve full profile audit before named stats.
+export async function inspectNativeQuality089StatisticsSchema(pool,env){selectNativeEmployeeQuality089Profile(env);await inspectNativeEmployeeQuality089Profile(pool,env);const {inspectQuality089OriginalHomeKnowledgeStatisticsSchema}=await import('./native-home-knowledge-stats-audit.ts');return await inspectQuality089OriginalHomeKnowledgeStatisticsSchema(pool)}

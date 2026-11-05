@@ -9,9 +9,10 @@ export function selectOriginalHomeKnowledgeStatistics(env:NodeJS.ProcessEnv,orig
 }
 /** Configuration/catalog preflight, including no-listen mode. Never installs,
  * opens HTTP, changes grants, or substitutes an attested schemaStatus input. */
-export async function inspectOriginalHomeKnowledgeStatisticsStartup(input:{pool:SqlPool;env:NodeJS.ProcessEnv;allowedOrigin:string}){
+export async function inspectOriginalHomeKnowledgeStatisticsStartup(input:{pool:SqlPool;env:NodeJS.ProcessEnv;allowedOrigin:string;inspectSelectedSchema?:(pool:SqlPool)=>Promise<'absent'|'installed'>}){
  const enabled=selectOriginalHomeKnowledgeStatistics(input.env,input.allowedOrigin,input.pool.knowledgeSharing===true)
- const schema=await inspectOptionalOriginalHomeKnowledgeStatisticsSchema(input.pool)
+ const schema=await (input.inspectSelectedSchema??inspectOptionalOriginalHomeKnowledgeStatisticsSchema)(input.pool)
+ if(schema!=='absent'&&schema!=='installed')throw Error('original_home_statistics_schema_refused')
  if(enabled&&schema!=='installed')throw Error('original_home_statistics_schema_required')
  return Object.freeze({available:enabled})
 }

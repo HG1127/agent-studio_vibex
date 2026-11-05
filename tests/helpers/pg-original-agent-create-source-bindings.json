@@ -131,7 +131,7 @@
     },
     {
       "path": "services/pg-api/src/native-home-agent-specs-runtime.ts",
-      "sha256": "6abbb1e3606ee91bb8378863c0db637f0be2f3003b999fe6dab6e080d72f7021"
+      "sha256": "6b53a4f9b6f3b8c60955fa9b9402588ce4eb84653fe541581c2b969a897d0727"
     },
     {
       "path": "services/pg-api/src/native-agent-catalog-runtime.ts",
@@ -159,7 +159,7 @@
     },
     {
       "path": "services/pg-api/src/workflow-v2-run-repository.ts",
-      "sha256": "229e361bc687f215d46f6d4035ef434fef358694bd9c924488b790266d46b51a"
+      "sha256": "01d9acb67fc82fd40eabdee5816fdf8c0877d2806652ce4718861e90cfe7f35c"
     },
     {
       "path": "services/pg-api/src/workflow-v2-worker.ts",
@@ -203,7 +203,7 @@
     },
     {
       "path": "services/pg-api/src/pg18-complete-profile-source.mjs",
-      "sha256": "5144c10fe23f3012e97eb1aaf7228313e9b911b9123482a189371aa8ab2edcba"
+      "sha256": "1de843ca839bcc3cbc280cc3137d7c0857d964c88d702a81ba9903d57c44ec52"
     },
     {
       "path": "tests/helpers/pg-original-login-browser-guard.mjs",
@@ -227,7 +227,7 @@
     },
     {
       "path": "tests/helpers/pg-original-agent-create-backend-fixture.mjs",
-      "sha256": "fdace1b68afd054e651d240dd42d031e8eb122c550146fddc38c2ee4649b467d"
+      "sha256": "d060f5bf4aba9bf947b3f28448665eb66484e387b8eef869f105a25bf8db2483"
     },
     {
       "path": "tests/helpers/pg-original-agent-create-browser-fixture.mjs",
@@ -255,7 +255,7 @@
     },
     {
       "path": "tests/pg-original-agent-create-fixture-contract-pure.test.mjs",
-      "sha256": "73a12182780464f46a1c52b24e6db6697a46d5a428e5eb56c77bc0cef2ec8604"
+      "sha256": "dd85ed27cfdbb83ef4cd0857f337058a924e6d92261bd34410733b7c0b89a501"
     }
   ,
     {"path": "services/pg-api/src/mcp-inventory-http.ts", "sha256": "369000eafbab4baa7806beb889d0d799c63da846f7796fabd2d97a02c29542d3"},
@@ -283,8 +283,8 @@
     {"path": "src/pages/Harness/HarnessPage.tsx", "sha256": "673422f8cde552edaec9181831ff710285328087264c6c634d98ff25034e1820"},
     {"path": "src/pages/Harness/useHarness.ts", "sha256": "6c435ebe1017a50302e8379016ea6f863d3256ea27f547c35e1b0a531b35e8d5"},
     {"path": "src/pages/Harness/usePgHarness.ts", "sha256": "7a3854d98dce1207866b1ec6abcc026993a0523bc8104278b90ced5be2526de7"},
-    {"path": "services/pg-api/src/quality089-release-parent-audit.ts", "sha256": "f387c6cdf9ac47640ae7175039dd3edac51e3bf0af47e662400ea0b98b7b09c6"},
-    {"path": "services/pg-api/src/quality089-knowledge-parent-audit.ts", "sha256": "571fd265ad021a0b45b411a12326a8e8fafa5b3301a240bd28080a7f42e3f0ef"},
+    {"path": "services/pg-api/src/quality089-release-parent-audit.ts", "sha256": "ac5a38a7ba5ac7bd035a9849cf4cd9682587bcd40543d807b86969e6bdba4bef"},
+    {"path": "services/pg-api/src/quality089-knowledge-parent-audit.ts", "sha256": "8a784e90eb7d6bbc83afa4939b372ee6d9cc9767530f132d373eb677dcb2a60c"},
     {"path": "services/pg-api/src/original-plugin-market-http.ts", "sha256": "9b02b8db92911d0323bba6ec11ba999a9b8933a83d0266a1f41142750fb2aee1"},
     {"path": "services/pg-api/src/original-plugin-preview.ts", "sha256": "03ad0fb5c74129931e454010b650779579b5e5f0549c94bd84e383e60ca66c73"},
     {"path": "src/lib/originalPluginMarketSession.ts", "sha256": "415b59e68d1ee07954a4b547aa9488ac28ae7d4e22814a3a46f08fdee95b5a5c"},
@@ -301,5 +301,7 @@
 ,
     {"path": "tests/helpers/original-create-owned-pg-source-reference.json", "sha256": "431c85995713fe87cd8825fbc1f2083a26d420f3565a8ed0f7e746785b57d398"},
     {"path": "tests/pg-original-agent-create-owned-pg-source.test.mjs", "sha256": "4409c6ed8ab429e11553f740bd336179cb3e1aec26738a6266223b18952ce48a"}
+,
+    {"path": "services/pg-api/tests/original-create-parent-sequence-source-pure.test.mjs", "sha256": "29287c3092497730b4471c014e99a22f9375c5cfa86d3ffb5951472efeef26fd"}
 ]
 }

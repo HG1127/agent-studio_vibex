@@ -15,14 +15,14 @@ export function selectNativeHomeAuthoring(env:NodeJS.ProcessEnv,listen:boolean,o
  return{available:true,allowWrites:configurationWrites===true}
 }
 /** Optional070 source feature; defaults off and never installs or starts DBs. */
-export async function prepareNativeHomeAgentSpecs(input:{pool:SqlPool;env:NodeJS.ProcessEnv;listen:boolean;allowedOrigin:string;configurationWrites:boolean;allowNativeLocalAgentSpecs:boolean;allowMonitorBusinessSpecs?:boolean;authenticateRequest:(req:IncomingMessage)=>Promise<Identity>}){
+export async function prepareNativeHomeAgentSpecs(input:{pool:SqlPool;env:NodeJS.ProcessEnv;listen:boolean;allowedOrigin:string;configurationWrites:boolean;allowNativeLocalAgentSpecs:boolean;allowMonitorBusinessSpecs?:boolean;inspectStatisticsSchema?:(pool:SqlPool)=>Promise<'absent'|'installed'>;authenticateRequest:(req:IncomingMessage)=>Promise<Identity>}){
  const policy=selectNativeHomeAuthoring(input.env,input.listen,input.allowedOrigin,input.configurationWrites)
  const roleUi=selectOriginalRoleUi(input.env)
  if(roleUi){if(!policy.available||!policy.allowWrites)throw Error('original_role_ui_requires_original_home');await prepareOriginalRoleUiPool(input.pool,input.env)}
  // Always inspect installed optional070, including when admission is off.
  // A missing optional profile is safe only while the facade is disabled.
  const schema=await inspectOptionalNativeHomeAuthoringSchema(input.pool)
- const statistics=await inspectOriginalHomeKnowledgeStatisticsStartup({pool:input.pool,env:input.env,allowedOrigin:input.allowedOrigin})
+ const statistics=await inspectOriginalHomeKnowledgeStatisticsStartup({pool:input.pool,env:input.env,allowedOrigin:input.allowedOrigin,inspectSelectedSchema:input.inspectStatisticsSchema})
  if(!policy.available)return null
  if(schema!=='installed')throw Error('original_home_authoring_schema_required')
  const specs=createNativeHomeAgentSpecsHttp({repository:new NativeHomeAgentSpecsRepository(input.pool,{allowOriginalRoleUi:roleUi,allowNativeLocalAgentSpecs:input.allowNativeLocalAgentSpecs,allowMonitorBusinessSpecs:input.allowMonitorBusinessSpecs===true}),authenticateRequest:input.authenticateRequest,allowedOrigin:input.allowedOrigin,allowWrites:policy.allowWrites,allowOriginalRoleUi:roleUi})

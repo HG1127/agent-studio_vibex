@@ -1,4 +1,5 @@
 // Only the explicit named stats/profile path selects this independent predecessor audit.
+import {hostedQuality089Phase} from "./hosted-profile-diagnostic.mjs"
 import type {SqlClient} from "./contracts.ts"
 import {inspectEmployeeGovernance} from "./native-employee-governance-audit.mjs"
 import {verifyKnowledgeEmbeddingCredentials} from "./knowledge-embedding-privileges.ts"
@@ -12,12 +13,12 @@ const helpers=["agentstudio_knowledge_acl","agentstudio_knowledge_content"]
 function refuse():never{throw Error("unsafe_knowledge_content_privileges")}
 async function verifyKnowledgeHelperCredentials(db:SqlClient,profileToken?:symbol):Promise<void>{
   const qualityMode=profileToken!==undefined&&profileToken===quality089KnowledgeParentToken;if(profileToken!==undefined&&!qualityMode)refuse()
-  await verifyAgentHumanInputCredentials(db)
-  await inspectEmployeeGovernance(db)
-  if(qualityMode)await verifyQuality089AgentReleaseCredentials(db);else await verifyAgentReleaseCredentials(db)
-  await verifyAgentCollaborationCredentials(db)
-  await verifyScheduleCredentials(db)
-  await verifyKnowledgeEmbeddingCredentials(db)
+  await hostedQuality089Phase('inspect_knowledge_human_input',()=>verifyAgentHumanInputCredentials(db))
+  await hostedQuality089Phase('inspect_knowledge_governance',()=>inspectEmployeeGovernance(db))
+  await hostedQuality089Phase('inspect_knowledge_release',()=>qualityMode?verifyQuality089AgentReleaseCredentials(db):verifyAgentReleaseCredentials(db))
+  await hostedQuality089Phase('inspect_knowledge_collaboration',()=>verifyAgentCollaborationCredentials(db))
+  await hostedQuality089Phase('inspect_knowledge_schedule',()=>verifyScheduleCredentials(db))
+  await hostedQuality089Phase('inspect_knowledge_embedding',()=>verifyKnowledgeEmbeddingCredentials(db))
   const roles=(await db.query<{name:string;safe:boolean;members:number}>("SELECT rolname AS name,(NOT rolcanlogin AND NOT rolinherit AND NOT rolsuper AND NOT rolbypassrls AND NOT rolcreaterole AND NOT rolcreatedb AND NOT rolreplication) AS safe,"+
     "(SELECT count(*)::integer FROM pg_catalog.pg_auth_members m WHERE m.roleid=r.oid OR m.member=r.oid) AS members "+
     "FROM pg_catalog.pg_roles r WHERE rolname=ANY($1::text[])",[helpers])).rows
@@ -41,4 +42,4 @@ async function verifyKnowledgeHelperCredentials(db:SqlClient,profileToken?:symbo
     }
   }
 }
-export async function verifyQuality089KnowledgeHelperCredentials(db:SqlClient):Promise<void>{await verifyKnowledgeHelperCredentials(db,quality089KnowledgeParentToken)}
+export async function verifyQuality089KnowledgeHelperCredentials(db:SqlClient):Promise<void>{await hostedQuality089Phase('inspect_stats_knowledge',()=>verifyKnowledgeHelperCredentials(db,quality089KnowledgeParentToken))}

@@ -32,6 +32,25 @@ export function readLivePrivate(file,{owner=0,mode=[0o400,0o600],max=262144}={})
  trustedAncestors(file);const fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW)
  try{const a=fs.fstatSync(fd);if(!a.isFile()||a.nlink!==1||a.uid!==owner||a.gid!==0||!mode.includes(a.mode&0o7777)||a.size<1||a.size>max||fs.realpathSync.native(file)!==file)liveFail('private_file');const bytes=fs.readFileSync(fd),b=fs.fstatSync(fd),last=fs.lstatSync(file);if(bytes.length!==a.size||['dev','ino','size','mtimeMs','ctimeMs','uid','gid','mode','nlink'].some(k=>a[k]!==b[k]||a[k]!==last[k]))liveFail('file_changed');return {bytes,sha256:sha(bytes),stamp:{device:a.dev,inode:a.ino,size:a.size,mtime:a.mtimeMs,ctime:a.ctimeMs}}}finally{fs.closeSync(fd)}
 }
+// Fresh descriptor and every byte on EVERY call. One bounded scratch buffer;
+// no saved digest, file contents, descriptor or prior successful observation.
+function freshNodeExecutableSha256(){
+ const file=process.execPath,fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW)
+ try{
+  const before=fs.fstatSync(fd),named=fs.lstatSync(file),keys=['dev','ino','size','mtimeMs','ctimeMs','uid','gid','mode','nlink']
+  if(!before.isFile()||!named.isFile()||named.isSymbolicLink()||before.uid!==0||(before.mode&0o022)!==0||!Number.isSafeInteger(before.size)||before.size<1||keys.some(k=>before[k]!==named[k]))return null
+  const digest=createHash('sha256'),scratch=Buffer.allocUnsafe(Math.min(1048576,before.size));let position=0
+  while(position<before.size){
+   const wanted=Math.min(scratch.length,before.size-position),size=fs.readSync(fd,scratch,0,wanted,position)
+   if(!Number.isSafeInteger(size)||size<1||size>wanted)return null
+   digest.update(scratch.subarray(0,size));position+=size
+  }
+  const after=fs.fstatSync(fd),last=fs.lstatSync(file)
+  if(!after.isFile()||!last.isFile()||last.isSymbolicLink()||keys.some(k=>before[k]!==after[k]||before[k]!==last[k]))return null
+  return digest.digest('hex')
+ }finally{fs.closeSync(fd)}
+}
+
 function decoded(bytes,max=262144){return parseWorkerHeartbeatControlJson(bytes,max)}
 function signedFile(file,key){const bound=readLivePrivate(file),v=closed(decoded(bound.bytes),['payload','signature']);if(typeof v.signature!=='string'||!/^[A-Za-z0-9+/]{86}==$/.test(v.signature)||!verify(null,Buffer.from(JSON.stringify(v.payload)),key,Buffer.from(v.signature,'base64')))liveFail('signature');return {value:v.payload,sha256:bound.sha256}}
 function networkPolicy(){const outputs=[];for(const executable of ['/usr/sbin/iptables-save','/usr/sbin/ip6tables-save']){const text=execFileSync(executable,[],{encoding:'utf8',env:{PATH:'/usr/sbin:/usr/bin:/sbin:/bin',LANG:'C.UTF-8'},timeout:5000,maxBuffer:1048576,windowsHide:true});outputs.push(text.split(/\r?\n/).filter(s=>s&&!s.startsWith('#')).join('\n'))}return full069NetworkPolicyDigest(outputs.join('\n---\n'))}
@@ -42,7 +61,7 @@ export async function openFull069WorkerLiveTrust(write=false){
  assertLiveHost(write);failurePhase='configuration';trustedAncestors(livePaths.configuration+'/profile.json');const dir=fs.lstatSync(livePaths.configuration);if((dir.mode&0o7777)!==0o700)liveFail('configuration_directory')
   failurePhase='operator_key';const keyFile=readLivePrivate(livePaths.configuration+'/operator-public.pem',{max:16384}),key=createPublicKey(keyFile.bytes);if(key.asymmetricKeyType!=='ed25519')liveFail('operator_key');failurePhase='signed_profile';const signed=signedFile(livePaths.configuration+'/profile.json',key),profile=parseLiveProfile(signed.value);failurePhase='source_capture';const snapshot=await captureFull069WorkerLiveSources();failurePhase='source_verify';assertFull069WorkerLiveSources(snapshot,profile.source_sha256,{deployment:true});if(snapshot.complete.source_sha256!==profile.complete_source_sha256)liveFail('complete_source_changed')
  failurePhase='host_runtime'
- const node=fs.lstatSync(process.execPath);if(!node.isFile()||node.isSymbolicLink()||node.uid!==0||(node.mode&0o022)!==0||sha(fs.readFileSync(process.execPath))!==profile.node_sha256||networkPolicy()!==profile.network_policy_sha256)liveFail('host_runtime_changed')
+ const node=fs.lstatSync(process.execPath);if(!node.isFile()||node.isSymbolicLink()||node.uid!==0||(node.mode&0o022)!==0||freshNodeExecutableSha256()!==profile.node_sha256||networkPolicy()!==profile.network_policy_sha256)liveFail('host_runtime_changed')
   failurePhase='telemetry_read';const telemetry=readLivePrivate('/etc/agentstudio/telemetry-control/profile.json',{max:2097152});if(telemetry.sha256!==profile.telemetry_profile_sha256)liveFail('telemetry_profile_changed');failurePhase='telemetry_envelope';const envelope=closed(decoded(telemetry.bytes,2097152),['payload','signature']);failurePhase='telemetry_root_profile';const rootProfile=parseWorkerHeartbeatRootProfile(envelope.payload),writers=rootProfile.writers;failurePhase='telemetry_binding';const b=closed(rootProfile.binding,['system_id','database','database_oid','owner_oid','schema_oid','operator_login','operator_oid','server_addr','server_port','postmaster_started_us','roles','sql_pin','record_pin','snapshot_pin']);if(!writers||writers.enabled!==true)liveFail('telemetry_binding');if(rootProfile.source_sha256!==profile.telemetry_source_sha256||b.database!=='agent_studio_telemetry'||b.system_id!==profile.telemetry_target.system_identifier||String(b.database_oid)!==profile.telemetry_target.database_oid||b.server_addr!=='127.0.0.1'||b.server_port!==5333||rootProfile.native_gid!==profile.native.gid||writers.native_uid!==profile.native.uid)liveFail('telemetry_binding')
   failurePhase='writer_scope'
   if(writers.boot_uids.length>128||profile.workers.some(w=>!writers.boot_uids.includes(w.uid)))liveFail('uid_pool')
@@ -61,7 +80,7 @@ export async function openFull069WorkerLiveTrust(write=false){
  function pinFile(s,file){const v=readLivePrivate(file,{max:2097152});s.filePins.set(file,{sha256:v.sha256,stamp:v.stamp});return v.sha256}
  export function assertLiveStable(handle){
  const s=measureFull069StablePhase('live_context_source_ms',()=>checkedState(handle))
- if(measureFull069StablePhase('live_profile_key_telemetry_ms',()=>readLivePrivate(livePaths.configuration+'/profile.json').sha256!==s.profileSha256||readLivePrivate(livePaths.configuration+'/operator-public.pem',{max:16384}).sha256!==s.keySha256||readLivePrivate('/etc/agentstudio/telemetry-control/profile.json',{max:2097152}).sha256!==s.profile.telemetry_profile_sha256)||measureFull069StablePhase('network_policy_ms',()=>networkPolicy()!==s.profile.network_policy_sha256)||measureFull069StablePhase('node_executable_ms',()=>sha(fs.readFileSync(process.execPath))!==s.profile.node_sha256))liveFail('binding_changed');
+ if(measureFull069StablePhase('live_profile_key_telemetry_ms',()=>readLivePrivate(livePaths.configuration+'/profile.json').sha256!==s.profileSha256||readLivePrivate(livePaths.configuration+'/operator-public.pem',{max:16384}).sha256!==s.keySha256||readLivePrivate('/etc/agentstudio/telemetry-control/profile.json',{max:2097152}).sha256!==s.profile.telemetry_profile_sha256)||measureFull069StablePhase('network_policy_ms',()=>networkPolicy()!==s.profile.network_policy_sha256)||measureFull069StablePhase('node_executable_ms',()=>freshNodeExecutableSha256()!==s.profile.node_sha256))liveFail('binding_changed');
  measureFull069StablePhase('C_records_ms',()=>cRecords(s.profile))
  measureFull069StablePhase('live_input_pins_ms',()=>{for(const [name,pin]of s.inputPins)if(readLivePrivate(name==='executor'?s.profile.executor.credential_file:s.profile.credentials[name],{max:2097152}).sha256!==pin)liveFail('credential_changed');})
  measureFull069StablePhase('live_file_pins_ms',()=>{for(const [file,pin]of s.filePins){const now=readLivePrivate(file,{max:2097152});if(now.sha256!==pin.sha256||JSON.stringify(now.stamp)!==JSON.stringify(pin.stamp))liveFail('record_changed')}})
