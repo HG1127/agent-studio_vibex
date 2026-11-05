@@ -684,5 +684,10 @@
   ,
     {"path": "services/pg-api/tests/helpers/original-page-ci-entry.mjs", "sha256": "11df109f92c5848dde5f559df66286d3fd2a8f002e17208416a9386b7e253dc1"},
     {"path": "tests/original-page-registered-entry-pure.test.mjs", "sha256": "b47c9ecc946ade2860ad5f623e9d41226a5835de33498d23786a980f6a783fad"}
+,
+    {"path": "src/lib/nativeDirectoryTerminalReceipt.ts", "sha256": "8212db01ae8fd1537a6527ff2eae5622b69d63b3e44904dc39c3f790ffe336b0"},
+    {"path": "tests/original-directory-terminal-recheck-pure.test.mjs", "sha256": "2d9ffcc91113672bf31ec00a7d4c75f2f3116729628ab9e18cf555056d04b683"},
+    {"path": "tests/helpers/original-create-owned-pg-source-reference.json", "sha256": "431c85995713fe87cd8825fbc1f2083a26d420f3565a8ed0f7e746785b57d398"},
+    {"path": "tests/pg-original-agent-create-owned-pg-source.test.mjs", "sha256": "4409c6ed8ab429e11553f740bd336179cb3e1aec26738a6266223b18952ce48a"}
 ]
 }

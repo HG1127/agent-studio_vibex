@@ -227,7 +227,7 @@
     },
     {
       "path": "tests/helpers/pg-original-agent-create-backend-fixture.mjs",
-      "sha256": "885259e525ddcf28be28449fbf4ad54b00d187e2fd1bdf2c83336a94029bc758"
+      "sha256": "fdace1b68afd054e651d240dd42d031e8eb122c550146fddc38c2ee4649b467d"
     },
     {
       "path": "tests/helpers/pg-original-agent-create-browser-fixture.mjs",
@@ -247,7 +247,7 @@
     },
     {
       "path": "tests/pg-original-agent-create-fresh-source-pure.test.mjs",
-      "sha256": "209057bea42a6e8b64fff559d956ae655c19c149812bb78545b964b71e693086"
+      "sha256": "506e1b8457d2059d013f9903f24e60fa01dce64175243ae26ff1482e732cd586"
     },
     {
       "path": "tests/original-agent-create-read-pure.test.mjs",
@@ -255,7 +255,7 @@
     },
     {
       "path": "tests/pg-original-agent-create-fixture-contract-pure.test.mjs",
-      "sha256": "f71beadc2570e46f7606a3de95355c23808961b16ec0e1706df9c9f71a7f06f4"
+      "sha256": "73a12182780464f46a1c52b24e6db6697a46d5a428e5eb56c77bc0cef2ec8604"
     }
   ,
     {"path": "services/pg-api/src/mcp-inventory-http.ts", "sha256": "369000eafbab4baa7806beb889d0d799c63da846f7796fabd2d97a02c29542d3"},
@@ -298,5 +298,8 @@
 ,
     {"path": "services/pg-api/tests/helpers/original-page-ci-entry.mjs", "sha256": "11df109f92c5848dde5f559df66286d3fd2a8f002e17208416a9386b7e253dc1"},
     {"path": "tests/original-page-registered-entry-pure.test.mjs", "sha256": "b47c9ecc946ade2860ad5f623e9d41226a5835de33498d23786a980f6a783fad"}
+,
+    {"path": "tests/helpers/original-create-owned-pg-source-reference.json", "sha256": "431c85995713fe87cd8825fbc1f2083a26d420f3565a8ed0f7e746785b57d398"},
+    {"path": "tests/pg-original-agent-create-owned-pg-source.test.mjs", "sha256": "4409c6ed8ab429e11553f740bd336179cb3e1aec26738a6266223b18952ce48a"}
 ]
 }

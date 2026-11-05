@@ -51,7 +51,33 @@ for(const [name,operation]of Object.entries(operations)){
 const ts=createRequire(import.meta.url)('typescript'),read=file=>fs.readFileSync(new URL('../src/'+file,import.meta.url),'utf8')
 function functions(file,names){const source=read(file),tree=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true);return names.map(name=>{const node=tree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name);assert(node,name);return stripTypeScriptTypes(node.getText(tree).replace(/^export\s+/,''))}).join('\n')}
 const code=functions('tool-hub-http.ts',['ownerToolHubRoute'])+'\n'+functions('http.ts',['send','readBody','tokenFrom','allowBodyFields','createHandler'])
-const createHandler=Function('HttpError','isUuid','optionalExpectedOriginalUiEmployee',code+'\nreturn createHandler')(HttpError,isUuid,optionalExpectedOriginalUiEmployee)
+function closedStringLiteral(source,name,expected){
+ const tree=ts.createSourceFile('closed-route.ts',source,ts.ScriptTarget.Latest,true)
+ assert.equal(tree.parseDiagnostics.length,0,'closed_route_syntax_drift')
+ const declarations=tree.statements.filter(ts.isVariableStatement).flatMap(statement=>
+  statement.declarationList.declarations.filter(node=>ts.isIdentifier(node.name)&&node.name.text===name).map(node=>({statement,node})))
+ assert.equal(declarations.length,1,'closed_route_declaration_drift')
+ const {statement,node}=declarations[0]
+ assert.equal(statement.declarationList.declarations.length,1,'closed_route_multi_binding_refused')
+ assert.ok(statement.declarationList.flags&ts.NodeFlags.Const,'closed_route_mutable_refused')
+ assert.ok(statement.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.ExportKeyword),'closed_route_export_drift')
+ let value=node.initializer
+ if(value&&ts.isAsExpression(value)){
+  assert.ok(ts.isTypeReferenceNode(value.type)&&ts.isIdentifier(value.type.typeName)&&value.type.typeName.text==='const'&&!value.type.typeArguments,'closed_route_assertion_drift')
+  value=value.expression
+ }
+ assert.ok(value&&ts.isStringLiteral(value),'closed_route_literal_required')
+ assert.equal(value.text,expected,'closed_route_value_drift')
+ return value.text
+}
+const originalPreviewLiteral='/api/v2/original-ui/plugin-market/discover-preview'
+function bindScheduleHttp(source=read('original-plugin-preview.ts')){
+ const originalPluginPreviewPath=closedStringLiteral(source,'originalPluginPreviewPath',originalPreviewLiteral)
+ return Function('HttpError','isUuid','optionalExpectedOriginalUiEmployee','originalPluginPreviewPath',code+'\nreturn createHandler')(HttpError,isUuid,optionalExpectedOriginalUiEmployee,originalPluginPreviewPath)
+}
+// Bind lazily within registered tests: source drift must fail those tests, not
+// abort top-level registration after only the repository cases have registered.
+const createHandler=deps=>bindScheduleHttp()(deps)
 const base='/api/v2/schedules',routes=[
  ['GET',base],['GET',base+'/'+id],['GET',base+'/'+id+'/occurrences'],['GET',base+'/'+id+'/execution'],
  ['POST',base,input],['PATCH',base+'/'+id,{...input,expected_revision:1}],['DELETE',base+'/'+id,{expected_revision:1}],
@@ -87,4 +113,55 @@ test('expected employee cannot open the disabled schedule execution gate',async(
  }
  // Revocation remains available when new execution is disabled.
  const m=memory();m.runtime.enabled=false;await assert.rejects(operations.pause(m,'bob',alice),e=>e.code==='employee_session_changed');assert.deepEqual(m.state.business,[])
+})
+
+// Dependency drift controls use DATA source snippets only; they never import
+// the preview module or evaluate any of its executable statements.
+const literalSource=value=>"export const originalPluginPreviewPath="+value+" as const"
+for(const [label,source]of [
+ ['missing binding',"export const otherPath='/nope' as const"],
+ ['duplicate binding',literalSource(JSON.stringify(originalPreviewLiteral))+';'+literalSource(JSON.stringify(originalPreviewLiteral))],
+ ['changed path',literalSource(JSON.stringify(originalPreviewLiteral+'/drift'))],
+ ['mutable binding',"export let originalPluginPreviewPath="+JSON.stringify(originalPreviewLiteral)],
+ ['template literal',"export const originalPluginPreviewPath="+'`'+originalPreviewLiteral+'`'],
+ ['computed value',"export const originalPluginPreviewPath="+JSON.stringify(originalPreviewLiteral)+".slice(0)"],
+ ['executable initializer',"export const originalPluginPreviewPath=(()=>{globalThis.closedRouteSideEffect=true;return "+JSON.stringify(originalPreviewLiteral)+"})()"],
+ ['non-const assertion',"export const originalPluginPreviewPath="+JSON.stringify(originalPreviewLiteral)+" as string"],
+ ['parenthesized expression',"export const originalPluginPreviewPath=("+JSON.stringify(originalPreviewLiteral)+")"],
+ ['multiple bindings',"export const originalPluginPreviewPath="+JSON.stringify(originalPreviewLiteral)+",other='/unused'"],
+ ['unexported binding',"const originalPluginPreviewPath="+JSON.stringify(originalPreviewLiteral)],
+])test('schedule VM refuses route dependency drift: '+label,()=>{
+ assert.throws(()=>closedStringLiteral(source,'originalPluginPreviewPath',originalPreviewLiteral),assert.AssertionError)
+})
+test('schedule route extraction reads a literal without evaluating unrelated module statements',()=>{
+ delete globalThis.closedRouteSideEffect
+ const value=closedStringLiteral('globalThis.closedRouteSideEffect=true;'+literalSource(JSON.stringify(originalPreviewLiteral)),'originalPluginPreviewPath',originalPreviewLiteral)
+ assert.equal(value,originalPreviewLiteral);assert.equal(globalThis.closedRouteSideEffect,undefined)
+})
+async function probeScheduleFactory(factory){
+ let authCalls=0,bearerCalls=0,reply
+ const handler=factory({repository:{},scheduleInventory:{},authenticateRequest:async()=>{authCalls++;throw new HttpError(401,'session_required')},verifyToken:async()=>{bearerCalls++;throw Error('bearer_forbidden')}})
+ const req=Readable.from([]);req.method='GET';req.url='/api/v2/schedules';req.headers={cookie:'invalid'};req.rawHeaders=['cookie','invalid']
+ const res={writeHead(status){this.status=status},end(value){reply=JSON.parse(value)}}
+ await handler(req,res);return{status:res.status,body:reply,authCalls,bearerCalls}
+}
+test('missing original preview binding reproduces500 before authentication; real literal binding restores401',async()=>{
+ const unbound=Function('HttpError','isUuid','optionalExpectedOriginalUiEmployee',code+'\nreturn createHandler')(HttpError,isUuid,optionalExpectedOriginalUiEmployee)
+ const before=await probeScheduleFactory(unbound),after=await probeScheduleFactory(bindScheduleHttp())
+ assert.equal(before.status,500);assert.equal(before.authCalls,0);assert.equal(before.bearerCalls,0)
+ assert.equal(after.status,401);assert.equal(after.body.error,'invalid_token');assert.equal(after.authCalls,1);assert.equal(after.bearerCalls,0)
+})
+test('a newly unbound handler dependency remains observable instead of being stubbed permissively',async()=>{
+ const marker='const originalPluginPreview=path===originalPluginPreviewPath'
+ assert.equal(code.split(marker).length,2)
+ const drifted=code.replace(marker,'const originalPluginPreview=path===unreviewedOriginalPluginPreviewPath')
+ const factory=Function('HttpError','isUuid','optionalExpectedOriginalUiEmployee','originalPluginPreviewPath',drifted+'\nreturn createHandler')(HttpError,isUuid,optionalExpectedOriginalUiEmployee,originalPreviewLiteral)
+ const result=await probeScheduleFactory(factory);assert.equal(result.status,500);assert.equal(result.authCalls,0)
+})
+test('literal dependency drift is rejected when the registered HTTP test invokes its factory',()=>{
+ assert.throws(()=>bindScheduleHttp(literalSource(JSON.stringify('/changed-route'))),assert.AssertionError)
+})
+test('schedule precondition dependency suite reached final registration',()=>{
+ assert.equal(closedStringLiteral(read('original-plugin-preview.ts'),'originalPluginPreviewPath',originalPreviewLiteral),originalPreviewLiteral)
+ assert.equal(typeof createHandler,'function')
 })

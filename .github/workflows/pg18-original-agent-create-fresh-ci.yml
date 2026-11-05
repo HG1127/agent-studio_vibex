@@ -49,7 +49,7 @@ jobs:
       AGENT_STUDIO_ORIGINAL_AGENT_CREATE_CI: YES_DISPOSABLE_ORIGINAL_AGENT_CREATE_FRESH_ONLY
       AGENT_STUDIO_ORIGINAL_AGENT_CREATE_STORY: original-agent-create-fresh
       AGENT_STUDIO_ORIGINAL_AGENT_CREATE_EXPECTED_HEAD: '${{ github.sha }}'
-      AGENT_STUDIO_ORIGINAL_AGENT_CREATE_SOURCES_SHA256: '1d7b8f6d86dd4c986d2499286fabf05185f72127d735726dd92238b744697aaa'
+      AGENT_STUDIO_ORIGINAL_AGENT_CREATE_SOURCES_SHA256: 'b05f7ce2d86c2e25ae0367ea06fc52d752d3bc05e3b60c77d5801f528c22e946'
       AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
       AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
       AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
@@ -117,7 +117,7 @@ jobs:
           AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REF: '${{ job.workflow_ref }}'
           AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_SHA: '${{ job.workflow_sha }}'
           AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REPOSITORY: '${{ job.workflow_repository }}'
-        run: node --test --test-concurrency=1 tests/original-agent-create-read-pure.test.mjs tests/pg-original-agent-create-fresh-source-pure.test.mjs tests/pg-original-agent-create-fixture-contract-pure.test.mjs tests/original-page-registered-entry-pure.test.mjs
+        run: node --test --test-concurrency=1 tests/original-agent-create-read-pure.test.mjs tests/pg-original-agent-create-fresh-source-pure.test.mjs tests/pg-original-agent-create-fixture-contract-pure.test.mjs tests/original-page-registered-entry-pure.test.mjs tests/pg-original-agent-create-owned-pg-source.test.mjs
       - name: Build the existing main App with the original PG adapter
         env:
           AGENT_STUDIO_REGISTERED_PAGE_EVENT_ENABLED: '${{ github.event.inputs.run_original_pages }}'

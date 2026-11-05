@@ -1,6 +1,7 @@
 import {useEffect,useLayoutEffect,useRef,useState} from 'react'
 import {ArrowUp,Check,Copy,FilePlus2,FolderOpen,FolderPlus,History,Loader2,RefreshCw,RotateCcw,Save,Search,ShieldCheck,Square,Trash2} from 'lucide-react'
 import {confirmInStudio} from '@/lib/studioDialogs'
+import {readNativeDirectoryTerminalReceipt} from '@/lib/nativeDirectoryTerminalReceipt'
 import {decodeRhToken} from '@/lib/studioAuth'
 import {ORIGINAL_PG_UI_ENABLED} from '@/lib/studioBackend'
 import {getLocalDeviceSessionScope,sameLocalDeviceSessionScope,subscribeLocalDeviceSessionPrivacy} from '@/lib/nativeLocalEmployeeApi'
@@ -49,6 +50,7 @@ function ScopedComputerFileWorkspace({device,statusVerified=true,onBusyChange,on
   const missingPermissions=workspaceActionAvailability(tools,root).filter(action=>!action.available&&action.reason==='permission')
  const valid=()=>alive.current&&!!owner.current&&decodeRhToken()?.sub===owner.current&&(!ORIGINAL_PG_UI_ENABLED||sameLocalDeviceSessionScope(originalScope))
  const ready=()=>{if(!valid()||!live.current.statusVerified||deviceConnectionState(live.current.device)!=='online')throw Error('设备离线或身份尚未核实，未发送新操作。');if(live.current.catalog!==catalog)throw Error('授权能力已变化，请核对当前范围。')}
+ const terminalReceipt=!!(ORIGINAL_PG_UI_ENABLED&&!recover&&job&&'backend'in job&&job.backend==='native_pg'&&observation.current?.native&&observation.current.jobId===job.id&&observation.current.catalog===catalog&&['succeeded','failed','cancelled','expired'].includes(job.status))
  const visible=visibleLocalFiles(directory,root,path,query)
  const edited=!!doc&&doc.verified&&doc.catalog===catalog&&may('files.update')&&doc.path===selected?.path
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;operation.current++;controller.current?.abort()}},[])
@@ -150,7 +152,21 @@ function ScopedComputerFileWorkspace({device,statusVerified=true,onBusyChange,on
   catch(e){setError(previous=>current()?workspaceError(e):previous);setRecover(previous=>current()?!!intent.current:previous)}
   finally{if(operation.current===ownOperation)mutex.current=false;setBusy(previous=>current()?false:previous)}
  }
- const abandonDraft=async()=>!dirty||await confirmInStudio('当前文本修改尚未保存。放弃草稿继续？',{title:'保留未保存的修改',confirmLabel:'放弃草稿',cancelLabel:'继续编辑',destructive:true})
+ const recheckTerminal=async()=>{
+   if(mutex.current||!terminalReceipt||!valid())return
+   const entry=observation.current
+   if(!entry?.native||entry.jobId!==job?.id)return
+   const ownOperation=++operation.current,current=()=>valid()&&operation.current===ownOperation&&observation.current===entry&&live.current.device.id===device.id&&live.current.catalog===entry.catalog
+   mutex.current=true;setBusy(previous=>current()?true:previous);setError(previous=>current()?'':previous);controller.current=new AbortController()
+   try{
+    ready()
+    const value=await readNativeDirectoryTerminalReceipt(entry.native,entry.jobId,controller.current.signal,current,nativeDirectoryJobs.get)
+    setJob(previous=>current()?nativeFileJobPresentation(value):previous)
+    setNotice(previous=>current()?'原操作结果已核实，没有创建另一条任务。':previous)
+   }catch(e){setError(previous=>current()?workspaceError(e):previous)}
+   finally{if(operation.current===ownOperation)mutex.current=false;setBusy(previous=>current()?false:previous)}
+  }
+  const abandonDraft=async()=>!dirty||await confirmInStudio('当前文本修改尚未保存。放弃草稿继续？',{title:'保留未保存的修改',confirmLabel:'放弃草稿',cancelLabel:'继续编辑',destructive:true})
  const choose=async(value:{path:string;directory:boolean})=>{if(blocked||!await abandonDraft())return;setSelected(value);setDoc(null);setText('');setForm('');setDiff(false);setError('');setNotice('');setApplicationAction('')}
  const list=(value:string)=>void perform('读取「'+device.name+'」授权目录 '+root+'/'+value+' 的文件名。不会修改文件。',async()=>{
   if(!await abandonDraft())return
@@ -248,6 +264,7 @@ function ScopedComputerFileWorkspace({device,statusVerified=true,onBusyChange,on
   {notice&&<p role="status" className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs leading-6">{notice}</p>}
   {error&&<p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs leading-6 text-destructive">{error}</p>}
   {recover&&<div className="rounded-lg border border-amber-300/50 p-3"><p className="text-xs leading-6">保留了原操作标识，暂不允许发送另一条操作。重新核实只查询原任务；丢失接收回执时只使用原请求编号。</p><button type="button" className={btn+' mt-2'} disabled={busy||!online} onClick={()=>void recheck()}>核实同一操作</button>{job?.status==='unknown'&&<button type="button" className={btn+' ml-2 mt-2'} disabled={busy} onClick={async()=>{if(await confirmInStudio('未知结果不代表没有执行。结束等待不会重新执行或撤销原操作，记录保留在本次操作记录。请先读取目录核对实际结果。',{title:'保留未知结果，返回核对文件',confirmLabel:'我已知悉，结束等待'})){intent.current=null;setRecover(false);setStale(true);setDoc(null);setText('');setNotice('原操作仍为结果未知，没有重复执行。请先核查文件，不要直接重新提交。')}}}>保留记录并结束等待</button>}</div>}
-  {job&&(job.result||job.error)&&<details className="text-xs"><summary className="cursor-pointer py-2 text-muted-foreground">查看最近原始回执</summary><pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-secondary p-3">{job.result||job.error}</pre></details>}
+  {terminalReceipt&&<div className="rounded-lg border border-border p-3"><p className="text-xs leading-6">已保留原任务回执；重新核实只查询相同任务，不会再次执行。</p><button type="button" className={btn+' mt-2'} disabled={busy||!online} onClick={()=>void recheckTerminal()}>核实同一操作</button></div>}
+   {job&&(job.result||job.error)&&<details className="text-xs"><summary className="cursor-pointer py-2 text-muted-foreground">查看最近原始回执</summary><pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-secondary p-3">{job.result||job.error}</pre></details>}
  </section>
 }
