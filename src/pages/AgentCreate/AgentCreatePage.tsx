@@ -384,7 +384,7 @@ export default function AgentCreateRoute() {
               <div className="mt-5 border-t border-border pt-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-sm font-semibold">最近一次真实试跑：{runStatus}</p>
-                  <button type="button" onClick={()=>void refreshRuns()} disabled={!p.savedSpecId}
+                  <button type="button" onClick={()=>void refreshRuns()} disabled={!p.savedSpecId||(ORIGINAL_PG_UI_ENABLED&&(!nativeReader||!p.nativeSavedRevision))}
                     className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-border px-3 text-xs hover:bg-secondary disabled:opacity-50">
                     <RefreshCw className="h-4 w-4"/>刷新试跑结果
                   </button>

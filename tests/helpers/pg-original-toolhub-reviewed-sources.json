@@ -1325,7 +1325,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-genuine-source-pins.mjs",
-      "sha256": "7e304980b6359f7bb463b0e69af158b2a6734445f7e786b928309d8795fa3e1f"
+      "sha256": "aa70820136ecb9eaa106b8cc205eb151c14fd7a68176fa4d6dcd77c31b37962c"
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-original-home-guard.mjs",
@@ -1333,7 +1333,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-original-home-reviewed-sources.json",
-      "sha256": "4ae36e74c0d1a966a89fa991c3d20b819ee235b13bb89f02ba287f97b07c397d"
+      "sha256": "758f81f6e6bda50d2e0c5ad31d9ef719b3da1a1400d2ec09521fc31809b3c6c4"
     },
     {
       "path": "services/pg-api/tests/helpers/workflow-v2-agent-fixture.mjs",
@@ -2969,7 +2969,7 @@
     },
     {
       "path": "src/pages/AgentCreate/AgentCreatePage.tsx",
-      "sha256": "f984f25dc3bdac6a9a8e473b8491c40c3cf2c7903e82450ab668512c02717981"
+      "sha256": "1c66dcf8e4f10a5f252a308992fa7e2aed8b042bdc7a4b842bcec4a07d9705c7"
     },
     {
       "path": "src/pages/AgentRun/AgentRunPage.tsx",
@@ -3005,7 +3005,7 @@
     },
     {
       "path": "src/pages/Home/useHome.ts",
-      "sha256": "022d8285c4806db789b782785505b8232ee5d498bcc69d24547d939780df7071"
+      "sha256": "e7d982c49547a58ba200588bb22ca1c1a0e7baa6535c8d97b2749c0784293503"
     },
     {
       "path": "src/pages/Integrate/index.tsx",
@@ -3606,9 +3606,9 @@
     {"path": "services/pg-api/tests/original-ui-unified-catalog-source-pure.test.mjs", "sha256": "384231eb9ebc79d36c280d0bd4ae50cffa810856803a2f515c3cebe4d2918cce"},
     {"path": "services/pg-api/tests/original-ui-unified-role-delta-source-pure.test.mjs", "sha256": "ee8898aff3aaed64f3173ce71f92d803ad34dddc1541e7f18dd9e407a4df6d97"},
     {"path": "services/pg-api/tests/quality089-release-trigger-integrity-source-pure.test.mjs", "sha256": "1e9b4698e4fcd5cc922a0beb9b237d9b2c02dc2c95da7291b1dd0431eb3a3339"},
-    {"path": "services/pg-api/tests/staff084-statistics-api-source-pure.test.mjs", "sha256": "1738d7b2a126dc70fc6d65a09cb8d9a2bc3aebacfec2b3724cf39c76addd14a1"},
+    {"path": "services/pg-api/tests/staff084-statistics-api-source-pure.test.mjs", "sha256": "9730e54bd26a7efea207fb80c80bce2f3235205840c0e544e2ca284e406fc6e1"},
     {"path": "services/pg-api/tests/worker-heartbeat-reader-directory-cycle-source-pure.test.mjs", "sha256": "5a217906851ef5e56dc71c9c5c72f87adca063cc40d21dc11f8eebbc796a747b"},
-    {"path": "tests/profile-phases-source-pure.test.mjs", "sha256": "0f7ef94c3953178d024b7bba1611ef59524925cef147732516431617b1f6e08c"},
+    {"path": "tests/profile-phases-source-pure.test.mjs", "sha256": "6d546c205f2f2494f122cd752a1edb03e08a67e3f0b213d6abc1d8fc8856dc20"},
     {"path": "services/pg-api/src/employee-quality089-contract.d.mts", "sha256": "f14e2253b1a587e23fb60473f90f3ef0d25a8a4bc69af63180cb83a89d35822a"},
     {"path": "services/pg-api/src/employee-staff084-profile.d.mts", "sha256": "b3099615397feb93508f6ca370f97a84666dd80b31df5c26bc327f5b78006c25"},
     {"path": "services/pg-api/tests/original-statistics-selected-boundary-source-pure.test.mjs", "sha256": "54a62e620223c42c05502e978b13d0e566c35e7797adfde8651c54c6ab794ad8"},
@@ -3617,12 +3617,21 @@
     {"path": "services/pg-api/tests/original-create-install-paths-and-legacy-bindings-source-pure.test.mjs", "sha256": "af71e01cd3cb409016f3e9927956270ec2289f607de7ad747d905a2e36337c5e"},
     {"path": "tests/hosted-profile-known-failure-source-pure.test.mjs", "sha256": "00a5b00382a2dfdd5c3019ff7e24cc1c24d7544f2d25202668ba698450c873b9"},
     {"path": "tests/original-directory-connector-metadata-pure.test.mjs", "sha256": "a892f969091d38095694f0ba6ebb0d361a1d2504281bb9054314263254d3e9ce"},
-    {"path": "tests/original-plugin-fixture-request-contract-pure.test.mjs", "sha256": "b2bc0c5a6466144558c2c365aaa1c1161ce0982999d40d9d48632d2c87c920a9"},
-    {"path": "tests/original-legacy-source-views-pure.test.mjs", "sha256": "d9899045c3e9b1398d861e5da9fffede3e3266b94d63b9a96ad3bcaf4325fb74"}
+    {"path": "tests/original-plugin-fixture-request-contract-pure.test.mjs", "sha256": "5ce88f97691900ec47d939179296125fa8807473d212aacdd40c7bd275d4edce"},
+    {"path": "tests/original-legacy-source-views-pure.test.mjs", "sha256": "5efd7b06cc2df285d3f6044ae0cb37c4dcf582a53667bf3ac8d10d3e45fe330f"}
 ,
     {"path": "tests/original-directory-logout-navigation-pure.test.mjs", "sha256": "7c6feeb07eabaf5e485cf14f81dcd5512d89a35c4c1a24a5979a39f0f0ca4e25"},
     {"path": "tests/model-config-receipt075-hosted-phases-source-pure.test.mjs", "sha256": "172ec8684d1fbbb7a04ba3c13cccca62b1b0126053ae37180d7c0630a49e0748"},
     {"path": "tests/staff42501-fixed-stages-source-pure.test.mjs", "sha256": "cc7d882a55a0904cab510a03e0ced3ca8e77757e023b5762281db6de17e9dacb"},
     {"path": "tests/original-create-knowledge-scope-source-pure.test.mjs", "sha256": "59eb2dddf1780591cd8df95d941fb617fd0ff01c05ac6b1dcf614d60a75a806a"}
+,
+    {"path": "tests/original-plugin-page-entry-pure.test.mjs", "sha256": "1404b920e8455ab6381291f6b35ded0ee311a7c973d06ec4887e760621f86d30"},
+    {"path": "tests/original-create-refresh-readiness-pure.test.mjs", "sha256": "693a8b445b06da0d66c437fc29d31d068a9beb3a281b37a81e44fe62269f1694"},
+    {"path": "tests/original-create-draft-decision-source-pure.test.mjs", "sha256": "774ea172d13e5103d7b8f17b32d250b2b918d6fc9a322f8690d99d456ac03713"},
+    {"path": "services/pg-api/src/quality089-model075-parent-audit.ts", "sha256": "3341f46ee643a3652d785bdb58561b754e57e906e500185df572d8518f16a559"},
+    {"path": "tests/quality089-model075-parent.test.mjs", "sha256": "bae2ceda5f3ee1c6a2de65a5edbdecb4f1a7c01bc87b5ff0e5c977902cfbef88"},
+    {"path": "services/pg-api/tests/pg18-complete-service-ci.integration.mjs", "sha256": "e008b7f152a9965bcabe7d7181b6829862987d8b2fcb4d3fca3b01d51f737031"},
+    {"path": "services/pg-api/tests/helpers/pg18-complete-service-fixed-refusal.mjs", "sha256": "354f93c89d282abf24a4881e5413e60ce16ccb043a5b1c993732748113f101d2"},
+    {"path": "tests/complete-service-fixed-refusal.test.mjs", "sha256": "d2553d9caa3a4d513885c20a077bc6febe4381fa478b545f699567bd00243c64"}
 ]
 }

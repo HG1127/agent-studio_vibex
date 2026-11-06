@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url'
 import {requireCompleteProfileFixtureCi} from './helpers/pg18-complete-install-ci-guard.mjs'
 import {createCompleteServiceActualCaseCounter} from './helpers/pg18-complete-service-case-counter.mjs'
 import {completeServiceActualCliDiagnostic} from './helpers/pg18-complete-service-cli-diagnostic.mjs'
+import {emitCompleteServiceFixtureRefusal} from './helpers/pg18-complete-service-fixed-refusal.mjs'
 const here=fileURLToPath(import.meta.url)
 export async function runCompleteServiceFixture(argv,env=process.env){
  if(argv.length!==1||argv[0]!=='--run')throw Error('complete_service_fixture_arguments')
@@ -30,16 +31,19 @@ export async function runCompleteServiceFixture(argv,env=process.env){
  const ledger=async()=> (await admin.query('SELECT version,description FROM agentstudio.schema_migrations ORDER BY version')).rows
  const role=async login=>(await admin.query('SELECT rolcanlogin AS login,rolinherit AS inherit FROM pg_roles WHERE rolname=$1',[login])).rows[0]
  const image=async()=>{const result=[];for(const table of loaded.complete.tables){if(['agentstudio.users','agentstudio_auth.accounts'].includes(table))continue;assert.match(table,/^(agentstudio|agentstudio_auth)\.[a-z_]+$/);const q=table.split('.').map(s=>'"'+s+'"').join('.');result.push([table,(await admin.query("SELECT encode(sha256(convert_to(coalesce(jsonb_agg(j ORDER BY j::text),'[]'::jsonb)::text,'UTF8')),'hex') AS hash FROM (SELECT to_jsonb(t) AS j FROM "+q+' t) s')).rows[0].hash])}return result}
+ let fixedFailureStage='schema_install'
  try{
   await configureOwnedCompleteServiceHba(targets.main)
   let r=await execute('baota-pg18-complete-init.mjs',['--install','--profile','complete069','--confirm-empty-database','agent_studio','--expected-source-sha256',stage.profileSha]);assert.equal(r.code,0);assert.equal(r.value.invocation_commit_acknowledged,true);assert.equal(r.value.state,'schema_installed_inert')
   const beforeLedger=await ledger(),beforeImages=await image();assert.equal(beforeLedger.length,57);assert.deepEqual((await admin.query("SELECT rolname FROM pg_roles WHERE rolname LIKE 'agentstudio_%' AND rolcanlogin")).rows,[])
   step('independently_owned_fresh_full069_53_sources_inert_and_exact57_ledger')
+  fixedFailureStage='service_refusal_cases'
   r=await command('--prepare','worker');assert.equal(r.code,1);assert.equal((await role('agentstudio_stage_worker')).login,false);assert.equal(fs.readdirSync(journal).length,0)
   r=await command('--prepare','api',undefined,{AGENT_STUDIO_COMPLETE_SERVICE_WRITE_APPROVED:'false'});assert.equal(r.code,1);assert.equal(r.refusal,'complete_service_write_not_approved')
   const wrong=args('--prepare','api');wrong[12]=String(Number(targets.main.databaseOid)+1);r=await execute('pg18-complete-service-cli.mjs',wrong);assert.equal(r.code,1);assert.equal(r.refusal,'complete_service_target_refused')
   const wrongSource=args('--prepare','api');wrongSource[8]='0'.repeat(64);r=await execute('pg18-complete-service-cli.mjs',wrongSource);assert.equal(r.code,1);assert.equal((await role('agentstudio_stage_login')).login,false);assert.equal(fs.readdirSync(journal).length,0)
   step('inert_worker_missing_approval_wrong_source_and_physical_target_refused_without_record_or_mutation')
+  fixedFailureStage='api_preparation'
   await configureOwnedCompleteServiceHba(targets.main,'earlier-trust-negative');r=await command('--prepare','api');assert.equal(r.code,1);assert.equal(r.refusal,'complete_service_hba_refused');assert.equal((await role('agentstudio_stage_login')).login,false);assert.equal(fs.readdirSync(journal).length,0);await configureOwnedCompleteServiceHba(targets.main)
   await admin.query('ALTER ROLE agentstudio_stage_login INHERIT');r=await command('--prepare','api');assert.equal(r.code,1);assert.equal((await role('agentstudio_stage_login')).login,false);await admin.query('ALTER ROLE agentstudio_stage_login NOINHERIT')
   fs.chmodSync(journal,0o755);r=await command('--prepare','api');assert.equal(r.code,1);assert.equal(r.refusal,'complete_service_private_record_required');assert.equal((await role('agentstudio_stage_login')).login,false);assert.equal(fs.readdirSync(journal).length,0);fs.chmodSync(journal,0o700)
@@ -47,6 +51,7 @@ export async function runCompleteServiceFixture(argv,env=process.env){
   const apiRecord=fs.readFileSync(journal+'/'+apiId+'.result.json');r=await command('--prepare','api',apiId);assert.equal(r.code,1);assert.deepEqual(fs.readFileSync(journal+'/'+apiId+'.result.json'),apiRecord)
   fs.chmodSync(journal+'/'+apiId+'.intent.json',0o644);r=await command('--inspect-operation','api',apiId);assert.equal(r.code,1);assert.equal(r.refusal,'complete_service_private_record_required');fs.chmodSync(journal+'/'+apiId+'.intent.json',0o600)
   step('earlier_trust_and_inherit_refused_original_api_scram_seed_real_catalog_then_replay_refused')
+  fixedFailureStage='native_auth_preparation'
   r=await command('--prepare','worker');assert.equal(r.code,1);assert.equal((await role('agentstudio_stage_worker')).login,false)
   r=await command('--prepare','native-auth',undefined,{AGENT_STUDIO_COMPLETE_SERVICE_PASSWORD_FILE:files.api});assert.equal(r.code,1);assert.equal(r.refusal,'complete_service_independent_secret_required')
   // Real CLI commits and closes, but this caller deliberately loses its stdout
@@ -54,20 +59,24 @@ export async function runCompleteServiceFixture(argv,env=process.env){
   const nativeId=randomUUID();r=await command('--prepare','native-auth',nativeId,{},true);assert.equal(r.code,0);assert.equal(r.value,null);assert.equal(r.output_deliberately_discarded,true)
   const nativeRecord=fs.readFileSync(journal+'/'+nativeId+'.result.json');r=await command('--inspect-operation','native-auth',nativeId);assert.equal(r.code,0);assert.equal(r.value.actual_login_verified,true);assert.equal(r.value.actual_api_catalog_verified,true);assert.equal(r.value.prior_commit_acknowledged,false);assert.equal(r.value.writes_performed,false);assert.deepEqual(fs.readFileSync(journal+'/'+nativeId+'.result.json'),nativeRecord)
   step('separate_native_auth_real_login_output_ack_loss_read_only_observation_no_reenrollment')
+  fixedFailureStage='first_admin'
   r=await command('--prepare','first-admin');assert.equal(r.code,0);assert.equal(r.value.verified,true);assert.equal(r.value.first_admin_verified,true)
   const user=(await admin.query("SELECT a.password_record,u.external_issuer,u.status,a.enabled,a.is_admin FROM agentstudio_auth.accounts a JOIN agentstudio.users u ON u.id=a.user_id")).rows;assert.equal(user.length,1);assert.equal(user[0].external_issuer,'urn:agentstudio:local:v1');assert.equal(user[0].is_admin,true);assert.equal(user[0].enabled,true);assert.equal(user[0].status,'active')
   const employee=await loaded.from('services/pg-api/src/native-employee-auth.mjs');assert.equal(await employee.verifyEmployeePassword(employeePassword,user[0].password_record),true)
   r=await command('--prepare','first-admin');assert.equal(r.code,1);assert.equal((await admin.query('SELECT count(*)::int AS n FROM agentstudio_auth.accounts')).rows[0].n,1)
   step('unchanged_original_whole_first_admin_cli_real_native_login_exclusive_enrollment_and_original_kdf')
+  fixedFailureStage='successor_preparation'
   const wrongWorker=secret('wrong-worker.secret',randomBytes(40).toString('hex'));r=await command('--prepare','worker',undefined,{AGENT_STUDIO_COMPLETE_SERVICE_PASSWORD_FILE:wrongWorker});assert.equal(r.code,1);assert.equal(r.refusal,'complete_service_original_secret_required');assert.equal((await role('agentstudio_stage_worker')).login,false)
   const reused=secret('reused-service.secret',passwords['native-auth']);r=await command('--prepare','identity',undefined,{AGENT_STUDIO_COMPLETE_SERVICE_PASSWORD_FILE:reused});assert.equal(r.code,1);assert.equal(r.refusal,'complete_service_secret_reused');assert.equal(await role('agentstudio_bound_dispatch_login'),undefined)
   for(const action of ['worker','identity','broker','index-worker','index-broker']){r=await command('--prepare',action);assert.equal(r.code,0);assert.equal(r.value.verified,true);assert.equal(r.value.actual_login_verified,true);assert.equal(r.value.actual_api_catalog_verified,true);assert.equal(r.value.first_admin_verified,true);assert.equal(r.value.production_cutover_allowed,false)}
   step('five_successor_fixed_accounts_actual_scram_login_exact_membership_and_full_api_catalog')
+  fixedFailureStage='records_and_images'
   assert.deepEqual(await ledger(),beforeLedger);assert.deepEqual(await image(),beforeImages)
   const final=(await admin.query("SELECT rolname FROM pg_roles WHERE rolname LIKE 'agentstudio_%' AND rolcanlogin ORDER BY rolname")).rows.map(r=>r.rolname);assert.deepEqual(final,['agentstudio_bound_dispatch_login','agentstudio_knowledge_index_broker_login','agentstudio_knowledge_index_worker_login','agentstudio_model_broker_login','agentstudio_native_login','agentstudio_stage_login','agentstudio_stage_worker'])
   const recordNames=fs.readdirSync(journal);assert.equal(recordNames.length,16)
   for(const name of recordNames){const file=journal+'/'+name,s=fs.lstatSync(file),bytes=fs.readFileSync(file),value=JSON.parse(bytes);assert.equal(s.uid,0);assert.equal(s.gid,0);assert.equal(s.nlink,1);assert.equal(s.mode&0o7777,0o600);assert.equal(s.isSymbolicLink(),false);assert.ok(['complete069_service_operation_v1','complete069_service_result_v1'].includes(value.format));for(const v of [...Object.values(passwords),employeePassword,'full069-synthetic@example.invalid'])assert.equal(bytes.includes(v),false)}
   step('external_root_only_records_no_raw_credentials_or_old_receipts_exact131_other_table_images_preserved')
+  fixedFailureStage='native_entry'
   const {runOriginalNativeEntrySmoke}=await import('./helpers/pg18-complete-native-entry-smoke.mjs')
   const native=await runOriginalNativeEntrySmoke(loaded,{api:passwords.api,auth:passwords['native-auth'],employeePassword,modelKey:randomBytes(32).toString('hex')})
   assert.equal(native.original_native_server_cli,true);assert.equal(native.nonroot_uid,65534);assert.equal(native.real_first_admin_https_login,true);assert.equal(native.original_logout_revoked,true)
@@ -75,20 +84,22 @@ export async function runCompleteServiceFixture(argv,env=process.env){
   const afterNative=await image();assert.deepEqual(afterNative.filter(([name])=>name!=='agentstudio_auth.sessions'),beforeImages.filter(([name])=>name!=='agentstudio_auth.sessions'))
   const sessions=(await admin.query('SELECT count(*)::int AS count,bool_and(revoked_at IS NOT NULL) AS revoked FROM agentstudio_auth.sessions')).rows[0];assert.equal(sessions.count,1);assert.equal(sessions.revoked,true)
   step('original_native_server_serve_nonroot_exact_credential_directory_real_https_admin_cookie_logout_and130_other_images')
+  fixedFailureStage='post_native_observation'
      if(finalPathCiSidecarsEnabled()){const originalIntents=fs.readdirSync(journal).filter(n=>n.endsWith('.intent.json')).map(n=>JSON.parse(fs.readFileSync(journal+'/'+n))),lastC=originalIntents.find(v=>v.action==='index-broker');assert.ok(lastC);r=await command('--inspect-operation','index-broker',lastC.operation_id);assert.equal(r.code,0);assert.equal(r.value.prior_commit_acknowledged,false);assert.equal(r.value.writes_performed,false)}
-const {verifyComplete069ReviewWorkerCi}=await import('./helpers/pg18-complete-review-worker-ci.mjs')
+fixedFailureStage='review_worker';const {verifyComplete069ReviewWorkerCi}=await import('./helpers/pg18-complete-review-worker-ci.mjs')
   const review=await verifyComplete069ReviewWorkerCi(loaded,targets.main,{api:passwords.api,stageWorker:passwords.worker})
   assert.equal(review.actual_preparation_cli,true);assert.equal(review.actual_dedicated_login_verified,true);assert.equal(review.original_nonroot_cli_preflight_verified,true);assert.equal(review.all133_table_images_unchanged,true);assert.equal(review.runtime_authorization,false)
   step('independent_review_login_actual_preparer_original_nonroot_preflight_and_all133_images_preserved')
+  fixedFailureStage='executor'
    const {verifyComplete069ExecutorCi}=await import('./helpers/pg18-complete-executor-ci.mjs')
    const executor=await verifyComplete069ExecutorCi(loaded,targets.main,{api:passwords.api,auth:passwords['native-auth'],modelKey:randomBytes(32).toString('hex')})
    assert.equal(executor.actual_preparation_cli,true);assert.equal(executor.actual_dedicated_login_verified,true);assert.equal(executor.original_C_preflight_verified,true);assert.equal(executor.original_nonroot_service_preflight_verified,true);assert.equal(executor.all133_table_images_unchanged,true);assert.equal(executor.runtime_authorization,false)
    console.log(JSON.stringify({event:'complete069_executor_actual_summary',...executor}))
-  const {verifyComplete069ReviewStackCi}=await import('./helpers/pg18-complete-review-stack-ci.mjs')
+  fixedFailureStage='review_stack';const {verifyComplete069ReviewStackCi}=await import('./helpers/pg18-complete-review-stack-ci.mjs')
   const reviewStack=await verifyComplete069ReviewStackCi(loaded,targets.main,{api:passwords.api,modelBroker:passwords.broker})
   assert.equal(reviewStack.actual_preparation_cli,true);assert.equal(reviewStack.actual_three_dedicated_login_audits,true);assert.equal(reviewStack.original_nonroot_broker_design_preflight_verified,true);assert.equal(reviewStack.original_nonroot_worker_design_preflight_verified,true);assert.equal(reviewStack.all133_table_images_unchanged,true);assert.equal(reviewStack.runtime_authorization,false)
   console.log(JSON.stringify({event:'complete069_review_stack_actual_summary',...reviewStack}))
-  if(env.AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE!==undefined){
+  fixedFailureStage='plan_workflow';if(env.AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE!==undefined){
    assert.equal(env.AGENT_STUDIO_PLAN_WORKFLOW_PAIR_CI_PURPOSE,'YES_DISPOSABLE_FULL069_FIXED_F05_PAIR_ONLY')
    const {verifyComplete069PlanWorkflowCi}=await import('./helpers/pg18-complete-plan-workflow-ci.mjs')
    const predecessorFiles=[
@@ -110,9 +121,9 @@ const {verifyComplete069ReviewWorkerCi}=await import('./helpers/pg18-complete-re
    for(const key of ['actual_preparation_cli','original_auditors_verified','original_nonroot_worker_preflight_verified','original_nonroot_broker_preflight_verified','actual_postgres_future_SELECT_negative_verified','all133_table_images_unchanged','ledger57_unchanged'])assert.equal(planWorkflow[key],true)
    for(const key of ['prior_commit_acknowledged','runtime_authorization','worker_process_started','broker_listener_started','external_model_calls','actual_pg_commit_ack_loss_injected','production_GO'])assert.equal(planWorkflow[key],false)
    console.log(JSON.stringify({event:'complete069_plan_workflow_actual_summary',...planWorkflow}))
-    if(finalPathCiSidecarsEnabled()){const {runOwnedFinal13PathCiBridge}=await import('./helpers/pg18-full069-final-path-ci-bridge.mjs');const full13=await runOwnedFinal13PathCiBridge(permit,loaded,targets.main);console.log(JSON.stringify({event:'full069_final13_actual_summary',...full13}))}
+    fixedFailureStage='final13';if(finalPathCiSidecarsEnabled()){const {runOwnedFinal13PathCiBridge}=await import('./helpers/pg18-full069-final-path-ci-bridge.mjs');const full13=await runOwnedFinal13PathCiBridge(permit,loaded,targets.main);console.log(JSON.stringify({event:'full069_final13_actual_summary',...full13}))}
   }
-  console.log(JSON.stringify({event:'complete069_service_actual_summary',passed:caseCounter.finish(),actual_review_worker_login_verified:true,actual_cli:true,actual_pg18:true,actual_seven_login_audit:true,original_first_admin_cli_reused:true,original_native_serve_verified:true,ledger_rows:57,unchanged_other_table_images:beforeImages.length-1,native_session_created_and_revoked:1,all_services_started:false,worker_long_running_validated:false,pg_commit_ack_loss_injected:false,employee_UAT:false,production_GO:false}))
- }finally{await admin.end()}
+  fixedFailureStage='summary';console.log(JSON.stringify({event:'complete069_service_actual_summary',passed:caseCounter.finish(),actual_review_worker_login_verified:true,actual_cli:true,actual_pg18:true,actual_seven_login_audit:true,original_first_admin_cli_reused:true,original_native_serve_verified:true,ledger_rows:57,unchanged_other_table_images:beforeImages.length-1,native_session_created_and_revoked:1,all_services_started:false,worker_long_running_validated:false,pg_commit_ack_loss_injected:false,employee_UAT:false,production_GO:false}))
+ }catch(error){emitCompleteServiceFixtureRefusal(fixedFailureStage,error);throw error}finally{try{await admin.end()}catch(error){emitCompleteServiceFixtureRefusal('admin_end',error);throw error}}
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===here){try{await runCompleteServiceFixture(process.argv.slice(2))}catch(error){const raw=Object.getOwnPropertyDescriptor(error??{},'message')?.value;console.error(JSON.stringify({event:'complete069_service_actual_failure',code:typeof raw==='string'&&/^(?:complete_[a-z0-9_:]+|unsafe_[a-z0-9_]+)$/.test(raw)?raw:'actual_assertion_or_operation_failed',production_GO:false}));process.exitCode=1}}

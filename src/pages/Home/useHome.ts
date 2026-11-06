@@ -530,7 +530,7 @@ export function useHome() {
       if (!cancelled) void loadSavedList(rhUserId)
     })
     return () => { cancelled = true }
-  }, [rhUserId, loadSavedList])
+  }, [rhUserId, loadSavedList, draftDecisionMade])
 
   const runGenerate = useCallback(async () => {
     const requirement = userInput
