@@ -13,7 +13,7 @@ export async function verifyDesktopReleaseBaseline(root=project){
  for(const commit of baseline.requiredAncestors){
   if(!/^[a-f0-9]{40}$/.test(commit))throw Error('桌面基线提交格式无效')
   try{execFileSync('git',['merge-base','--is-ancestor',commit,'HEAD'],{cwd:root,stdio:'pipe',windowsHide:true})}
-  catch{throw Error('必须从最新已验收桌面基线继续开发；缺少提交 '+commit+'。请使用 main 或 '+baseline.branch+'，并获取完整 Git 历史。')}
+  catch{throw Error('必须从最新已验收桌面基线继续开发；缺少提交 '+commit+'。请使用 '+(baseline.branch&&baseline.branch!=='main'?'main 或 '+baseline.branch:'main')+'，并获取完整 Git 历史。')}
  }
  for(const file of baseline.requiredFiles){
   const target=path.resolve(root,file);if(!target.startsWith(path.resolve(root)+path.sep))throw Error('桌面基线文件越界')

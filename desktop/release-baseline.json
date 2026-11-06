@@ -1,6 +1,6 @@
 {
-  "minimumDesktopVersion": "0.1.0-preview.21",
-  "branch": "codex/desktop-release",
+  "minimumDesktopVersion": "0.1.0-preview.30",
+  "branch": "main",
   "requiredAncestors": [
     "8fcd466667b8a4c896835315a809b4d62b78ec21",
     "df17d1c6654b9df4f2ba83e6aec43caa18121be9",
@@ -19,7 +19,8 @@
     "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11",
     "581d5bf113e5c8e2f0a986f47327170fe838c979",
     "25591acd367f2428bcc05bd1f8f8539ccef87f59",
-    "3ca99850d4530bc0c958258584c0d002395fc970"
+    "3ca99850d4530bc0c958258584c0d002395fc970",
+    "dc842bd6bdab5e8aac9d10cd5386b70d8feec719"
   ],
   "requiredFiles": [
     "desktop/update-controller.cjs",
@@ -45,7 +46,11 @@
     "ops/build-desktop-update-guard.mjs",
     "desktop/company-https.cjs",
     "desktop/trust/company-ca.json",
-    "desktop/trust/agentstudio-root-ca.pem"
+    "desktop/trust/agentstudio-root-ca.pem",
+    "local-executor/application-vision.mjs",
+    "local-executor/application-vision-native.mjs",
+    "pocketbase/pb_hooks/modules/agent_run_retry.js",
+    "pocketbase/pb_hooks/modules/structured_task_plan.js"
   ],
   "integratedSources": [
     "97fb7c5020cb0751a7690a60f41b758c0c701ef0",
@@ -53,10 +58,10 @@
     "df17d1c6654b9df4f2ba83e6aec43caa18121be9",
     "36a005624b60a0b9de08c70638581f4de319bc02"
   ],
-  "verifiedSourceCommit": "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11",
-  "verifiedDesktopVersion": "0.1.0-preview.21",
-  "verifiedInstallerSha256": "8719eb0967364b3a38e0a704b5db8eac0188f949ee3483812b136cd04a4f519c",
-  "verifiedInstallerBytes": 275908251,
+  "verifiedSourceCommit": "dc842bd6bdab5e8aac9d10cd5386b70d8feec719",
+  "verifiedDesktopVersion": "0.1.0-preview.30",
+  "verifiedInstallerSha256": "0f3982171d7b8b77ba033ba08ba029e2adcfc50fbd8f248c419d9d4c6321c02f",
+  "verifiedInstallerBytes": 276061078,
   "verifiedSourceState": "committed-unified-source-with-release-metadata",
   "verifiedIntegratedPatches": [
     "ccbf7cb083f3c0cf10e8653ef7e359fae16ea166",
@@ -68,12 +73,25 @@
     "e20f118b357c57b28f2b3626e8a39201e6db8ad6",
     "8a8f1fac621043ab36f48f0965a149a8d2c7e104",
     "36a8d00af2e2b62859c51bd41fae837090356f27",
-    "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11"
+    "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11",
+    "f18954bc1960eae8d6d9bc37d913f52bd341d28e",
+    "cc7f3427ef8dce2d29813537c512fca6cdb1d221",
+    "25591acd367f2428bcc05bd1f8f8539ccef87f59",
+    "3ca99850d4530bc0c958258584c0d002395fc970"
   ],
-  "verifiedUnifiedSnapshotCommit": "8dc4d6082401aeccc8ea123539ecbbac45df1812",
-  "verifiedPackagingCommit": "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11",
-  "verifiedRuntimeSourceCommit": "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11",
-  "verifiedManifestSha256": "36948bae9f43a3bb99e3db38f8b0c0a8f1013891112c38a3c9b94ba19d003367",
+  "verifiedUnifiedSnapshotCommit": "27558e93ac4e90df66dee6136ef85f1fdb0a5991",
+  "verifiedPackagingCommit": "ec06fa00730a45d1884914b97ec7a3ac020a155c",
+  "verifiedRuntimeSourceCommit": "3ca99850d4530bc0c958258584c0d002395fc970",
+  "verifiedManifestSha256": "a26b69e2d9935ad98cc58eb2139cf5fd615ee21a99a3374d1edf7ef102ea58f3",
   "verifiedDeliveryMethod": "signed-in-app-update",
-  "verifiedUpdateFeed": "https://192.168.1.133:8443/desktop-updates/stable/latest.json"
+  "verifiedUpdateFeed": "https://192.168.1.133:8443/desktop-updates/acceptance/computer-use-20261106/stable/latest.json",
+  "verifiedBackendSourceCommit": "dc842bd6bdab5e8aac9d10cd5386b70d8feec719",
+  "verifiedCIRun": 42217368484,
+  "verificationScope": "technical-acceptance-and-real-company-https-update",
+  "formalUpdateChannelVersion": "0.1.0-preview.26",
+  "businessAcceptance": {
+    "status": "pending",
+    "runId": "xgyuu8225ixb4q6",
+    "note": "No WorkBuddy research input or submission yet"
+  }
 }
