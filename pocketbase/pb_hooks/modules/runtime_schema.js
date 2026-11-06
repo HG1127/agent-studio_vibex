@@ -141,6 +141,24 @@ function applyExecutionMigrations(app) {
         ).execute()
       },
     },
+    {
+      id: "execution_0005_agent_run_attempts",
+      description: "Archive immutable Agent run attempts while retaining the original task identity",
+      apply: function (tx) {
+        tx.db().newQuery(
+          "CREATE TABLE IF NOT EXISTS agent_studio_run_attempts (" +
+          "id TEXT PRIMARY KEY,owner_uid TEXT NOT NULL,run_id TEXT NOT NULL,spec_id TEXT NOT NULL," +
+          "attempt_no INTEGER NOT NULL,request_id TEXT NOT NULL,request_hash TEXT NOT NULL," +
+          "status TEXT NOT NULL,model TEXT NOT NULL,error TEXT NOT NULL,result TEXT NOT NULL," +
+          "snapshot_json TEXT NOT NULL,events_json TEXT NOT NULL,archived_ms INTEGER NOT NULL," +
+          "UNIQUE(owner_uid,run_id,attempt_no),UNIQUE(owner_uid,run_id,request_id))"
+        ).execute()
+        tx.db().newQuery(
+          "CREATE INDEX IF NOT EXISTS idx_as_run_attempts_owner_run " +
+          "ON agent_studio_run_attempts(owner_uid,run_id,attempt_no)"
+        ).execute()
+      },
+    },
   ])
 }
 

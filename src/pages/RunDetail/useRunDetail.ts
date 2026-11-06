@@ -16,6 +16,8 @@ import type { AgentSpec } from "@/pages/Home/presets"
 // 字段名与 GET /api/agent-runs/{id}/detail 返回的 run 1:1（snake_case，禁止转换层）
 export type RunDetailRow = {
   source_access_revoked?: boolean
+  agent_deleted?: boolean
+  attempt_no?: number
   id: string
   spec_id: string
   spec_name: string

@@ -125,29 +125,44 @@ routerAdd("GET", "/api/agent_runs", function (e) {
     ensureCollLocal()
     var info = e.requestInfo()
     var query = info.query || {}
-    var page = parseInt(String(query.page || "1"), 10) || 1
-    var perPage = parseInt(String(query.perPage || "50"), 10) || 50
-    if (perPage > 200) perPage = 200
+    var page = Math.min(10000,Math.max(1,parseInt(String(query.page || "1"),10)||1))
+    var perPage = Math.min(200,Math.max(1,parseInt(String(query.perPage || "50"),10)||50))
     var sort = String(query.sort || "-created")
-    var filterParts = ["rh_user_id = {:owner_uid}"]
-    var params = { owner_uid: uid }
+    var orderBy = {
+      "-created":"created DESC,id DESC","created":"created ASC,id ASC",
+      "-updated":"updated DESC,id DESC","updated":"updated ASC,id ASC",
+    }[sort] || "created DESC,id DESC"
+    var where = "rh_user_id={:owner_uid} AND EXISTS(" +
+      "SELECT 1 FROM agent_specs s WHERE s.id=agent_runs.spec_id AND s.rh_user_id=agent_runs.rh_user_id)"
+    var params = { owner_uid:uid, limit:perPage, offset:(page-1)*perPage }
     if (query.spec_id !== undefined && query.spec_id !== "") {
-      filterParts.push("spec_id = {:spec_id}")
-      params.spec_id = String(query.spec_id)
+      var requestedSpec = String(query.spec_id)
+      if (!/^[A-Za-z0-9]{15}$/.test(requestedSpec)) return e.json(400,{error:"invalid_spec_id"})
+      where += " AND spec_id={:spec_id}"
+      params.spec_id = requestedSpec
     }
     if (query.status !== undefined && query.status !== "") {
-      filterParts.push("status = {:status}")
-      params.status = String(query.status)
+      var requestedStatus = String(query.status)
+      if (["queued","running","paused","awaiting_approval","awaiting_input","succeeded","failed","cancelled"].indexOf(requestedStatus)<0)
+        return e.json(400,{error:"invalid_status"})
+      where += " AND status={:status}"
+      params.status = requestedStatus
     }
-    var filter = filterParts.length > 0 ? filterParts.join(" && ") : ""
-    var records = filter
-      ? $app.findRecordsByFilter("agent_runs", filter, sort, perPage, (page - 1) * perPage, params)
-      : $app.findRecordsByFilter("agent_runs", "", sort, perPage, (page - 1) * perPage)
+    var total = new DynamicModel({total:0})
+    $app.db().newQuery("SELECT COUNT(*) AS total FROM agent_runs WHERE "+where)
+      .bind(params).one(total)
+    var ids = arrayOf(new DynamicModel({id:""}))
+    $app.db().newQuery(
+      "SELECT id FROM agent_runs WHERE "+where+" ORDER BY "+orderBy+" LIMIT {:limit} OFFSET {:offset}"
+    ).bind(params).all(ids)
     var items = []
-    for (var i = 0; i < records.length; i++) {
-      items.push(require(__hooks+"/modules/tool_results.js").projectRun($app,uid,records[i].publicExport()))
+    for (var i = 0; i < ids.length; i++) {
+      try {
+        var record = $app.findRecordById("agent_runs",String(ids[i].id))
+        items.push(require(__hooks+"/modules/tool_results.js").projectRecord($app,uid,record))
+      } catch (_) {}
     }
-    return e.json(200, { items: items, page: page, perPage: perPage, totalItems: items.length })
+    return e.json(200, { items:items,page:page,perPage:perPage,totalItems:Number(total.total||0) })
   } catch (err) {
     var msg = String(err && err.message || err)
     try { $app.logger().error("agent_runs list: " + msg) } catch (_) {}
@@ -166,7 +181,7 @@ routerAdd("GET", "/api/agent_runs/{id}", function (e) {
     var rec = null
     try { rec = $app.findRecordById("agent_runs", id) } catch (_) { rec = null }
     if (!rec || String(rec.get("rh_user_id") || "") !== uid) return e.json(404, { error: "not_found" })
-    return e.json(200, require(__hooks+"/modules/tool_results.js").projectRun($app,uid,rec.publicExport()))
+    return e.json(200, require(__hooks+"/modules/tool_results.js").projectRecord($app,uid,rec))
   } catch (err) {
     var msg = String(err && err.message || err)
     return e.json(500, { error: "get_failed", message: msg, fingerprint: msg.substring(0, 80) })

@@ -26,6 +26,9 @@ export function RunDetailPage(p:ReturnType<typeof useRunDetail>){
     {p.loadState==='not_found'&&<WorkspaceEmptyState icon={ScrollText} title="运行不存在或无权查看" description="记录可能已删除或不属于当前账号。可从下方列表选择本人有权查看的运行。"/>}
     {!showDetail&&p.loadState!=='loading'&&<RecentRunsList archive={p.archive} stateMeta={p.runStateMeta} onSelect={p.handleSelectRecent}/>}
     {showDetail&&p.runDetail&&<>
+      {p.runDetail.agent_deleted&&<section role="status" className="rounded-xl border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
+        所属 Agent 已删除。该任务及历史尝试已保留为只读审计记录，不再显示在活动任务列表，也不能恢复或重新运行。
+      </section>}
      {(p.runDetail.status === "awaiting_input" || p.runDetail.status === "awaiting_approval")&&<section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3"><div className="min-w-0 flex-1"><h2 className="text-sm font-semibold">{p.runDetail.status==='awaiting_input'?'这次任务正在等待你确认方案或补充需求':'这次任务正在等待工具调用审批'}</h2><p className="mt-1 text-xs text-muted-foreground">已完成的步骤已保存，返回原任务处理，不需要重新输入。</p></div><Link to={`/agent-run?spec=${encodeURIComponent(p.runDetail.spec_id)}&run=${encodeURIComponent(p.runDetail.id)}#agent-input-review`} className="inline-flex min-h-10 items-center rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground">{p.runDetail.status==='awaiting_input'?'打开人工确认并继续':'查看待审批调用'}</Link></section>}
      <section aria-label="运行档案内容" className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]">
       <div className="min-w-0 space-y-4">

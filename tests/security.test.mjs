@@ -81,25 +81,41 @@ function harness(file, seeds = {}, opts = {}) {
               return true
             })
           }
+          const agentRunListing = () => {
+            let list = (collections.agent_runs || []).filter(run =>
+              run.get("rh_user_id") === params.owner_uid &&
+              (collections.agent_specs || []).some(spec =>
+                spec.id === run.get("spec_id") && spec.get("rh_user_id") === run.get("rh_user_id")))
+            if (params.spec_id) list = list.filter(run => run.get("spec_id") === params.spec_id)
+            if (params.status) list = list.filter(run => run.get("status") === params.status)
+            return list
+          }
           return {
             bind(values) { params = values; return this },
             // Agent list SQL now uses an owner-filtered LEFT JOIN and
             // aggregate SELECT; model it explicitly instead of permitting
             // an arbitrary query to succeed in security unit tests.
             one(out) {
+              if (sql.startsWith("SELECT COUNT(*) AS total FROM agent_runs WHERE ")) {
+                out.total = agentRunListing().length
+                return out
+              }
               if (!sql.startsWith("SELECT COUNT(*) AS total FROM agent_specs s LEFT JOIN agent_spec_favorites f "))
                 throw new Error("unsupported_security_test_query")
               out.total = agentListing().length
               return out
             },
             all(out) {
+              if (sql.startsWith("SELECT id FROM agent_runs WHERE ")) {
+                for (const row of agentRunListing().slice(Number(params.offset || 0), Number(params.offset || 0) + Number(params.limit || 50))) out.push({ id: row.id })
+                return out
+              }
               if(sql === "SELECT source_scope FROM agent_studio_tool_results WHERE owner_uid={:uid} AND run_id={:rid}") {
                 for(const r of (collections.agent_studio_tool_results||[])) {
                   if(r.get("owner_uid")===params.uid && r.get("run_id")===params.rid)out.push({source_scope:r.getString("source_scope")})
                 }
                 return out
               }
-
               if (!sql.startsWith("SELECT s.id AS id, CASE WHEN f.spec_id IS NULL THEN 0 ELSE 1 END AS favorite FROM agent_specs s LEFT JOIN agent_spec_favorites f "))
                 throw new Error("unsupported_security_test_query")
               const start = Number(params.offset || 0)
@@ -296,13 +312,21 @@ test("role validation preserves owner boundaries and legacy omission cannot clea
 })
 
 test("run records and event listings cannot be read across tenants", () => {
-  const fixtures = { agent_runs: [
-    { id: "r1", rh_user_id: "A", status: "running" },
-    { id: "r2", rh_user_id: "B", status: "running" },
-  ] }
+  const fixtures = {
+    agent_specs: [
+      { id: "s1", rh_user_id: "A", spec: {} },
+      { id: "s2", rh_user_id: "B", spec: {} },
+    ],
+    agent_runs: [
+      { id: "r1", rh_user_id: "A", spec_id: "s1", status: "running" },
+      { id: "r2", rh_user_id: "B", spec_id: "s2", status: "running" },
+    ],
+  }
   const h = harness("agent_runs", fixtures)
   assert.equal(h.call("GET", "/api/agent_runs/{id}", { user: "A", id: "r2" }).status, 404)
-  assert.deepEqual(Array.from(h.call("GET", "/api/agent_runs", { user: "A", query: { rh_user_id: "B" } }).items, x => x.id), ["r1"])
+  const listedRuns = h.call("GET", "/api/agent_runs", { user: "A", query: { rh_user_id: "B" } })
+  assert.equal(listedRuns.status, 200, JSON.stringify(listedRuns.data))
+  assert.deepEqual(Array.from(listedRuns.items || [], x => x.id), ["r1"])
   assert.equal(h.call("PATCH", "/api/agent_runs/{id}", { user: "A", id: "r2" }).status, 403)
   assert.equal(h.call("POST", "/api/agent_runs", { user: "A", body: {} }).status, 403)
   const ev = harness("run_events", { ...fixtures, run_events: [

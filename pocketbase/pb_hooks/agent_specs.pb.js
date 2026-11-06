@@ -377,18 +377,90 @@ routerAdd("DELETE", "/api/agent_specs/{id}", function (e) {
   if (!uid) return e.json(401, { error: "rh_login_required", message: "Authentication required" })
 
   try {
-    var id = e.request.pathValue("id")
+    var id = String(e.request.pathValue("id") || "")
     if (!id) return e.json(400, { error: "id_required" })
-    var rec = null
-    try { rec = $app.findRecordById("agent_specs", id) } catch (_) { rec = null }
-    if (!rec || String(rec.get("rh_user_id") || "") !== uid) return e.json(404, { error: "not_found" })
-    $app.delete(rec)
-    try{$app.db().newQuery(
-      "DELETE FROM agent_spec_favorites WHERE owner_uid={:uid} AND spec_id={:id}"
-    ).bind({uid:uid,id:id}).execute()}catch(_){}
-    return e.json(200, { ok: true })
+    var archivedRuns = 0
+    $app.runInTransaction(function(tx) {
+      var rec = null
+      try { rec = tx.findRecordById("agent_specs",id) } catch (_) {}
+      if (!rec || String(rec.get("rh_user_id") || "") !== uid)
+        throw new Error("not_found")
+
+      var now = new Date().getTime()
+      var runRows = arrayOf(new DynamicModel({id:""}))
+      tx.db().newQuery(
+        "SELECT id FROM agent_runs WHERE rh_user_id={:uid} AND spec_id={:spec}"
+      ).bind({uid:uid,spec:id}).all(runRows)
+      var eventCollection = tx.findCollectionByNameOrId("run_events")
+      for (var ri = 0; ri < runRows.length; ri++) {
+        var runId = String(runRows[ri].id)
+        var run = null
+        try { run = tx.findRecordById("agent_runs",runId) } catch (_) {}
+        if (!run || String(run.get("rh_user_id") || "") !== uid) continue
+        var checkpoint = {}
+        try { checkpoint = JSON.parse(run.getString("checkpoint") || "{}") || {} } catch (_) {}
+        checkpoint.agent_deleted = true
+        checkpoint.agent_deleted_at = now
+        checkpoint.claim_until = 0
+        var status = String(run.get("status") || "")
+        var live = ["queued","running","paused","awaiting_input","awaiting_approval"].indexOf(status)>=0
+        if (live) {
+          checkpoint.cancel_requested = false
+          checkpoint.pause_requested = false
+          checkpoint.pending_input = null
+          checkpoint.pending_approval = null
+          checkpoint.approval_decision = ""
+          run.set("status","cancelled")
+          run.set("error","Agent 已删除，任务已归档")
+        }
+        run.set("checkpoint",checkpoint)
+        tx.save(run)
+        var event = new Record(eventCollection)
+        event.set("run_id",runId)
+        event.set("step_index",Number(run.getInt("current_step")||0))
+        event.set("seq",0)
+        event.set("event_type","status")
+        event.set("content",{message:live?"所属 Agent 已删除，执行已停止；任务转为只读历史归档":"所属 Agent 已删除；保留本次任务与执行事件作为只读历史归档",agent_deleted:true})
+        tx.save(event)
+        archivedRuns++
+      }
+
+      // Stop every remaining execution path that is scoped to this Agent.
+      tx.db().newQuery(
+        "DELETE FROM agent_studio_run_leases WHERE kind='agent' AND run_id IN " +
+        "(SELECT id FROM agent_runs WHERE rh_user_id={:uid} AND spec_id={:spec})"
+      ).bind({uid:uid,spec:id}).execute()
+      tx.db().newQuery(
+        "UPDATE studio_local_jobs SET status='cancelled',error='agent_deleted' " +
+        "WHERE owner={:uid} AND run_id IN (SELECT id FROM agent_runs WHERE rh_user_id={:uid} AND spec_id={:spec}) " +
+        "AND status IN ('queued','running')"
+      ).bind({uid:uid,spec:id}).execute()
+      tx.db().newQuery(
+        "UPDATE agent_studio_tool_grants SET revoked_ms={:now} WHERE owner_uid={:uid} " +
+        "AND run_id IN (SELECT id FROM agent_runs WHERE rh_user_id={:uid} AND spec_id={:spec}) AND revoked_ms=0"
+      ).bind({now:now,uid:uid,spec:id}).execute()
+      tx.db().newQuery(
+        "UPDATE agent_studio_schedules SET enabled=0,deleted=1,revision=revision+1,updated_ms={:now} " +
+        "WHERE rh_user_id={:uid} AND target_kind='agent' AND target_id={:spec} AND deleted=0"
+      ).bind({now:now,uid:uid,spec:id}).execute()
+      tx.db().newQuery(
+        "UPDATE agent_studio_schedule_occurrences SET status='cancelled_schedule',locked_until_ms=0," +
+        "next_retry_ms=0,error='agent_deleted',updated_ms={:now} WHERE rh_user_id={:uid} AND schedule_id IN " +
+        "(SELECT id FROM agent_studio_schedules WHERE rh_user_id={:uid} AND target_kind='agent' AND target_id={:spec}) " +
+        "AND status IN ('pending','retryable','launching')"
+      ).bind({now:now,uid:uid,spec:id}).execute()
+      tx.db().newQuery(
+        "DELETE FROM agent_spec_favorites WHERE owner_uid={:uid} AND spec_id={:spec}"
+      ).bind({uid:uid,spec:id}).execute()
+      var deleted = tx.db().newQuery(
+        "DELETE FROM agent_specs WHERE id={:spec} AND rh_user_id={:uid}"
+      ).bind({uid:uid,spec:id}).execute()
+      if (Number(deleted.rowsAffected()) !== 1) throw new Error("not_found")
+    })
+    return e.json(200,{ok:true,archived_runs:archivedRuns})
   } catch (err) {
     var msg = String(err && err.message || err)
+    if (msg === "not_found") return e.json(404,{error:"not_found"})
     return e.json(500, { error: "delete_failed", message: msg, fingerprint: msg.substring(0, 80) })
   }
 })

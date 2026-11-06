@@ -19,6 +19,7 @@ type RunFeedbackBarProps = {
   onSubmit: () => void
   onEdit: () => void
   onCancelEdit: () => void
+  readOnly?: boolean
 }
 
 export function RunFeedbackBar({
@@ -33,8 +34,12 @@ export function RunFeedbackBar({
   onSubmit,
   onEdit,
   onCancelEdit,
+  readOnly = false,
 }: RunFeedbackBarProps) {
-  const showSubmitted = Boolean(feedback) && !editing
+  // Empty legacy JSON objects are not employee feedback and must remain editable.
+  const safeFeedback = feedback && (feedback.rating === "up" || feedback.rating === "down") &&
+    Array.isArray(feedback.tags) ? feedback : null
+  const showSubmitted = Boolean(safeFeedback) && (!editing || readOnly)
 
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-md">
@@ -45,42 +50,48 @@ export function RunFeedbackBar({
         <h3 className="text-base font-semibold tracking-tight text-card-foreground">这次结果如何？</h3>
       </div>
 
-      {showSubmitted && feedback && (
+      {showSubmitted && safeFeedback && (
         <div className="mt-3 rounded-xl bg-secondary/60 p-4">
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium ${
-                feedback.rating === "up"
+                safeFeedback.rating === "up"
                   ? "bg-primary/10 text-primary"
                   : "bg-destructive/10 text-destructive"
               }`}
             >
-              {feedback.rating === "up" ? <ThumbsUp className="h-4 w-4" /> : <ThumbsDown className="h-4 w-4" />}
-              {feedback.rating === "up" ? "你反馈了：结果不错" : "你反馈了：结果不理想"}
+              {safeFeedback.rating === "up" ? <ThumbsUp className="h-4 w-4" /> : <ThumbsDown className="h-4 w-4" />}
+              {safeFeedback.rating === "up" ? "你反馈了：结果不错" : "你反馈了：结果不理想"}
             </span>
-            {feedback.tags.map((tag) => (
+            {safeFeedback.tags.map((tag) => (
               <span key={tag} className="rounded-full bg-card px-2.5 py-0.5 text-xs text-muted-foreground shadow-sm">
                 {tag}
               </span>
             ))}
-            <button
+            {!readOnly && <button
               type="button"
               onClick={onEdit}
               className="ml-auto rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-card-foreground transition hover:bg-card focus-visible:ring-2 focus-visible:ring-primary"
             >
               修改反馈
-            </button>
+            </button>}
           </div>
-          {feedback.comment && (
-            <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">“{feedback.comment}”</p>
+          {safeFeedback.comment && (
+            <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">“{safeFeedback.comment}”</p>
           )}
           <p className="mt-2 text-xs text-muted-foreground">
-            {feedback.rating === "down" ? "负反馈已沉淀为方案教训，下次运行会自动参考避坑。" : "感谢反馈，方案会继续保持当前配置。"}
+            {safeFeedback.rating === "down" ? "负反馈已沉淀为方案教训，下次运行会自动参考避坑。" : "感谢反馈，方案会继续保持当前配置。"}
           </p>
         </div>
       )}
 
-      {!showSubmitted && (
+      {readOnly && !safeFeedback && (
+        <p className="mt-3 rounded-xl bg-secondary/60 p-4 text-sm text-muted-foreground">
+          所属 Agent 已删除：此任务为只读历史，不再接受新的反馈。
+        </p>
+      )}
+
+      {!readOnly && !showSubmitted && (
         <div className="mt-3 flex flex-col gap-3">
           <div className="flex gap-2.5">
             <button
@@ -149,7 +160,7 @@ export function RunFeedbackBar({
                   className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
                 >
                   {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {feedback ? "更新反馈" : "提交反馈"}
+                  {safeFeedback ? "更新反馈" : "提交反馈"}
                 </button>
                 {editing && (
                   <button
@@ -168,7 +179,7 @@ export function RunFeedbackBar({
             </>
           )}
 
-          {!draft.rating && !feedback && (
+          {!draft.rating && !safeFeedback && (
             <p className="text-xs text-muted-foreground">
               你的反馈会沉淀进方案记忆，并驱动「根据反馈优化方案」给出改进稿。
             </p>

@@ -124,24 +124,31 @@ function read(app, uid, runId, id, options) {
   var text = field === "text" ? String(value || "") : JSON.stringify(value === undefined ? null : value)
   if (offset > text.length) fault("invalid_result_range",400)
   var end = Math.min(offset + limit,text.length)
-  return {result_id:String(r.id),run_id:String(runId),step_index:Number(r.step_index),captured_ms:Number(r.created_ms),tool:String(r.tool),content_hash:String(r.content_hash),
+  return {result_id:String(r.id),run_id:String(runId),step_index:Number(r.step_index)%100000,captured_ms:Number(r.created_ms),tool:String(r.tool),content_hash:String(r.content_hash),
     field:field,encoding:field === "text" ? "text" : "json_fragment",offset:offset,end:end,
     total_length:text.length,has_more:end < text.length,text:text.slice(offset,end),
     coverage:envelope.coverage,redacted:envelope.redacted}
 }
 function list(app, uid, runId) {
-  authorizeRun(app, uid, runId)
+  var run = authorizeRun(app, uid, runId)
   try{assertRunAccessible(app,uid,runId)}catch(err){if(err.httpStatus===403)return [];throw err}
+  var checkpoint = {}
+  try { checkpoint = JSON.parse(run.getString("checkpoint") || "{}") || {} } catch (_) {}
+  var attemptNo = Number(checkpoint.attempt_no || 0)
+  // Legacy attempt 1 used raw step indexes; retries use a separate 100k namespace.
+  var base = attemptNo > 1 ? attemptNo * 100000 : 0
+  var end = attemptNo > 1 ? base + 100000 : 100000
   var rows = arrayOf(new DynamicModel({id:"",tool:"",step_index:0,source_scope:"",content_hash:""}))
   app.db().newQuery("SELECT id,tool,step_index,source_scope,content_hash FROM agent_studio_tool_results " +
-    "WHERE owner_uid={:uid} AND run_id={:rid} ORDER BY step_index LIMIT 100")
-    .bind({uid:uid,rid:runId}).all(rows)
+    "WHERE owner_uid={:uid} AND run_id={:rid} AND step_index>={:base} AND step_index<{:end} " +
+    "ORDER BY step_index LIMIT 100")
+    .bind({uid:uid,rid:runId,base:base,end:end}).all(rows)
   var items = []
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i]
     try { authorizeScope(app,uid,JSON.parse(String(r.source_scope))) }
     catch (_) { continue }
-    items.push({result_id:String(r.id),tool:String(r.tool),step_index:Number(r.step_index),content_hash:String(r.content_hash)})
+    items.push({result_id:String(r.id),tool:String(r.tool),step_index:Number(r.step_index)%100000,content_hash:String(r.content_hash)})
   }
   return items
 }
@@ -208,8 +215,7 @@ function assertRunAccessible(app,uid,runId,visited) {
     .bind({uid:uid,rid:runId}).all(rows)
   for(var i=0;i<rows.length;i++)authorizeScope(app,uid,JSON.parse(String(rows[i].source_scope)),visited)
 }
-function projectRun(app,uid,run) {
-  try { assertRunAccessible(app,uid,String(run.id)) }
+function projectRun(app,uid,run) {  try { assertRunAccessible(app,uid,String(run.id)) }
   catch(err) {
     if(err.httpStatus!==403)throw err
     run.result="";run.checkpoint={source_access_revoked:true};run.error="source_access_revoked";
@@ -217,7 +223,42 @@ function projectRun(app,uid,run) {
     run.config=null;run.spec_snapshot=null
     run.source_access_revoked=true
   }
+  if (!run.source_access_revoked) {
+    // PocketBase JSON fields can be empty objects after an explicit retry reset.
+    // Normalize incomplete optional DTOs to null so UI consumers see the declared contract.
+    var evaluation = run.evaluation
+    if (evaluation && (typeof evaluation !== "object" || Array.isArray(evaluation) ||
+        !Array.isArray(evaluation.dimensions) || !Array.isArray(evaluation.suggestions) ||
+        !Number.isFinite(Number(evaluation.score)))) run.evaluation = null
+    var feedback = run.feedback
+    if (feedback && (typeof feedback !== "object" || Array.isArray(feedback) ||
+        (feedback.rating !== "up" && feedback.rating !== "down") || !Array.isArray(feedback.tags))) {
+      run.feedback = null
+    } else if (feedback) {
+      feedback.comment = String(feedback.comment || "")
+      run.feedback = feedback
+    }
+
+    var checkpoint = {}
+    try {
+      if (typeof run.checkpoint === "string") checkpoint = JSON.parse(run.checkpoint || "{}") || {}
+      else if (run.checkpoint && typeof run.checkpoint === "object") checkpoint = run.checkpoint
+    } catch (_) {}
+    run.agent_deleted = Boolean(checkpoint && checkpoint.agent_deleted === true)
+    run.attempt_no = Math.max(1,Number(checkpoint && checkpoint.attempt_no || 1))
+  }
   return run
+}
+function projectRecord(app,uid,record) {
+  var exported = record.publicExport()
+  // Preserve the authoritative JSON checkpoint; publicExport may omit or
+  // normalize the JSON field used for Agent lifecycle and attempt state.
+  try {
+    exported.checkpoint = JSON.parse(String(record.getString("checkpoint") || "{}")) || {}
+  } catch (_) {
+    exported.checkpoint = {}
+  }
+  return projectRun(app,uid,exported)
 }
 function projectEvent(app,uid,event) {
   try { assertRunAccessible(app,uid,String(event.run_id)) }
@@ -234,4 +275,4 @@ function projectMemory(app,uid,memory) {
   return memory
 }
 module.exports = {ensure:ensure,save:save,read:read,list:list,row:row,savedAttempt:savedAttempt,inheritScope:inheritScope,
-  assertRunAccessible:assertRunAccessible,projectRun:projectRun,projectEvent:projectEvent,projectMemory:projectMemory,clean:clean,MAX_SERIALIZED:MAX_SERIALIZED}
+  assertRunAccessible:assertRunAccessible,projectRun:projectRun,projectRecord:projectRecord,projectEvent:projectEvent,projectMemory:projectMemory,clean:clean,MAX_SERIALIZED:MAX_SERIALIZED}

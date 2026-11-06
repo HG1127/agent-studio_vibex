@@ -130,22 +130,23 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
           <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(215px,248px)_minmax(0,1fr)]">
             <aside className="hidden min-w-0 lg:sticky lg:top-20 lg:row-start-1 lg:block lg:max-h-[calc(100dvh-6rem)] lg:self-start">
               <RunTaskRail runHistory={p.runHistory} activeRun={p.activeRun}
-                onViewRun={p.handleViewHistoryRun} onNewTask={focusNewTask}
+                onViewRun={p.handleViewHistoryRun} onNewTask={focusNewTask} onRetryRun={p.handleRetryRun}
+                retryingRunId={p.retryingRunId} canRetry={p.isCustomModel}
                 isLoggedIn={p.isLoggedIn} isLive={p.isLive} isStarting={p.isStarting} stateMeta={p.runStateMeta}/>
             </aside>
             <div className="min-w-0 space-y-4 lg:col-start-2 lg:row-start-1">
-              <section aria-label="当前 Agent 与本次工作" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
+              <section aria-label="当前 Agent 与本次工作" className="flex flex-wrap items-end justify-between gap-3 rounded-xl border border-border bg-card p-3">
                 <div className="min-w-0 flex-1">
                   <label htmlFor="run-quick-spec" className="text-xs font-medium text-muted-foreground">当前 Agent</label>
                   <select id="run-quick-spec" aria-label="快速选择 Agent" value={p.selectedSpecId}
-                    disabled={!p.isLoggedIn||p.isLive}
+                    disabled={!p.isLoggedIn||p.isLive||p.isStarting}
                     onChange={e=>p.handleSelectSpec(e.target.value)}
-                    className="mt-1 block min-h-9 w-full max-w-md truncate rounded-lg border border-input bg-background px-3 text-sm font-semibold">
+                    className="mt-1 block min-h-9 w-full truncate rounded-lg border border-input bg-background px-3 text-sm font-semibold">
                     <option value="">选择已保存的 Agent</option>
                     {p.specList.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
                   </select>
                 </div>
-                <button type="button" onClick={()=>setSettingsOpen(true)} aria-label="打开本次 Agent 配置"
+                <button type="button" onClick={()=>setSettingsOpen(true)} aria-label="打开本次 Agent 配置" id="run-settings-open"
                   className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-3 text-xs font-semibold text-primary transition hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary">
                   <SlidersHorizontal className="h-4 w-4"/>资源与设置
                   {p.runReadiness.issues.length>0&&<span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
@@ -153,10 +154,12 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
                   </span>}
                 </button>
               </section>
+
               <details className="rounded-xl border border-border bg-card lg:hidden">
                 <summary className="cursor-pointer px-3 py-2 text-sm font-semibold">切换任务 · 最近 {p.runHistory.length} 条</summary>
                 <RunTaskRail runHistory={p.runHistory} activeRun={p.activeRun}
-                  onViewRun={p.handleViewHistoryRun} onNewTask={focusNewTask}
+                  onViewRun={p.handleViewHistoryRun} onNewTask={focusNewTask} onRetryRun={p.handleRetryRun}
+                  retryingRunId={p.retryingRunId} canRetry={p.isCustomModel}
                   isLoggedIn={p.isLoggedIn} isLive={p.isLive} isStarting={p.isStarting} stateMeta={p.runStateMeta}/>
               </details>
 
@@ -168,13 +171,13 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
                 onUnlink={p.handleUnlinkOptimization}
                 onRetry={p.retryOptimizationRecovery}
               />}
-              {p.activeRun && !p.activeRun.source_access_revoked && <section aria-label="本次运行预算与授权">
+              {p.activeRun && !p.activeRun.source_access_revoked && !p.activeRun.agent_deleted && <section aria-label="本次运行预算与授权">
                 <ExecutionBudgetStatus key={'budget-'+p.activeRun.id} runId={p.activeRun.id} revision={p.activeRun.updated}/>
                 <ToolGrantPanel key={'grant-'+p.activeRun.id} runId={p.activeRun.id} active={p.isLive}/>
               </section>}
               {!p.activeRun && <BusinessCaseBinding/>}
-              <RunJourneyGuide guide={guide} specId={p.selectedSpecId} onAction={handleGuideAction}/>
-              {shouldShowTaskComposer(Boolean(p.selectedSpec),Boolean(p.activeRun))&&<RunLauncher key={p.selectedSpecId}
+              {!p.activeRun?.agent_deleted&&<RunJourneyGuide guide={guide} specId={p.selectedSpecId} onAction={handleGuideAction}/>}
+              {!p.activeRun?.agent_deleted&&shouldShowTaskComposer(Boolean(p.selectedSpec),Boolean(p.activeRun))&&<RunLauncher key={p.selectedSpecId}
                 executionBudget={p.executionBudget} onBudgetChange={p.setExecutionBudget} maxSteps={p.maxSteps}
                 localDeviceId={p.localDeviceId}
                 onLocalDeviceChange={p.setLocalDeviceId}
@@ -201,7 +204,7 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
               />}
               {p.activeRun&&<section aria-label="本次任务摘要" className="rounded-xl border border-border bg-card px-4 py-3">
                 <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0 flex-1"><p className="text-xs font-semibold text-muted-foreground">当前任务 · 运行快照不受后续配置修改影响</p><p className="mt-2 line-clamp-2 break-words text-sm">{p.activeRun.instruction}</p></div>
-                  {!p.isLive&&<button type="button" onClick={focusNewTask} className="min-h-10 shrink-0 rounded-lg border border-primary/30 px-3 text-xs font-semibold text-primary">基于此 Agent 发起新任务</button>}
+                  {!p.isLive&&!p.activeRun.agent_deleted&&<button type="button" onClick={focusNewTask} className="min-h-10 shrink-0 rounded-lg border border-primary/30 px-3 text-xs font-semibold text-primary">基于此 Agent 发起新任务</button>}
                 </div><details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer">完整任务说明</summary><p className="mt-2 whitespace-pre-wrap break-words leading-6">{p.activeRun.instruction}</p></details>
               </section>}
               {executionPlan&&<StructuredExecutionPlan key={p.activeRun?.id+executionPlan.revision} plan={executionPlan}/>}
@@ -259,7 +262,11 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
               <RunResultPanel
                 activeRun={p.activeRun}
                 runHistory={p.runHistory}
+                attempts={p.runAttempts}
                 events={p.runEvents}
+                onRetry={p.handleRetryRun}
+                retryBusy={p.retryingRunId===p.activeRun?.id}
+                canRetry={p.isCustomModel}
                 onCopy={p.handleCopyResult}
                 copiedFlag={p.copiedFlag}
                 harnessLine={p.harnessLine}

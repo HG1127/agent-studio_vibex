@@ -156,7 +156,7 @@ try {
   server = await startServer(port)
   let db = new DatabaseSync(dbFile)
   try {
-    assert.equal(queryCount(db,"agent_studio_schema_migrations"), 15, "All fifteen skill/knowledge/runtime/internal migrations must apply exactly once")
+    assert.equal(queryCount(db,"agent_studio_schema_migrations"), 16, "All sixteen skill/knowledge/runtime/internal migrations must apply exactly once")
     const versions = db.prepare("SELECT id FROM agent_studio_schema_migrations ORDER BY id").all().map(row => row.id)
     assert.deepEqual(versions, [
       "agent_skills_0001_registry",
@@ -164,6 +164,7 @@ try {
       "execution_0002_monitor_indexes",
       "execution_0003_trace_spans",
       "execution_0004_worker_lease_attribution",
+      "execution_0005_agent_run_attempts",
       "internal_0001_template_invites",
       "internal_0002_template_snapshot",
       "knowledge_0001_existing_v6",
@@ -188,6 +189,9 @@ try {
     assert.equal(queryCount(db, "pragma_table_info('agent_studio_run_leases')",
       "name = ?", ["owner_instance"]), 1, "Worker lease owner column added without deleting existing lease")
     assert.equal(queryCount(db,"agent_studio_side_effects"),1)
+    assert.equal(queryCount(db,"sqlite_master","type = ? AND name = ?",["table","agent_studio_run_attempts"]),1,"Retry attempt history table created without changing legacy rows")
+    assert.equal(queryCount(db,"agent_studio_run_attempts"),0)
+    assert.equal(queryCount(db,"sqlite_master","type = ? AND name = ?",["index","idx_as_run_attempts_owner_run"]),1)
     assert.equal(queryCount(db,"agent_studio_execution_spans"),0)
     assert.equal(queryCount(db,"agent_studio_template_invites"),0)
     assert.equal(queryCount(db,"sqlite_master","type = ? AND name = ?",["table","agent_studio_template_invites"]),1)
@@ -253,7 +257,7 @@ try {
   server = await startServer(port + 1)
   db = new DatabaseSync(dbFile)
   try {
-    assert.equal(queryCount(db,"agent_studio_schema_migrations"),15,"Journal must upgrade to fifteen migrations")
+    assert.equal(queryCount(db,"agent_studio_schema_migrations"),16,"Journal must upgrade to sixteen migrations")
     assert.equal(queryCount(db,"agent_studio_kb_chunks"),1,"V6 data should survive multiple boots")
     assert.equal(queryCount(db,"agent_studio_schedules"),1,"Old schedule survives multiple boots")
     assert.equal(queryCount(db,"agent_studio_schedule_occurrences"),1,"Old occurrence remains auditable")
@@ -266,9 +270,10 @@ try {
   server = await startServer(port + 2)
   db = new DatabaseSync(dbFile)
   try {
-    assert.equal(queryCount(db,"agent_studio_schema_migrations"),15,"Reboot with all versions must not repeat writes")
+    assert.equal(queryCount(db,"agent_studio_schema_migrations"),16,"Reboot with all versions must not repeat writes")
     assert.equal(queryCount(db,"agent_studio_schedules"),1)
     assert.equal(queryCount(db,"agent_studio_side_effects"),1)
+    assert.equal(queryCount(db,"agent_studio_run_attempts"),0,"Reboot must retain exactly one empty attempt archive table")
   } finally { db.close() }
   const deleted = await call(server.origin,"/api/knowledge-bases/manage","POST",{action:"delete",id:baseId})
   assert.equal(deleted.status,200,JSON.stringify(deleted.data))

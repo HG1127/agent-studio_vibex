@@ -87,6 +87,24 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
     } catch (_) {}
     if (!run) return e.json(404, { error: "run_not_found", message: "运行记录不存在" })
     if (String(run.get("rh_user_id") || "") !== uid) return e.json(404, { error: "run_not_found" })
+    var linkedAgent = new DynamicModel({ total:0 })
+    $app.db().newQuery(
+      "SELECT COUNT(*) AS total FROM agent_specs WHERE id={:spec} AND rh_user_id={:uid}"
+    ).bind({spec:String(run.get("spec_id")||""),uid:uid}).one(linkedAgent)
+    var linkedCheckpoint = {}
+    try { linkedCheckpoint = JSON.parse(run.getString("checkpoint") || "{}") || {} } catch (_) {}
+    if (Number(linkedAgent.total || 0) !== 1 || linkedCheckpoint.agent_deleted === true) {
+      if (["queued","running","paused","awaiting_input","awaiting_approval"].indexOf(String(run.get("status")||"")) >= 0) {
+        linkedCheckpoint.agent_deleted = true
+        linkedCheckpoint.claim_until = 0
+        linkedCheckpoint.cancel_requested = false
+        run.set("checkpoint",linkedCheckpoint)
+        run.set("status","cancelled")
+        run.set("error","agent_deleted")
+        $app.save(run)
+      }
+      return e.json(409,{error:"agent_deleted",message:"所属 Agent 已删除，任务已归档，不能继续执行"})
+    }
     try { require(__hooks+"/modules/tool_results.js").assertRunAccessible($app,uid,id) }
     catch (sourceErr) {
       if(sourceErr.httpStatus!==403)throw sourceErr
@@ -1104,34 +1122,8 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       if (structuredPlanning && cp.plan_approved !== true) throw Error("execution_plan_review_required")
       if (structuredPlanning && !cp.local_job && !taskPlanService.resourcesMatch(cp.execution_plan,cp.plan_bindings,taskPlanCatalog())) throw Error("execution_plan_resources_changed")
 
-      // Local execution is asynchronous. Waiting never calls the model or
-      // increments a step, and a claimed job is never automatically replayed.
-      if (cp.local_job) {
-        var localPending = cp.local_job
-        var localResult = require(__hooks + "/modules/local_devices.js").job($app, uid, localPending.id)
-        if (localResult.status === "queued" || localResult.status === "running") {
-          cp.claim_until = 0
-          saveCheckpoint(runId, cp, doneSteps)
-          return
-        }
-        cp.local_job = null
-        var localOk = localResult.status === "succeeded"
-        if(structuredPlanning && localOk){
-          if(!activeRole || localPending.plan_node_id!==activeRole.id)throw Error("execution_plan_local_result_mismatch")
-          cp.plan_evidence=taskPlanService.recordSuccess(cp.plan_evidence,activeRole.id,"local_computer",localPending.local_tool,stepIndex)
-        }
-        var localOutput = localOk ? String(localResult.result) : "本地执行未完成：" + localResult.status + "。" + String(localResult.result || "").slice(0, 600) + " 请核查电脑上的实际结果，勿自动重放。"
-        seq++
-        addEvent(runId, stepIndex, seq, localOk ? "tool_result" : "error", { tool: "local_computer", output: localOutput, message: localOutput, job_id: localResult.id, plan_node_id: structuredPlanning && activeRole ? activeRole.id : "" })
-        statsBump("tool_calls", 1)
-        writeInvocation(uid, "local_computer", "external", "agent_run", runId, localOk ? "success" : "failed", Date.now() - localResult.created_ms, "", localOutput, localOk ? "" : "local_execution_failed", false)
-        pushStepAndSave({ thought: "", action: localOk ? "tool" : "tool_error", tool: "local_computer", obs: localOutput.slice(0, 12000), local_job_id: localResult.id }, 0)
-        if (!localOk) finishRun(runId, "failed", "", localOutput, stepIndex, seq, "本地执行停止")
-        return
-      }
-
-      // Local execution is asynchronous. Waiting never calls the model or
-      // increments a step, and a claimed job is never automatically replayed.
+      // Every completed local operation has exactly one receipt path. Persist
+      // its full result before moving the plan forward; never replay effects.
       if (cp.local_job) {
         var localPending = cp.local_job
         var localResult = require(__hooks + "/modules/local_devices.js").job($app, uid, localPending.id)
@@ -1143,15 +1135,23 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
         cp.local_job = null
         var localOk = localResult.status === "succeeded"
         var localOutput = localOk ? String(localResult.result) : "本地执行未完成：" + localResult.status + "。" + String(localResult.result || "").slice(0, 600) + " 请核查电脑上的实际结果，勿自动重放。"
+        if (structuredPlanning && localOk && (!activeRole || localPending.plan_node_id !== activeRole.id))
+          throw Error("execution_plan_local_result_mismatch")
+        // Retry attempts reuse run_id; isolate tool-result keys by attempt so an
+        // earlier WorkBuddy observation cannot block or overwrite a new receipt.
+        var localAttemptNo=Math.max(1,Number(cp.attempt_no || 1))
+        var localResultStep=localAttemptNo>1?localAttemptNo*100000+Number(stepIndex || 0):Number(stepIndex || 0)
         var localReceipt=null
         try {
-          localReceipt=resultStore.save($app,uid,runId,stepIndex,"local_computer",{
+          localReceipt=resultStore.save($app,uid,runId,localResultStep,"local_computer",{
             text:String(localResult.result || ""),structuredContent:{job_id:String(localResult.id),status:String(localResult.status)},
             resources:[{type:"local_job",job_id:String(localResult.id)}],
             data_space:cfg.case_id?businessCase.data_space:"UNCLASSIFIED",
             coverage:{kind:"local_execution_text",stored_complete:true,upstream_completeness:"unknown",offset_unit:"utf16_code_unit"}
           },{},sanitizeFinalSecrets)
         } catch (_) {localOk=false;localOutput="result_store_failed：本地任务已执行，但完整结果保存失败，已停止自动重放。"}
+        if (structuredPlanning && localOk)
+          cp.plan_evidence=taskPlanService.recordSuccess(cp.plan_evidence,activeRole.id,"local_computer",localPending.local_tool,stepIndex)
         localOutput=sanitizeFinalSecrets(localOutput)
         seq++
         addEvent(runId, stepIndex, seq, localOk ? "tool_result" : "error", { tool: "local_computer", output: localOutput.slice(0,2000), message: localOutput.slice(0,2000), job_id: localResult.id, result_id:localReceipt?localReceipt.result_id:null,summary_only:localOutput.length>2000 })
@@ -1838,7 +1838,12 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       }
       var scopedPermit=null,grantService=require(__hooks+"/modules/tool_grants.js")
       if(marketToolMap[toolName]){
-        try{scopedPermit=grantService.consume($app,uid,runId,stepIndex,toolName,toolInput)}
+        try {
+          var grantAttemptNo = Math.max(1,Number(cp.attempt_no || 1))
+          var grantStepIndex = grantAttemptNo > 1
+            ? grantAttemptNo * 100000 + Number(stepIndex || 0) : Number(stepIndex || 0)
+          scopedPermit=grantService.consume($app,uid,runId,grantStepIndex,toolName,toolInput)
+        }
         catch(_){scopedPermit=null}
       }
       var toolPolicy = toolPolicyService.classify({
@@ -2403,8 +2408,11 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
       var toolT0 = new Date().getTime()
       // A crash between result persistence and checkpoint persistence must not
       // refetch a mutable source or repeat a completed remote operation.
+      var attemptNoForResults = Math.max(1,Number(cp.attempt_no || 1))
+      var resultStepIndex = attemptNoForResults > 1
+        ? attemptNoForResults * 100000 + Number(stepIndex || 0) : Number(stepIndex || 0)
       var savedAttempt = null
-      try { savedAttempt = resultStore.savedAttempt($app,uid,runId,stepIndex,$security.sha256(toolName + "\n" + invInputStr)) }
+      try { savedAttempt = resultStore.savedAttempt($app,uid,runId,resultStepIndex,$security.sha256(toolName + "\n" + invInputStr)) }
       catch (storedErr) {
         finishRun(runId,"failed","",String(storedErr.code || "result_recovery_failed"),stepIndex,seq,"已保存结果当前不可读取，停止重放")
         return
@@ -2471,7 +2479,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
               return {base_id:String(item.base_id),document_id:String(item.document_id)}
             })
           }
-          resultReceipt = resultStore.save($app,uid,runId,stepIndex,toolName,envelope,scope,sanitizeFinalSecrets)
+          resultReceipt = resultStore.save($app,uid,runId,resultStepIndex,toolName,envelope,scope,sanitizeFinalSecrets)
         } catch (saveErr) {
           toolErr = String(saveErr.code || "result_store_failed") + "：完整工具结果未能持久化，不得将摘要当作完整证据"
         }
@@ -3219,6 +3227,7 @@ routerAdd("POST", "/api/agent-runs/start", function (e) {
     rec.set("result", "")
     rec.set("error", "")
     rec.set("checkpoint", {
+      attempt_no: 1,
       steps: [],
       seq: 1,
       claim_until: 0,
@@ -3290,6 +3299,27 @@ routerAdd("POST", "/api/agent-runs/start", function (e) {
       $app.logger().error("agent start error", "err", msg)
     } catch (_) {}
     return e.json(500, { error: "internal", message: msg, fingerprint: msg.slice(0, 80) })
+  }
+})
+
+// Retry is registered beside the core Agent run routes so every deployed Agent Engine
+// carries the endpoint used by the task rail and result panel. The API/detail hook is
+// an additive read model and is not a deployment prerequisite for this lifecycle action.
+routerAdd("POST", "/api/agent-runs/{id}/retry", function (e) {
+  try {
+    var h = (e.requestInfo() || {}).headers || {}
+    var uid = String(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || ($os.getenv("AGENT_STUDIO_ALLOW_ANON") === "true" ? "local-anon" : "")).trim()
+    if (!uid) return e.json(401, { error: "rh_login_required", message: "请先登录员工账号" })
+    var result = require(__hooks + "/modules/agent_run_retry.js")
+      .retry($app, uid, String(e.request.pathValue("id") || ""), (e.requestInfo() || {}).body || {})
+    return e.json(Number(result.httpStatus || 200), result.body || { error: "retry_failed" })
+  } catch (err) {
+    var msg = String((err && err.message) || err)
+    try { $app.logger().error("agent run retry route error", "err", msg) } catch (_) {}
+    return e.json(Number(err && err.httpStatus || 500), {
+      error: String(err && err.code || "retry_failed"),
+      message: String(err && err.message || "重新运行未能启动，请稍后重试").slice(0, 240),
+    })
   }
 })
 
@@ -3397,6 +3427,12 @@ routerAdd("POST", "/api/agent-runs/{id}/resume", function (e) {
     } catch (_) {}
     if (!run) return e.json(404, { error: "run_not_found", message: "运行记录不存在" })
     if (String(run.get("rh_user_id") || "") !== uid) return e.json(404, { error: "run_not_found" })
+    var resumeAgent = new DynamicModel({total:0})
+    $app.db().newQuery(
+      "SELECT COUNT(*) AS total FROM agent_specs WHERE id={:spec} AND rh_user_id={:uid}"
+    ).bind({spec:String(run.get("spec_id")||""),uid:uid}).one(resumeAgent)
+    if (Number(resumeAgent.total || 0) !== 1)
+      return e.json(409,{error:"agent_deleted",message:"所属 Agent 已删除，任务已归档，不能恢复执行"})
     var st = String(run.get("status"))
     if (st !== "paused") return e.json(409, { error: "bad_state", message: "当前状态（" + st + "）不能恢复" })
     try{require(__hooks+"/modules/research_workflow.js").assertChildResume($app,uid,run)}catch(parentError){return e.json(parentError.httpStatus||409,{error:parentError.code||"research_parent_not_running"})}
@@ -3852,6 +3888,10 @@ routerAdd("POST", "/api/agent-runs/{id}/evaluate", function (e) {
     if (!run || String(run.get("rh_user_id") || "") !== uid) {
       return e.json(404, { error: "run_not_found", message: "运行记录不存在" })
     }
+    var evaluationCheckpoint = {}
+    try { evaluationCheckpoint = JSON.parse(run.getString("checkpoint") || "{}") || {} } catch (_) {}
+    if (evaluationCheckpoint.agent_deleted === true)
+      return e.json(409,{error:"agent_deleted",message:"所属 Agent 已删除，历史任务为只读记录，不能再生成评估"})
     try { require(__hooks+"/modules/tool_results.js").assertRunAccessible($app,uid,id) }
     catch (_) { return e.json(403,{error:"source_access_revoked"}) }
     // 幂等：已有 evaluation 直接返回
@@ -4183,6 +4223,10 @@ routerAdd("POST", "/api/agent-runs/{id}/feedback", function (e) {
     if (!run || String(run.get("rh_user_id") || "") !== uid) {
       return e.json(404, { error: "run_not_found", message: "运行记录不存在" })
     }
+    var feedbackCheckpoint = {}
+    try { feedbackCheckpoint = JSON.parse(run.getString("checkpoint") || "{}") || {} } catch (_) {}
+    if (feedbackCheckpoint.agent_deleted === true)
+      return e.json(409,{error:"agent_deleted",message:"所属 Agent 已删除，历史任务为只读记录，不能再提交或修改反馈"})
     var sanitize = function (s) {
       return String(s || "")
         .replace(/sk-[A-Za-z0-9_-]{8,}/g, "***")

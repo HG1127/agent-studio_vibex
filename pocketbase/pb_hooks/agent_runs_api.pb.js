@@ -63,6 +63,8 @@ routerAdd("GET", "/api/agent-runs/{id}/detail", function (e) {
       model: String(runRec.getString("model") || ""),
       config: configObj,
       checkpoint: checkpointObj,
+      agent_deleted: Boolean(checkpointObj && checkpointObj.agent_deleted === true),
+      attempt_no: Number(checkpointObj && checkpointObj.attempt_no || 1),
       result: String(runRec.getString("result") || ""),
       error: String(runRec.getString("error") || ""),
       evaluation: parseJsonField(runRec, "evaluation"),
@@ -113,6 +115,50 @@ routerAdd("GET", "/api/agent-runs/{id}/detail", function (e) {
     return e.json(500, { error: "internal", message: msg, fingerprint: msg.slice(0, 80) })
   }
 })
+// Immutable prior attempts for one task. The current attempt remains on agent_runs;
+// archived snapshots and event timelines are read-only and owner-scoped.
+routerAdd("GET", "/api/agent-runs/{id}/attempts", function (e) {
+  try {
+    var h = (e.requestInfo() || {}).headers || {}
+    var uid = String(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || ($os.getenv("AGENT_STUDIO_ALLOW_ANON") === "true" ? "local-anon" : "")).trim()
+    if (!uid) return e.json(401, { error:"rh_login_required", message:"请先登录" })
+    var id = String(e.request.pathValue("id") || "").trim()
+    var run = null
+    try { run = $app.findRecordById("agent_runs", id) } catch (_) {}
+    if (!run || String(run.get("rh_user_id") || "") !== uid)
+      return e.json(404, { error:"not_found", message:"任务不存在或无权查看" })
+    var rows = arrayOf(new DynamicModel({
+      id:"",attempt_no:0,status:"",model:"",error:"",result:"",
+      snapshot_json:"",events_json:"",archived_ms:0,
+    }))
+    $app.db().newQuery(
+      "SELECT id,attempt_no,status,model,error,result,snapshot_json,events_json,archived_ms " +
+      "FROM agent_studio_run_attempts WHERE owner_uid={:uid} AND run_id={:run} " +
+      "ORDER BY attempt_no DESC LIMIT 50"
+    ).bind({uid:uid,run:id}).all(rows)
+    var items = []
+    for (var i = 0; i < rows.length; i++) {
+      var snapshot = {}, events = []
+      try { snapshot = JSON.parse(String(rows[i].snapshot_json || "{}")) || {} } catch (_) {}
+      try { events = JSON.parse(String(rows[i].events_json || "[]")) || [] } catch (_) {}
+      items.push({
+        id:String(rows[i].id),attempt_no:Number(rows[i].attempt_no || 0),
+        status:String(rows[i].status || ""),model:String(rows[i].model || ""),
+        error:String(rows[i].error || ""),result:String(rows[i].result || ""),
+        current_step:Number(snapshot.current_step || 0),max_steps:Number(snapshot.max_steps || 0),
+        created:String(snapshot.created || ""),updated:String(snapshot.updated || ""),
+        archived_ms:Number(rows[i].archived_ms || 0),
+        events:Array.isArray(events)?events:[],
+      })
+    }
+    return e.json(200,{ok:true,run_id:id,items:items})
+  } catch (err) {
+    var msg = String((err && err.message) || err)
+    try { $app.logger().error("agent run attempts error","err",msg) } catch (_) {}
+    return e.json(500,{error:"attempts_unavailable",message:msg.slice(0,240)})
+  }
+})
+
 /**
  * Desktop inbox: all current employee's pending Agent actions, with real
  * owner-scoped paging instead of the 20-item recent-task shortcut.
@@ -132,6 +178,7 @@ routerAdd("GET","/api/agent-runs/pending",function(e){
       return e.json(400,{error:"invalid_status"})
     var name=String(query.q||"").trim().slice(0,100)
     var where=" WHERE rh_user_id={:uid} "+
+      "AND EXISTS(SELECT 1 FROM agent_specs s WHERE s.id=agent_runs.spec_id AND s.rh_user_id=agent_runs.rh_user_id) "+
       "AND status IN ('awaiting_input','awaiting_approval')"
     var params={uid:uid}
     if(kind!=="all"){where+=" AND status={:status}";params.status=kind}
@@ -192,7 +239,8 @@ routerAdd("GET", "/api/agent-runs/recent", function (e) {
       var archiveSpec = String(query.spec_id || "").trim()
       if (archiveSpec && !/^[A-Za-z0-9]{15}$/.test(archiveSpec))
         return e.json(400, { error: "invalid_spec_id", message: "Agent 标识格式无效" })
-      var where = " WHERE rh_user_id={:uid}"
+      var where = " WHERE rh_user_id={:uid} AND EXISTS(" +
+        "SELECT 1 FROM agent_specs s WHERE s.id=agent_runs.spec_id AND s.rh_user_id=agent_runs.rh_user_id)"
       var params = { uid: uid }
       if (archiveSpec) { where += " AND spec_id={:sid}"; params.sid = archiveSpec }
       if (status === "active") where += " AND status IN ('queued','running','paused')"
@@ -236,9 +284,19 @@ routerAdd("GET", "/api/agent-runs/recent", function (e) {
     if (specId && !/^[A-Za-z0-9]{15}$/.test(specId)) {
       return e.json(400, { error: "invalid_spec_id", message: "Agent 标识格式无效" })
     }
-    var rows = specId
-      ? $app.findRecordsByFilter("agent_runs", "rh_user_id = {:uid} && spec_id = {:sid}", "-created", limit, 0, { uid: uid, sid: specId })
-      : $app.findRecordsByFilter("agent_runs", "rh_user_id = {:uid}", "-created", limit, 0, { uid: uid })
+    var recentParams = { uid:uid, limit:limit }
+    var recentWhere = "rh_user_id={:uid} AND EXISTS(" +
+      "SELECT 1 FROM agent_specs s WHERE s.id=agent_runs.spec_id AND s.rh_user_id=agent_runs.rh_user_id)"
+    if (specId) { recentWhere += " AND spec_id={:sid}"; recentParams.sid = specId }
+    var recentRows = arrayOf(new DynamicModel({id:""}))
+    $app.db().newQuery(
+      "SELECT id FROM agent_runs WHERE " + recentWhere +
+      " ORDER BY created DESC,id DESC LIMIT {:limit}"
+    ).bind(recentParams).all(recentRows)
+    var rows = []
+    for (var ri = 0; ri < recentRows.length; ri++) {
+      try { rows.push($app.findRecordById("agent_runs",String(recentRows[ri].id))) } catch (_) {}
+    }
     var items = []
     for (var i = 0; i < rows.length; i++) {
       var rec = rows[i]
