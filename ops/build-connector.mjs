@@ -48,6 +48,7 @@ export async function buildConnector({destination=path.join(root,'public','downl
  if(process.platform!=='win32'||process.arch!=='x64')throw Error('build_on_windows_x64_required')
  const stageBase=path.join(root,'.tmp','connector-build');await fs.mkdir(stageBase,{recursive:true})
  const stage=await fs.mkdtemp(path.join(stageBase,'stage-'))
+ try{
  const packageRoot=path.join(stage,'AgentStudio-Connector'),app=path.join(packageRoot,'app')
  const packages=new Map(),records=[];let copiedBytes=0
  const seeds=['@modelcontextprotocol/sdk','@playwright/mcp','exceljs','docx']
@@ -73,7 +74,7 @@ export async function buildConnector({destination=path.join(root,'public','downl
    if(item.isSymbolicLink())throw Error('linked_package_content_denied')
    const a=path.join(src,item.name),b=path.join(dest,item.name)
    if(item.isDirectory())await copyTree(a,b)
-   else if(item.isFile()){const bytes=await fs.readFile(a);copiedBytes+=bytes.length;if(copiedBytes>700000000)throw Error('package_size_limit');await fs.writeFile(b,bytes)}
+   else if(item.isFile()){const bytes=await fs.readFile(a);copiedBytes+=bytes.length;if(copiedBytes>700000000)throw Error('package_size_limit');try{await fs.writeFile(b,bytes)}catch(error){throw Error('connector_copy_failed:'+path.relative(packageRoot,b).replaceAll('\\','/')+':'+String(error.code||'write'),{cause:error})}}
   }
  }
  const installed=new Set()
@@ -114,5 +115,15 @@ export async function buildConnector({destination=path.join(root,'public','downl
  await fs.writeFile(path.join(stageBase,'latest-build.json'),JSON.stringify({packageRoot,release,files:files.length}))
  console.log('CONNECTOR_PACKAGE_BUILT '+JSON.stringify({version:CONNECTOR_VERSION,zip:path.relative(root,path.join(destination,filename)),bytes:archive.length,packages:records.length,files:files.length,sha256:checksum,codeSigned:false}))
  return {packageRoot,release,files}
+ }catch(error){
+  // A failed build owns only this fresh stage. Successful stages remain until
+  // their caller has copied/audited them; no user profile or signing key lives here.
+  try{
+   const realStage=await fs.realpath(stage),realBase=await fs.realpath(stageBase)
+   if(path.dirname(realStage)!==realBase||!path.basename(realStage).startsWith('stage-')||(await fs.lstat(stage)).isSymbolicLink())throw Error('unsafe_connector_build_cleanup')
+   await fs.rm(realStage,{recursive:true,force:true,maxRetries:6,retryDelay:250})
+  }catch(cleanup){console.warn('CONNECTOR_BUILD_STAGE_RETAINED '+JSON.stringify({path:path.relative(root,stage),reason:String(cleanup.code||cleanup.message),condition:'Remove only this failed stage after its build process releases handles.'}))}
+  throw error
+ }
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))await buildConnector()

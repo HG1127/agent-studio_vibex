@@ -1,6 +1,6 @@
 {
-  "sourceCommit": "27943f559783d37cab781b3c5f562e0eeaf51459",
-  "version": "0.1.0-preview.28",
+  "sourceCommit": "2a7e92faf769e19fb2ad0c2030404796fe1cc440",
+  "version": "0.1.0-preview.29",
   "platform": "win32-x64",
   "codeSigned": false,
   "integratedSources": {
@@ -28,7 +28,8 @@
     "runModelSettings": "single-resource-settings-control",
     "desktopComputerWorkspaceLayout": "validated-working-tree-before-preview25",
     "windowScopedVision": "5f43271cf8dbd059e5134ead0b0355965ccdfbb7",
-    "companyHttps": "scoped-bundled-company-ca-business-connector-and-signed-updates"
+    "companyHttps": "scoped-bundled-company-ca-business-connector-and-signed-updates",
+    "unifiedReliability": "captured-followups-and-isolated-vite-acceptance-cache"
   },
   "sourceState": "committed-unified-source-with-release-metadata"
 }
