@@ -52,7 +52,7 @@ export function RunStatusSummary({ activeRun, events, isLive, controlBusy, onCon
           </span>
           <span className="truncate text-xs text-muted-foreground">{activeRun.spec_name}</span>
         </div>
-        <p className="mt-2 text-sm leading-relaxed text-foreground">{cancelRequested ? "已收到取消请求。当前步骤会先安全收尾并保存检查点，随后取消；不会启动后续步骤。" : pauseApplying ? "已收到暂停请求。当前步骤会先完成并保存检查点，随后暂停；无需重复点击。" : NEXT_ACTION[activeRun.status]}</p>
+        <p className="mt-2 text-sm leading-relaxed text-foreground">{cancelRequested ? "已收到取消请求。当前步骤会先安全收尾并保存检查点，随后取消；不会启动后续步骤。" : pauseApplying ? "已收到暂停请求。当前步骤会先完成并保存检查点，随后暂停；无需重复点击。" : activeRun.agent_deleted ? "所属 Agent 已删除，任务已停止并归档为只读历史；不再支持重试或继续执行。" : NEXT_ACTION[activeRun.status]}</p>
         {recentActivity && <p aria-label="最近保存的运行事件" className="mt-2 text-xs leading-relaxed text-muted-foreground">
           最近记录：{recentActivity.stepLabel} · {recentActivity.label}
           {recentActivity.roleName ? " · " + recentActivity.roleName : ""}

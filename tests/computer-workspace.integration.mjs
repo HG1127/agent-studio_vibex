@@ -26,7 +26,7 @@ try{
  const auth=await api('/api/collections/studio_users/auth-with-password',{identity:'workspace-fixture@example.test',password})
  const device=await api('/api/local-devices',{name:'隔离验收电脑'},auth.token)
  const credential=await api('/api/public/local-executor/pair',{code:device.pairing_code})
- runtime=await createRuntime({roots:[{name:'work',path:work,label:'隔离测试目录',readOnly:false,capabilities:{edit:true,move:true,delete:true,open:true}},{name:'readonly',path:readonly,label:'只读资料',readOnly:true,capabilities:{edit:false,move:false,delete:false,open:false}}],files:{enabled:true},browser:{enabled:false},permissionRevision:revision},{invokeFileApplication:async(file,reveal,signal)=>{signal?.throwIfAborted();assert.equal(path.dirname(file),work);nativeRequests.push({file,reveal})}})
+ runtime=await createRuntime({roots:[{name:'work',path:work,label:'隔离测试目录',readOnly:false,capabilities:{edit:true,move:true,delete:true,open:true}},{name:'readonly',path:readonly,label:'只读资料',readOnly:true,capabilities:{edit:false,move:false,delete:false,open:false}}],files:{enabled:true},browser:{enabled:false},permissionRevision:revision},{invokeFileApplication:async(file,reveal,signal)=>{signal?.throwIfAborted();assert.equal(path.dirname(file),work);nativeRequests.push({file,reveal});return {format:'agent-studio-file-application-v1',action:reveal?'reveal':'open',accepted:true,handler:reveal?'explorer':'notepad'}}})
  for(const name of ['files.stat','files.update','files.mkdir','files.copy','files.move','files.trash','files.trash_list','files.restore','files.open','files.reveal'])assert.ok(runtime.tools.some(t=>t.name===name),'missing tool '+name)
  const executor=async()=>{
   if(closed||working)return;working=true
@@ -106,8 +106,8 @@ const approve=async label=>{await page.locator('[data-studio-dialog]').getByRole
   await area.getByLabel('筛选文件名').fill('not-a-file');await expect(area.getByLabel('文件列表')).toContainText('当前列表无匹配文件')
   await area.getByLabel('筛选文件名').fill('');assert.equal(jobs.length,beforeNavigation)
   pass('cached file filtering and tab navigation retain the loaded document without issuing additional jobs')
-  await action('用电脑软件打开');await waitNotice('已收到本机执行回执')
-  await action('在电脑中定位');await waitNotice('已收到本机执行回执')
+  await action('用记事本打开');await expect(area.getByRole('status',{name:'电脑软件执行状态',exact:true})).toContainText('系统记事本打开')
+  await action('在电脑中定位');await expect(area.getByRole('status',{name:'电脑软件执行状态',exact:true})).toContainText('资源管理器')
   assert.deepEqual(nativeRequests,[{file:path.join(work,'notes.txt'),reveal:false},{file:path.join(work,'notes.txt'),reveal:true}])
   pass('open and reveal run through the server queue and scoped file handlers with a verified non-launching OS adapter')
  await editor.fill('updated 中文\n');await area.getByRole('button',{name:'查看修改前后'}).click();await expect(area.getByLabel('修改前后对照')).toContainText('original text')

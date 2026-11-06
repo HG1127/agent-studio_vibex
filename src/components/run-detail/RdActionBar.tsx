@@ -21,22 +21,24 @@ export function RdActionBar({ run, isLive, controlBusy, onControl, onExport }: R
 
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-md">
-      <h2 className="text-base font-semibold tracking-tight text-card-foreground">接下来可以</h2>
+      <h2 className="text-base font-semibold tracking-tight text-card-foreground">{run.agent_deleted ? "历史记录操作" : "接下来可以"}</h2>
       <div className="mt-3 flex flex-col gap-2">
-        <Link
-          to={hasSpec ? `/agent-run?spec=${encodeURIComponent(run.spec_id)}` : "/agent-run"}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-md transition hover:bg-primary/90 hover:shadow-lg focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          <Rocket className="h-4 w-4" />
-          在试跑页打开该方案
-        </Link>
-        <Link
-          to={hasSpec ? `/version-release?spec=${encodeURIComponent(run.spec_id)}` : "/version-release"}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-primary bg-background px-4 py-2.5 text-sm font-semibold text-primary transition hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          <GitBranch className="h-4 w-4" />
-          查看该方案版本
-        </Link>
+        {!run.agent_deleted && <>
+          <Link
+            to={hasSpec ? `/agent-run?spec=${encodeURIComponent(run.spec_id)}` : "/agent-run"}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-md transition hover:bg-primary/90 hover:shadow-lg focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <Rocket className="h-4 w-4" />
+            在试跑页打开该方案
+          </Link>
+          <Link
+            to={hasSpec ? `/version-release?spec=${encodeURIComponent(run.spec_id)}` : "/version-release"}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-primary bg-background px-4 py-2.5 text-sm font-semibold text-primary transition hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <GitBranch className="h-4 w-4" />
+            查看该方案版本
+          </Link>
+        </>}
         <button
           type="button"
           onClick={onExport}
@@ -45,6 +47,9 @@ export function RdActionBar({ run, isLive, controlBusy, onControl, onExport }: R
           <FileDown className="h-4 w-4" />
           导出运行报告
         </button>
+        {run.agent_deleted && <p className="rounded-lg bg-muted/50 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+          所属 Agent 已删除：此任务仅保留审计记录，可查看或导出，不能恢复、重试或继续执行。
+        </p>}
       </div>
 
       {cancelRequested && <p role="status" className="mt-4 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs leading-relaxed text-foreground">已收到取消请求，当前步骤正在安全收尾；保存检查点后将取消，不会执行后续步骤。</p>}

@@ -73,6 +73,13 @@ try {
   assert.equal(report.nativeConnected,true,'bundled runtime did not restore the verified employee connection')
   assert.equal(report.nativeStatusVisible,true,'connection status is missing from the main app')
   assert.equal(report.mainComputerSelector,true,'main computer selector did not select the restored connection')
+  assert.equal(report.desktopDeviceLayout?.toolbar,true,'desktop device toolbar is missing')
+  assert.equal(report.desktopDeviceLayout?.workspace,true,'computer workspace is missing')
+  assert.equal(report.desktopDeviceLayout?.deviceManager,true,'account device management disclosure is missing')
+  assert.equal(report.desktopDeviceLayout?.deviceListCollapsed,true,'account device list should be collapsed by default')
+  assert.equal(report.desktopDeviceLayout?.duplicateHeading,false,'duplicate page-level device heading is still visible')
+  assert.equal(report.desktopDeviceLayout?.duplicateConnect,false,'duplicate page-level connect action is still visible')
+  assert.equal(report.desktopDeviceLayout?.duplicateSelectedRow,false,'duplicate page-level selected-device row is still visible')
   if(process.argv.includes('--desktop-entry-smoke')){
     assert.equal(report.nativeSettingsEntries?.updates,true);assert.equal(report.nativeSettingsEntries?.settings,true);assert.equal(report.nativeSettingsEntries?.updatePhase,'idle')
     // BrowserWindow.close completes asynchronously. The separate native-settings

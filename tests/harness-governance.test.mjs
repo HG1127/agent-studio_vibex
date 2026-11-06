@@ -153,15 +153,15 @@ test("Harness Worker metrics distinguish last reported component failures from l
 
 test("recent Agent and Workflow APIs remain owner-scoped, bounded, and fail on query errors", () => {
   for (const kind of ["agent", "workflow"]) {
-    let recentCalls = 0, pendingCalls = 0, sqlCounts = 0
+    let recentCalls = 0, pendingCalls = 0, recentSqlCalls = 0, sqlCounts = 0
     const getRecords = (collection, filter, order, limit, offset, params) => {
       assert.equal(params.uid, "verified-owner")
       assert.equal(limit, 20)
       assert.equal(offset, 0)
-      if (kind === "agent" && filter.includes("awaiting_input")) {
+      if (kind === "agent") {
         pendingCalls++
         assert.equal(collection, "agent_runs")
-        assert.match(filter, /rh_user_id = \{:uid\}/)
+        assert.ok(filter.includes("rh_user_id = {:uid}"))
         assert.match(filter, /awaiting_approval/)
       } else {
         recentCalls++
@@ -171,10 +171,22 @@ test("recent Agent and Workflow APIs remain owner-scoped, bounded, and fail on q
     }
     const app = {
       findRecordsByFilter: getRecords,
+      findRecordById(id) { throw Error("unexpected_recent_record_lookup:" + id) },
       db: () => ({ newQuery(sql) {
         sqlCounts++
-        assert.match(sql, /COUNT\(\*\).*agent_runs/)
-        assert.match(sql, /rh_user_id=\{:uid\}/)
+        assert.equal(kind, "agent")
+        if (sql.indexOf("SELECT id FROM agent_runs") === 0) {
+          recentSqlCalls++
+          assert.ok(sql.includes("rh_user_id={:uid}"))
+          assert.ok(sql.includes("EXISTS(SELECT 1 FROM agent_specs"))
+          assert.ok(sql.includes("ORDER BY created DESC,id DESC LIMIT {:limit}"))
+          return { bind(params) {
+            assert.equal(params.uid, "verified-owner")
+            assert.equal(params.limit, 20)
+            return { all(rows) { assert.ok(Array.isArray(rows)) } }
+          } }
+        }
+        assert.ok(sql.includes("COUNT(*)"))
         assert.match(sql, /awaiting_input/)
         return { bind(params) {
           assert.equal(params.uid, "verified-owner")
@@ -187,13 +199,14 @@ test("recent Agent and Workflow APIs remain owner-scoped, bounded, and fail on q
       "/api/" + kind + "-runs/recent", app)
     const successful = handler(event())
     assert.equal(successful.status, 200, JSON.stringify(successful.data))
-    assert.equal(recentCalls, 1)
     if (kind === "agent") {
+      assert.equal(recentSqlCalls, 1)
       assert.equal(pendingCalls, 1)
-      assert.equal(sqlCounts, 1)
+      assert.equal(sqlCounts, 2)
       assert.equal(successful.data.pending_count, 0)
       assert.equal(successful.data.pending_items.length, 0)
     } else {
+      assert.equal(recentCalls, 1)
       assert.equal(pendingCalls, 0)
       assert.equal(sqlCounts, 0)
     }
@@ -201,7 +214,10 @@ test("recent Agent and Workflow APIs remain owner-scoped, bounded, and fail on q
     assert.equal(handler(event()).status, 500)
     if (kind === "agent") {
       app.findRecordsByFilter = getRecords
-      app.db = () => ({ newQuery() { throw Error("pending_count_unavailable") } })
+      app.db = () => ({ newQuery(sql) {
+        if (sql.indexOf("COUNT(*)") >= 0) throw Error("pending_count_unavailable")
+        return { bind() { return { all() {} } } }
+      } })
       assert.equal(handler(event()).status, 500,
         "A failed pending count cannot be silently reported as zero")
     }

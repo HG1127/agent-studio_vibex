@@ -1,5 +1,5 @@
 import {useMemo,useState} from "react"
-import {CirclePlus,History,Search,ScrollText,ArrowUpRight} from "lucide-react"
+import {CirclePlus,History,Search,ScrollText,ArrowUpRight,RefreshCw,Loader2} from "lucide-react"
 import {Link} from "react-router-dom"
 import type {AgentRunRow,RunStateKey} from "@/pages/AgentRun/useAgentRun"
 
@@ -12,6 +12,9 @@ export type RunTaskRailProps={
   activeRun:AgentRunRow|null
   onViewRun:(run:AgentRunRow)=>void
   onNewTask:()=>void
+  onRetryRun:(run:AgentRunRow)=>void
+  retryingRunId:string
+  canRetry:boolean
   isLoggedIn:boolean
   isLive:boolean
   isStarting:boolean
@@ -22,7 +25,7 @@ function localTime(raw:string){
   return Number.isNaN(date.getTime())?"时间未知":
     date.toLocaleString("zh-CN",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})
 }
-export function RunTaskRail({runHistory,activeRun,onViewRun,onNewTask,isLoggedIn,isLive,isStarting,stateMeta}:RunTaskRailProps){
+export function RunTaskRail({runHistory,activeRun,onViewRun,onNewTask,onRetryRun,retryingRunId,canRetry,isLoggedIn,isLive,isStarting,stateMeta}:RunTaskRailProps){
   const [filter,setFilter]=useState<Filter>("all")
   const [query,setQuery]=useState("")
   const items=useMemo(()=>{
@@ -92,6 +95,14 @@ export function RunTaskRail({runHistory,activeRun,onViewRun,onNewTask,isLoggedIn
                 <time>{localTime(item.created)}</time>
               </span>
             </button>
+            {item.status==="failed"&&!item.agent_deleted&&<button type="button"
+              disabled={!canRetry||isLive||isStarting||Boolean(retryingRunId)}
+              onClick={()=>onRetryRun(item)}
+              title={!canRetry?"请先在主界面选择一个可用模型":"沿用原任务编号重新运行"}
+              className="mt-1 inline-flex min-h-7 w-full items-center justify-center gap-1 rounded-md border border-primary/25 bg-primary/5 px-2 text-[11px] font-semibold text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-45">
+              {retryingRunId===item.id?<Loader2 className="h-3 w-3 animate-spin"/>:<RefreshCw className="h-3 w-3"/>}
+              {retryingRunId===item.id?"正在启动…":"重新运行"}
+            </button>}
             {selected&&<Link to={"/run-detail?run="+encodeURIComponent(item.id)}
               className="flex items-center gap-1 px-3 py-1 text-[11px] text-primary hover:underline">
               <ScrollText className="h-3 w-3"/>查看该任务完整记录 <ArrowUpRight className="h-3 w-3"/>

@@ -12,9 +12,14 @@ const TERMINAL_STATES: RunStateKey[] = ["succeeded", "failed", "cancelled"]
 export function RunEvalFeedbackCard({ run }: RunEvalFeedbackCardProps) {
   const evaluation = run.evaluation
   const feedback = run.feedback
+  const safeEvaluation = evaluation && Array.isArray(evaluation.dimensions) &&
+    Array.isArray(evaluation.suggestions) && Number.isFinite(Number(evaluation.score))
+    ? evaluation : null
+  const safeFeedback = feedback && (feedback.rating === "up" || feedback.rating === "down") &&
+    Array.isArray(feedback.tags) ? feedback : null
   const isTerminal = TERMINAL_STATES.includes(run.status)
-  if (!evaluation && !feedback && !isTerminal) return null
-  const isRuleOnly = Boolean(evaluation && (evaluation.degraded || evaluation.mode === "rule"))
+  if (!safeEvaluation && !safeFeedback && !isTerminal) return null
+  const isRuleOnly = Boolean(safeEvaluation && (safeEvaluation.degraded || safeEvaluation.mode === "rule"))
 
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-5 shadow-md">
@@ -24,7 +29,7 @@ export function RunEvalFeedbackCard({ run }: RunEvalFeedbackCardProps) {
             <Gauge className="h-3.5 w-3.5" />
           </span>
           <h3 className="text-sm font-semibold tracking-tight text-card-foreground">运行评估</h3>
-          {evaluation && (
+          {safeEvaluation && (
             <span
               className={`ml-auto inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                 isRuleOnly ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary"
@@ -34,14 +39,14 @@ export function RunEvalFeedbackCard({ run }: RunEvalFeedbackCardProps) {
             </span>
           )}
         </div>
-        {evaluation ? (
+        {safeEvaluation ? (
           <div className="rounded-xl bg-secondary/60 p-3.5">
             <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-primary">{evaluation.score}</span>
+              <span className="text-3xl font-bold text-primary">{safeEvaluation.score}</span>
               <span className="text-xs text-muted-foreground">总分 / 100</span>
             </div>
             <div className="mt-2.5 flex flex-col gap-1.5">
-              {evaluation.dimensions.map((dim) => (
+              {safeEvaluation.dimensions.map((dim) => (
                 <div key={dim.name} className="flex items-center gap-2.5">
                   <span className="w-16 shrink-0 text-xs text-muted-foreground">{dim.name}</span>
                   <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
@@ -54,9 +59,9 @@ export function RunEvalFeedbackCard({ run }: RunEvalFeedbackCardProps) {
                 </div>
               ))}
             </div>
-            {evaluation.suggestions.length > 0 && (
+            {safeEvaluation.suggestions.length > 0 && (
               <ul className="mt-3 flex flex-col gap-1 border-t border-border pt-2.5">
-                {evaluation.suggestions.slice(0, 3).map((item, itemIndex) => (
+                {safeEvaluation.suggestions.slice(0, 3).map((item, itemIndex) => (
                   <li key={`${item.slice(0, 12)}-${itemIndex}`} className="flex gap-1.5 text-xs leading-relaxed text-muted-foreground">
                     <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-primary" />
                     {item}
@@ -67,7 +72,7 @@ export function RunEvalFeedbackCard({ run }: RunEvalFeedbackCardProps) {
           </div>
         ) : (
           <p className="rounded-xl bg-muted/50 px-3.5 py-2.5 text-xs leading-relaxed text-muted-foreground">
-            尚未评估。可在「助手配置与试跑」页对这次运行生成评估报告。
+            {run.agent_deleted ? "所属 Agent 已删除：此历史任务不再生成新的评估报告。" : "尚未评估。可在「助手配置与试跑」页对这次运行生成评估报告。"}
           </p>
         )}
       </section>
@@ -79,32 +84,32 @@ export function RunEvalFeedbackCard({ run }: RunEvalFeedbackCardProps) {
           </span>
           <h3 className="text-sm font-semibold tracking-tight text-card-foreground">结果反馈</h3>
         </div>
-        {feedback ? (
+        {safeFeedback ? (
           <div className="rounded-xl bg-secondary/60 p-3.5">
             <span
               className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                feedback.rating === "up" ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"
+                safeFeedback.rating === "up" ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"
               }`}
             >
-              {feedback.rating === "up" ? <ThumbsUp className="h-3.5 w-3.5" /> : <ThumbsDown className="h-3.5 w-3.5" />}
-              {feedback.rating === "up" ? "结果不错" : "结果不理想"}
+              {safeFeedback.rating === "up" ? <ThumbsUp className="h-3.5 w-3.5" /> : <ThumbsDown className="h-3.5 w-3.5" />}
+              {safeFeedback.rating === "up" ? "结果不错" : "结果不理想"}
             </span>
-            {feedback.tags.length > 0 && (
+            {safeFeedback.tags.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {feedback.tags.map((tag) => (
+                {safeFeedback.tags.map((tag) => (
                   <span key={tag} className="rounded-full bg-card px-2.5 py-0.5 text-xs text-muted-foreground shadow-sm">
                     {tag}
                   </span>
                 ))}
               </div>
             )}
-            {feedback.comment && (
-              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">“{feedback.comment}”</p>
+            {safeFeedback.comment && (
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">“{safeFeedback.comment}”</p>
             )}
           </div>
         ) : (
           <p className="rounded-xl bg-muted/50 px-3.5 py-2.5 text-xs leading-relaxed text-muted-foreground">
-            暂无反馈。可在「助手配置与试跑」页对这次运行提交 👍/👎 反馈。
+            {run.agent_deleted ? "所属 Agent 已删除：此历史任务不再接受新的反馈。" : "暂无反馈。可在「助手配置与试跑」页对这次运行提交 👍/👎 反馈。"}
           </p>
         )}
       </section>

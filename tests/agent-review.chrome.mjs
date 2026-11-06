@@ -44,11 +44,14 @@ async function ready(url,child,getLogs) {
 }
 class CDP {
   constructor(ws) {
-    this.ws=ws;this.next=1;this.pending=new Map()
+    this.ws=ws;this.next=1;this.pending=new Map();this.events=[]
     ws.addEventListener("message",event=>{
       let msg
       try{msg=JSON.parse(String(event.data))}catch{return}
-      if(!msg.id)return
+      if(!msg.id){
+        if(msg.method){this.events.push(msg);if(this.events.length>250)this.events.shift()}
+        return
+      }
       const item=this.pending.get(msg.id)
       if(!item)return
       this.pending.delete(msg.id)
@@ -60,7 +63,8 @@ class CDP {
   command(method,params={},sessionId){
     const id=this.next++
     return new Promise((resolve,reject)=>{
-      const timeout=setTimeout(()=>{this.pending.delete(id);reject(new Error("CDP "+method+" timed out"))},36000)
+      const timeoutMs=Math.max(1000,Number(process.env.AGENT_STUDIO_CDP_COMMAND_TIMEOUT_MS||36000))
+      const timeout=setTimeout(()=>{this.pending.delete(id);reject(new Error("CDP "+method+" timed out"))},timeoutMs)
       this.pending.set(id,{resolve,reject,timeout})
       this.ws.send(JSON.stringify({id,method,params,...(sessionId?{sessionId}:{})}))
     })
@@ -126,7 +130,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
   try{
     mock=createServer(async(req,res)=>{
     // Catalog verification uses only this deterministic local fixture.
-    if(req.method==='GET'&&req.url?.includes('/models')){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({data:[{id:"review-ui-model"}]}));return}
+    if(req.method==='GET'&&req.url?.includes('/models')){res.writeHead(200,{'Content-Type':'application/json','Connection':'close'});res.end(JSON.stringify({data:[{id:"review-ui-model"},{id:"review-ui-model-alt"}]}));return}
 
       let raw=""
       for await(const part of req)raw+=part.toString()
@@ -155,7 +159,11 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
       const sys=(input.messages||[]).filter(x=>x.role==="system").map(x=>x.content).join("\n")
       const user=(input.messages||[]).filter(x=>x.role==="user").map(x=>x.content).join("\n")
       let content="本次经验：优先明确需求、人工确认并制定分阶段计划。"
-      if(sys.includes("助手方案设计器") && user.includes("V30_DENY_RESOURCES")){
+      if(user.includes("RETRY_DETAIL_TASK")||user.includes("RETRY_RAIL_TASK")){
+        agentModelCalls++
+        content=JSON.stringify({thought:"本地验收模型已成功接收重试任务",action:"final",
+          final_answer:"重试成功：本次执行使用员工快速选择的模型，并沿用原任务编号。"})
+      }else if(sys.includes("助手方案设计器") && user.includes("V30_DENY_RESOURCES")){
         content=JSON.stringify({name:'禁止资源冲突验收',goal:'联网检索并调用模板工具后汇总文本',task_scope:'模型错误地建议了用户禁止的资源',tools:['web_search','doc_search','summarize'],task_plan:['搜索网页','查询 doc_search','整理摘要'],deliverables:['摘要'],done_criteria:['摘要准确'],require_plan_review:false})
       }else if(sys.includes("助手方案设计器") && user.includes("V17_CREATE_JOURNEY")){
         v17PlanCalls++
@@ -252,7 +260,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
     const connection=await api("POST","/api/model-connections",{
       name:"Review Chrome mock",provider:"openai",
       base_url:"http://127.0.0.1:"+modelPort+"/v1",
-      api_key:"review-test-only",models:["review-ui-model"],
+      api_key:"review-test-only",models:["review-ui-model","review-ui-model-alt"],
     })
     await api('POST','/api/model-connections/test',{connection_id:connection.item.id})
     const spec=await api("POST","/api/agent_specs",{
@@ -315,8 +323,12 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
     }
     const wait=async(expression,label)=>{
       let last=""
-      for(let i=0;i<180;i++){
-        try{if(await evaluate(expression))return}catch(error){last=String(error.message).slice(0,100)}
+      const waitAttempts=process.env.AGENT_STUDIO_UX_RETRY_ONLY==="1"?60:180
+      for(let i=0;i<waitAttempts;i++){
+        try{if(await evaluate(expression))return}catch(error){
+          last=String(error.message).slice(0,100)
+          if(process.env.AGENT_STUDIO_UX_RETRY_ONLY==="1"&&/CDP .* timed out|CDP closed/.test(last))throw error
+        }
         await sleep(160)
       }
       const page=await evaluate(`({
@@ -329,13 +341,37 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
         dialogs:[...document.querySelectorAll('[role=dialog]')].map(x=>x.textContent?.slice(0,300)),
         errorOverlay:!!document.querySelector('vite-error-overlay')
       })`).catch(()=>({error:"document-unreadable"}))
-      console.error("CHROME_UI_SAFE_PAGE_STATE",JSON.stringify({label,page,viteLog:viteLogs.slice(-520)}))
+      const browserErrors=(chrome?.client?.events||[]).filter(item=>
+        item.method==="Runtime.exceptionThrown"||
+        (item.method==="Runtime.consoleAPICalled"&&["error","warning"].includes(item.params?.type)))
+        .slice(-12).map(item=>({
+          method:item.method,type:item.params?.type,
+          text:(item.params?.args||[]).map(arg=>arg.value||arg.description||"").join(" ").slice(0,900),
+          exception:item.params?.exceptionDetails?.text,
+          stack:item.params?.exceptionDetails?.stackTrace?.callFrames?.slice(0,4),
+        }))
+      console.error("CHROME_UI_SAFE_PAGE_STATE",JSON.stringify({label,page,browserErrors,viteLog:viteLogs.slice(-520)}))
       throw new Error("Chrome UI did not show "+label+". "+last+
         " state="+JSON.stringify(page).slice(0,370))
     }
     const clickText=async text=>{
       const done=await evaluate(`(() => {const b=[...document.querySelectorAll("button")].find(x=>x.textContent?.includes(${JSON.stringify(text)}));if(!b||b.disabled)return false;b.click();return true})()`)
       assert.ok(done,"Missing enabled browser button: "+text)
+    }
+    const choosePlanningModel=async()=>{
+      await wait('(()=>{const el=document.querySelector(\'select[aria-label="Agent 规划模型"]\');return Boolean(el&&!el.disabled&&[...el.options].some(o=>o.value))})()',
+        'authorized planning model is enabled and has a selectable value')
+      const selected=await evaluate(`(()=>{
+        const el=document.querySelector('select[aria-label="Agent 规划模型"]')
+        const option=[...(el?.options||[])].find(o=>o.value)
+        if(!el||!option||el.disabled)return null
+        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(el,option.value)
+        el.dispatchEvent(new Event('change',{bubbles:true}))
+        return option.value
+      })()`)
+      assert.ok(selected,'Agent plan test must explicitly choose an authorized model')
+      await wait('document.querySelector(\'select[aria-label="Agent 规划模型"]\')?.value==='+JSON.stringify(selected),
+        'selected planning model is applied')
     }
     await cmd("Page.navigate",{url:webOrigin+"/login?next=%2Fagent-run"})
     try {
@@ -354,6 +390,225 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
     await wait('document.querySelector("button[type=submit]")?.disabled===false',"login submit")
     await evaluate('document.querySelector("button[type=submit]").click()')
     await wait('location.pathname==="/agent-run"',"logged-in run center")
+    if(process.env.AGENT_STUDIO_UX_RETRY_ONLY==="1"){
+      try{
+      await cmd("Emulation.setDeviceMetricsOverride",{
+        width:1440,height:900,deviceScaleFactor:1,mobile:false,
+      })
+      const retrySpec=await api("POST","/api/agent_specs",{
+        name:"失败任务重跑与快速模型选择验收",
+        spec:{
+          goal:"验证失败任务沿用原编号重跑，并允许在重跑前切换已验证模型",
+          task_scope:"只做本地隔离环境的模型与任务状态验收",
+          task_plan:["读取任务","调用模型","输出结果"],
+          tools:["calculate"],
+          deliverables:["重跑验收结果"],
+          done_criteria:["任务编号不变","使用选定模型","保留上一轮失败原因"],
+        },
+      })
+      const startRetry=async instruction=>api("POST","/api/agent-runs/start",{
+        spec_id:retrySpec.id,instruction,model:"review-ui-model",
+        config:{
+          max_steps:5,max_model_calls:8,
+          custom_model:{connection_id:connection.item.id,model_id:"review-ui-model"},
+        },
+      })
+      const first=await startRetry("RETRY_DETAIL_TASK：从失败详情重新运行")
+      const second=await startRetry("RETRY_RAIL_TASK：从左侧任务列表重新运行")
+      const seed=new DatabaseSync(path.join(testDir,"data.db"),{timeout:5000})
+      try{
+        const failed=seed.prepare("UPDATE agent_runs SET status='failed',error=?,result='',current_step=0,checkpoint=? WHERE id=?")
+        for(const id of [first.run_id,second.run_id]){
+          const row=seed.prepare("SELECT checkpoint FROM agent_runs WHERE id=?").get(id)
+          const checkpoint=JSON.parse(String(row?.checkpoint||"{}"))
+          checkpoint.attempt_no=1
+          checkpoint.harness_stats={llm_calls:2,est_prompt_chars:1200,est_out_chars:100,tool_calls:0,retries:1,compressions:0,approvals:0}
+          failed.run("custom_openai_http_429：fixture first attempt",JSON.stringify(checkpoint),id)
+        }
+      }finally{seed.close()}
+      const beforeSpec=await api("GET","/api/agent_specs/"+retrySpec.id)
+      await cmd("Page.navigate",{url:webOrigin+"/agent-run?spec="+retrySpec.id+"&run="+first.run_id})
+      await wait('Boolean(document.querySelector("#run-quick-spec"))',"Agent run page is mounted before opening resource settings")
+      assert.equal(await evaluate("document.querySelector('#run-quick-spec')?.closest('section')?.textContent?.includes('模型、工具与执行资源统一在') ?? false"),false,
+        "the duplicate resource-settings helper caption must be removed from the Agent selection header")
+
+      const openSettings=await evaluate("(()=>{const b=document.querySelector('#run-settings-open');const state={target:b?.outerHTML||null,buttons:[...document.querySelectorAll('button')].map(x=>({text:x.textContent,aria:x.getAttribute('aria-label'),id:x.id})).slice(-20)};if(b)b.click();return JSON.stringify(state)})()")
+
+      assert.ok(String(openSettings).includes('run-settings-open'),"resource settings must be available from the run header")
+
+
+
+      await wait('document.querySelector("#model-select")?.options?.length>=2',"model choices load in the single resource settings control")
+
+      const modelPicker=await evaluate("(()=>{const el=document.querySelector('#model-select');return {value:el?.value,options:[...(el?.options||[])].map(o=>o.value),disabled:el?.disabled}})()")
+      assert.equal(modelPicker.disabled,false)
+      assert.ok(modelPicker.options.includes("custom:"+connection.item.id+":review-ui-model"))
+      assert.ok(modelPicker.options.includes("custom:"+connection.item.id+":review-ui-model-alt"),
+        "second tested model must be available in resource settings")
+      await wait('document.body.innerText.includes("运行未正常完成") && document.body.innerText.includes("custom_openai_http_429")',
+        "original failed run and reason rendered")
+      const alternate="custom:"+connection.item.id+":review-ui-model-alt"
+      const chooseAlternate=await evaluate("(()=>{const el=document.querySelector('#model-select');if(!el)return false;Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(el,"+JSON.stringify(alternate)+");el.dispatchEvent(new Event('change',{bubbles:true}));return true})()")
+      assert.equal(chooseAlternate,true)
+      await wait('document.querySelector("#model-select")?.value==='+JSON.stringify(alternate),
+        "resource-settings model selection changed before retry")
+      const clickedDetail=await evaluate("(()=>{const heading=[...document.querySelectorAll('h2')].find(h=>h.textContent?.includes('运行未正常完成'));const card=heading?.parentElement?.parentElement;const button=[...(card?.querySelectorAll('button')||[])].find(b=>b.textContent?.trim()==='重新运行');if(!button||button.disabled)return false;button.click();return true})()")
+      assert.equal(clickedDetail,true,"failed result panel must provide an enabled retry action")
+      let current=null,detailRetryAccepted=false
+
+      for(let i=0;i<120;i++){
+
+        current=await api("GET","/api/agent_runs/"+first.run_id)
+
+        if(current.status!=="failed")detailRetryAccepted=true
+
+        const busy=await evaluate("[...document.querySelectorAll('button')].some(b=>b.textContent?.includes('正在启动'))")
+
+        if(detailRetryAccepted&&["succeeded","failed","cancelled"].includes(current.status))break
+
+        if(!busy&&!detailRetryAccepted)break
+
+        await sleep(150)
+
+      }
+
+      assert.equal(current.id,first.run_id,"detail retry must preserve the original task ID")
+
+      assert.equal(current.status,"succeeded","detail retry should finish with the deterministic local model")
+
+      assert.equal(current.model,"custom:review-ui-model-alt","retry must use the quick-selected model")
+
+      assert.equal(current.config.custom_model.model_id,"review-ui-model-alt")
+      await wait('document.body.innerText.includes("运行成果") && document.body.innerText.includes("历史尝试 · 1 次")',
+        "successful retry displays the archived previous attempt")
+      const firstAttempts=await api("GET","/api/agent-runs/"+first.run_id+"/attempts")
+      assert.equal(firstAttempts.items.length,1)
+      assert.equal(firstAttempts.items[0].status,"failed")
+      assert.equal(firstAttempts.items[0].model,"custom:review-ui-model")
+      assert.match(firstAttempts.items[0].error,/custom_openai_http_429/)
+      assert.equal(await evaluate('new URLSearchParams(location.search).get("run")'),first.run_id,
+        "detail retry must keep the run URL on the original task")
+      await cmd("Page.navigate",{url:webOrigin+"/run-detail?run="+first.run_id})
+      await wait('document.body.innerText.includes("运行概览") && document.body.innerText.includes("结果反馈")',
+        "run-detail page renders a retried task with reset evaluation and feedback fields")
+      assert.ok(await evaluate("document.body.innerText.includes('尚未评估')"),
+        "empty legacy evaluation JSON must render as not evaluated, not crash the detail page")
+      await cmd("Page.navigate",{url:webOrigin+"/agent-run?spec="+retrySpec.id+"&run="+first.run_id})
+      await wait('location.pathname==="/agent-run" && new URLSearchParams(location.search).get("run")==='+JSON.stringify(first.run_id),
+        "return to the Agent run rail after checking the standalone detail page")
+      await wait('[...document.querySelectorAll("li")].some(el=>el.textContent?.includes("RETRY_RAIL_TASK"))',
+        "task history reloads after returning from the standalone detail page")
+      await wait('document.body.innerText.includes("重新运行")',"returning from run detail restores retry actions")
+      const reopenSettings=await evaluate("(()=>{const b=document.querySelector('#run-settings-open');if(!b)return false;b.click();return true})()")
+
+
+      assert.equal(reopenSettings,true)
+      await wait('document.querySelector("#model-select")?.value === '+JSON.stringify(alternate),
+        "restored task model remains selected in resource settings before retrying another task")
+      const railModelBeforeRetry=await evaluate("document.querySelector('#model-select')?.value||''")
+      assert.equal(railModelBeforeRetry,alternate,"resource-settings model remains selected after opening and returning from run detail")
+      const clickedRail=await evaluate("(()=>{const item=[...document.querySelectorAll('li')].find(el=>el.textContent?.includes('RETRY_RAIL_TASK'));const button=[...(item?.querySelectorAll('button')||[])].find(b=>b.textContent?.trim()==='重新运行');if(!button||button.disabled)return false;button.click();return true})()")
+      assert.equal(clickedRail,true,"failed task rail row must provide a retry action")
+      await wait('new URLSearchParams(location.search).get("run")==='+JSON.stringify(second.run_id),
+
+        "task rail retry opens the same original task ID")
+
+      current=null
+
+      let railRetryAccepted=false
+
+      for(let i=0;i<120;i++){
+
+        current=await api("GET","/api/agent_runs/"+second.run_id)
+
+        if(current.status!=="failed")railRetryAccepted=true
+
+        const busy=await evaluate("[...document.querySelectorAll('button')].some(b=>b.textContent?.includes('正在启动'))")
+
+        if(railRetryAccepted&&["succeeded","failed","cancelled"].includes(current.status))break
+
+        if(!busy&&!railRetryAccepted)break
+
+      }
+
+      assert.equal(current.id,second.run_id)
+      assert.equal(current.status,"succeeded")
+
+      assert.equal(current.model,"custom:review-ui-model-alt")
+
+      assert.ok(agentModelCalls>=2,"both UI retries must invoke the selected custom model")
+
+      const secondAttempts=await api("GET","/api/agent-runs/"+second.run_id+"/attempts")
+      assert.equal(secondAttempts.items.length,1)
+      assert.equal(secondAttempts.items[0].error,"custom_openai_http_429：fixture first attempt")
+      assert.equal(await evaluate('new URLSearchParams(location.search).get("run")'),second.run_id)
+      const afterSpec=await api("GET","/api/agent_specs/"+retrySpec.id)
+      assert.deepEqual(afterSpec.spec,beforeSpec.spec,
+        "quick model selection and retry must not mutate the saved AgentSpec")
+      const allRuns=await api("GET","/api/agent_runs?perPage=100")
+      assert.equal(allRuns.items.filter(item=>item.id===first.run_id||item.id===second.run_id).length,2,
+        "retries must not create additional task records")
+
+      // Delete an Agent with a live task: the task becomes read-only, disappears
+      // from ordinary history, and remains inspectable through its explicit URL.
+      const deleteSpec=await api("POST","/api/agent_specs",{
+        name:"删除 Agent 生命周期验收",
+        spec:{goal:"验证删除 Agent 后任务只读",task_scope:"本地测试",
+          task_plan:["启动","归档"],tools:["calculate"],
+          deliverables:["只读归档"],done_criteria:["任务停止","历史可查看"]},
+      })
+      const deleteRun=await api("POST","/api/agent-runs/start",{
+        spec_id:deleteSpec.id,instruction:"DELETE_AGENT_TASK：删除后只读",
+        model:"review-ui-model",config:{custom_model:{connection_id:connection.item.id,model_id:"review-ui-model"}},
+      })
+      const deletion=await api("DELETE","/api/agent_specs/"+deleteSpec.id)
+      assert.ok(deletion.archived_runs>=1)
+      const deletedRecord=await api("GET","/api/agent_runs/"+deleteRun.run_id)
+      assert.equal(deletedRecord.status,"cancelled")
+      assert.equal(deletedRecord.agent_deleted,true)
+      const ordinaryHistory=await api("GET","/api/agent_runs?perPage=100")
+      assert.ok(!ordinaryHistory.items.some(item=>item.id===deleteRun.run_id))
+      await cmd("Page.navigate",{url:webOrigin+"/agent-run?run="+deleteRun.run_id})
+      await wait('document.body.innerText.includes("所属 Agent 已删除：此任务及全部尝试记录已归档为只读历史")',
+        "deleted Agent task remains visible as read-only history")
+      assert.equal(await evaluate("[...document.querySelectorAll('button')].some(b=>b.textContent?.trim()==='重新运行')"),false,
+        "deleted Agent task must not expose a retry action")
+      assert.equal(await evaluate("[...document.querySelectorAll('button')].some(b=>['生成评估','结果不错','结果不理想','修改反馈','提交反馈'].includes(b.textContent?.trim()))"),false,
+        "deleted Agent task must not expose evaluation or feedback mutations")
+      assert.equal(await evaluate("Boolean(document.querySelector('#agent-task-instruction')||document.querySelector('#agent-run-submit'))"),false,
+        "deleted Agent task must not expose the task composer")
+      assert.equal(await evaluate("document.body.innerText.includes('根据反馈优化方案')||document.body.innerText.includes('基于此 Agent 发起新任务')"),false,
+        "deleted Agent task must not expose Agent optimization or new-task actions")
+      assert.ok(await evaluate("document.body.innerText.includes('所属 Agent 已删除，任务已停止并归档为只读历史；不再支持重试或继续执行。')"),
+        "deleted Agent status must explicitly explain that retry and continuation are unavailable")
+      assert.equal(await evaluate("document.body.innerText.includes('需要重试时重新提交任务')"),false,
+        "deleted Agent status must not recommend resubmission")
+      await cmd("Page.navigate",{url:webOrigin+"/run-detail?run="+deleteRun.run_id})
+      await wait('document.body.innerText.includes("所属 Agent 已删除。该任务及历史尝试已保留为只读审计记录")',
+        "deleted Agent task is also read-only in the standalone run-detail page")
+      assert.equal(await evaluate("document.body.innerText.includes('在试跑页打开该方案')||document.body.innerText.includes('查看该方案版本')"),false,
+        "deleted Agent run detail must not link to deleted Agent actions")
+      assert.equal(await evaluate("document.body.innerText.includes('可在「助手配置与试跑」页')"),false,
+        "deleted Agent run detail must not recommend unavailable evaluation or feedback actions")
+      assert.ok(await evaluate("[...document.querySelectorAll('button')].some(b=>b.textContent?.includes('导出运行报告'))"),
+        "read-only run detail must preserve report export")
+
+
+
+
+      console.log("CHROME_AGENT_RETRY_AND_RESOURCE_SETTINGS_PASS",JSON.stringify({
+        detailRetry:true,taskRailRetry:true,originalRunIdsPreserved:true,
+        resourceSettingsModelSwitch:true,attemptHistoryVisible:true,agentDeletionReadOnly:true,
+        runDetailReadOnly:true,reportExportPreserved:true,
+        noAgentSpecMutation:true,noDuplicateRunRows:true,
+      }))
+      return
+      }catch(error){
+        console.error("RETRY_BRANCH_FAILURE",error&&error.stack?error.stack:String(error))
+        throw error
+      }
+    }
+
     if(process.env.AGENT_STUDIO_UX_PROVENANCE_ONLY==="1"){
       await cmd("Emulation.setDeviceMetricsOverride",{
         width:1440,height:900,deviceScaleFactor:1,mobile:false,
@@ -692,6 +947,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
         await evaluate('document.querySelector("#agent-requirement").focus()')
         await cmd('Input.insertText',{text:'V30_DENY_RESOURCES：禁止使用 doc_search，也不要联网；只对我提供的文字做文本摘要。'})
         await clickText('预览要求与能力依赖')
+        await choosePlanningModel()
         await wait('[...document.querySelectorAll("button")].some(b=>b.textContent?.includes("确认要求并生成方案")&&!b.disabled)','saved requirements and verified model available for negative-scope generation')
         await clickText('确认要求并生成方案');await wait('document.body.innerText.includes("已生成可编辑方案")','model-proposed conflicting resource plan')
         await clickText('进入方案编辑');await wait('document.querySelector("input[aria-label=助手名称]")?.value==="禁止资源冲突验收"','conflicting draft rendered')
@@ -737,6 +993,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
       await wait('document.querySelector("#agent-requirement")?.value.includes("V17_CREATE_JOURNEY")',
         "real user requirement typed")
       await clickText('预览要求与能力依赖')
+      await choosePlanningModel()
       await wait('[...document.querySelectorAll("button")].some(b=>b.textContent?.includes("确认要求并生成方案")&&!b.disabled)','saved requirements and verified model before generating the positive plan')
       await clickText('确认要求并生成方案')
       await wait('document.body.innerText.includes("已生成可编辑方案")',
@@ -872,7 +1129,18 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
 
       // Quality loop with a real scoring and feedback persisted to this run.
       await clickText("生成评估")
-      await wait('document.body.innerText.includes("总分")',"completed run evaluated")
+      try {
+        await wait('document.body.innerText.includes("总分")',"completed run evaluated")
+      } catch (error) {
+        const serverRun=await api("GET","/api/agent_runs/"+firstRunId)
+        const serverDetail=await api("GET","/api/agent-runs/"+firstRunId+"/detail")
+        const view=await evaluate('({visible:document.body.innerText.slice(-1700),dialogs:[...document.querySelectorAll("[role=alert]")].map(e=>e.textContent),buttons:[...document.querySelectorAll("button")].filter(b=>b.textContent?.includes("评估")).map(b=>({text:b.textContent,disabled:b.disabled}))})')
+        console.log("V17_EVALUATION_DIAGNOSTIC",JSON.stringify({
+          runId:firstRunId,status:serverRun.status,evalFromList:serverRun.evaluation,
+          evalFromDetail:serverDetail.run.evaluation,view,
+        }).slice(0,5600))
+        throw error
+      }
       await clickText("结果不理想")
       await evaluate('document.querySelector("textarea[placeholder^=\\"补充一句话\\"]").focus()')
       await cmd("Input.insertText",{text:"需要明确里程碑日期，知识库引用应更具体，并补充质量验收负责人"})
@@ -1694,7 +1962,10 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
     }
     if(frontend) {try{frontend.kill()}catch{}}
     if(pb) {try{await stopHeadlessPocketBase(pb)}catch{}}
-    if(mock)await new Promise(resolve=>mock.close(resolve))
+    if(mock){
+      try{mock.closeAllConnections()}catch{}
+      await new Promise(resolve=>mock.close(resolve))
+    }
     try{fs.rmSync(chromeDir,{recursive:true,force:true,maxRetries:2,retryDelay:250})}catch{}
     try{fs.rmSync(testDir,{recursive:true,force:true,maxRetries:3,retryDelay:250})}catch{}
   }

@@ -223,6 +223,12 @@ async function showStudio() {
       }
       const managementInline=await main.webContents.executeJavaScript("(()=>{const panel=document.querySelector('[data-desktop-connection-management]');return !!panel&&!panel.closest('[role=dialog]')})()")
       const mainComputerSelector=await main.webContents.executeJavaScript("(()=>{const select=document.querySelector('[data-desktop-computer-toolbar] select[aria-label=选择电脑]');return !!select&&!!select.value})()")
+      let desktopDeviceLayout
+      for(let i=0;i<80;i++){
+        desktopDeviceLayout=await main.webContents.executeJavaScript("(()=>{const text=e=>[...document.querySelectorAll(e)].map(x=>x.textContent?.trim()||'');const details=[...document.querySelectorAll('details')].find(x=>(x.querySelector('summary')?.textContent||'').includes('设备清单与撤销管理'));return {toolbar:!!document.querySelector('[data-desktop-computer-toolbar]'),workspace:!!document.querySelector('[aria-label=电脑工作区]'),deviceManager:!!details,deviceListCollapsed:!!details&&!details.open,duplicateHeading:text('h2').includes('我的电脑与浏览器'),duplicateConnect:text('button').some(t=>t.includes('连接新电脑 / 浏览器')),duplicateSelectedRow:text('button').some(t=>t.includes('切换 / 管理设备'))}})()")
+        if(desktopDeviceLayout.workspace&&desktopDeviceLayout.deviceManager)break
+        await new Promise(r=>setTimeout(r,150))
+      }
       let nativeSettingsEntries
       if(process.argv.includes('--desktop-entry-smoke')){
         if(!fixture||!option('--desktop-test-server')||!/^http:\/\/127\.0\.0\.1:\d+$/.test(settings.server))throw Error('isolated_entry_fixture_required')
@@ -240,7 +246,7 @@ async function showStudio() {
         nativeSettingsEntries={updates:true,settings:true,updatePhase:updateState.phase,singleMainWindow:BrowserWindow.getAllWindows().length===1}
       }
       const fixtureDiagnostic=fixture&&!mainComputerSelector?await main.webContents.executeJavaScript("Promise.all([Promise.resolve({url:location.pathname,text:document.body.innerText.slice(0,1800)}),window.studioDesktop.computer('state').then(s=>({ownerVerified:!!s.owner,profileCount:s.profiles.length,selectedId:s.selectedId}),e=>({error:String(e.message)}))])"):undefined
-      await fs.writeFile(path.resolve(report),JSON.stringify({started:true,sourceCommit:info.sourceCommit,version:info.version,origin:local.origin,managerOrigin:local.managerOrigin,title:main.webContents.getTitle(),nativePairingAvailable,nativeManagerOpened,embeddedManager,managementInline,mainComputerSelector,singleWindow,nativeConnected,nativeStatusVisible,nativeSettingsEntries,fixtureDiagnostic,tempDirectory:app.getPath('temp'),runtimeRoot:runtimeRoot||null,resourcesDirectory:process.resourcesPath,nodeIntegration:false,contextIsolation:true,sandbox:true},null,2))
+      await fs.writeFile(path.resolve(report),JSON.stringify({started:true,sourceCommit:info.sourceCommit,version:info.version,origin:local.origin,managerOrigin:local.managerOrigin,title:main.webContents.getTitle(),nativePairingAvailable,nativeManagerOpened,embeddedManager,managementInline,mainComputerSelector,desktopDeviceLayout,singleWindow,nativeConnected,nativeStatusVisible,nativeSettingsEntries,fixtureDiagnostic,tempDirectory:app.getPath('temp'),runtimeRoot:runtimeRoot||null,resourcesDirectory:process.resourcesPath,nodeIntegration:false,contextIsolation:true,sandbox:true},null,2))
     }
   } catch(error){if(main&&!main.isDestroyed())main.destroy();main=null;await stopServices();if(testHome)throw error;await dialog.showMessageBox({type:'error',title:'工作台暂未打开',message:String(error.message).slice(0,500)});await showSettings();throw error}
 }
@@ -257,7 +263,8 @@ async function reportConfirmationSmoke(){
     inMainWindow=await main.webContents.executeJavaScript("document.querySelector('[data-desktop-computer-center]')?.textContent.includes('请确认本机授权变更')===true")
     if(inMainWindow)break;await new Promise(r=>setTimeout(r,200))
   }
-  await fs.writeFile(path.join(testHome,'confirmation-smoke.json'),JSON.stringify({inMainWindow,singleWindow:BrowserWindow.getAllWindows().length===1}))
+  const windows=BrowserWindow.getAllWindows().map(win=>({title:win.getTitle(),url:win.webContents.getURL(),visible:win.isVisible(),destroyed:win.isDestroyed()}))
+  await fs.writeFile(path.join(testHome,'confirmation-smoke.json'),JSON.stringify({inMainWindow,singleWindow:windows.length===1,windowCount:windows.length,windows}))
 }
 async function stopServices() {
   for(const request of pairingRequests.values()){clearTimeout(request.timeout);request.reject(Error('本机组件已停止'))}pairingRequests.clear()

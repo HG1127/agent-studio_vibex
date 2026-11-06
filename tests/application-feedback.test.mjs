@@ -2,9 +2,17 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import {APPLICATION_FAILURE_MESSAGES,applicationFailure} from '../local-executor/application-feedback.mjs'
-import {executeClaim} from '../local-executor/connection.mjs'
+import {executeClaim,localJobExecutionWindowMs} from '../local-executor/connection.mjs'
 import {APP_FILES} from '../ops/build-connector.mjs'
 
+test('local app approvals fit inside the server lease and leave completion acknowledgement time',()=>{
+ assert.equal(localJobExecutionWindowMs(120000),105000)
+ assert.equal(localJobExecutionWindowMs(100000),85000)
+ assert.equal(localJobExecutionWindowMs(70000),55000)
+ assert.equal(localJobExecutionWindowMs(10000),1)
+ assert.equal(localJobExecutionWindowMs(0),0)
+ assert.equal(localJobExecutionWindowMs(-1),0)
+})
 test('connector reasons survive the generic backend failure code and reach the employee UI',async()=>{
  for(const code of Object.keys(APPLICATION_FAILURE_MESSAGES)){
   let receipt,executions=0
@@ -14,6 +22,29 @@ test('connector reasons survive the generic backend failure code and reach the e
   const result=applicationFailure({id:'diagnostic-job',status:'failed',error:'local_execution_failed',result:receipt.result})
   assert.equal(result.code,code);assert.equal(result.message,APPLICATION_FAILURE_MESSAGES[code])
   assert.match(result.receipt,new RegExp(code));assert.doesNotMatch(result.message,/local_execution_failed/)
+ }
+})
+test('malformed and unavailable WorkBuddy app tool calls produce safe actionable codes without repeating actions',async()=>{
+ for(const [nativeCode,expected] of [
+  ['invalid_application_arguments','application_invalid_arguments'],
+  ['tool_denied','application_tool_unavailable'],
+  ['mcp_tool_failed','application_tool_failed'],
+   ['application_control_denied','application_control_denied'],
+   ['application_action_unconfirmed','application_action_unconfirmed'],
+   ['permission_confirmation_timeout','application_confirmation_timeout'],
+   ['permission_confirmation_unavailable','application_confirmation_unavailable'],
+   ['permission_confirmation_cancelled','application_confirmation_cancelled'],
+  ]){
+  let receipt,calls=0
+  await executeClaim(async(route,body)=>{if(route.endsWith('/check'))return {active:true};receipt=body;return {ok:true}},
+   {execute:async()=>{calls++;throw Error(nativeCode)}},
+   {id:'workbuddy-diagnostic',claim:'test-only',deadline_ms:Date.now()+120000,input:{tool:'apps.observe',arguments:{window:'123'}}})
+  assert.equal(calls,1,'failed app action must not be replayed')
+  assert.equal(receipt.ok,false)
+  const failure=applicationFailure({id:'workbuddy-diagnostic',status:'failed',error:'local_execution_failed',result:receipt.result})
+  assert.equal(failure.code,expected)
+  assert.equal(failure.message,APPLICATION_FAILURE_MESSAGES[expected])
+  assert.ok(!failure.receipt.includes('private'))
  }
 })
 

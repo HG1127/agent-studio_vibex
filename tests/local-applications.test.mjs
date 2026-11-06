@@ -113,6 +113,24 @@ test('authorized background screenshots survive without accessibility scans or a
  assert.ok(!f.calls.some(x=>x.action==='act'))
  await assert.rejects(f.call('act',{observation:'0'.repeat(32),element:0,action:'click'}),/application_observation_expired/)
 })
+test('already foreground WorkBuddy is only observed, without an unnecessary second activation approval',async t=>{
+ const f=await fixture(t,{electron:true,confirm:async()=>{throw Error('redundant_confirmation')}})
+ f.setView({window:{id:'123',title:'WorkBuddy fixture',width:1000,height:700,foreground:true},
+   controls:[{id:0,name:'WorkBuddy task input',type:'ControlType.Edit',runtime:'100',
+     password:false,enabled:true,actions:['type'],rect:[10,10,500,100]}]})
+ const ready=await f.call('launch')
+ assert.equal(ready.app,f.grant.id,'model must receive the authorized app ID for the next call')
+ assert.equal(ready.windows[0].id,'123')
+ const windows=await f.call('windows')
+ assert.equal(windows.app,f.grant.id)
+ const observed=await f.call('observe',{window:'123',activate:true})
+ assert.match(observed.observation,/^[a-f0-9]{32}$/)
+ assert.equal(observed.window.foreground,true)
+ assert.ok(observed.controls.some(c=>c.name==='WorkBuddy task input'))
+ assert.equal(f.calls.some(c=>c.action==='activate_observe'),false,
+   'a verified foreground observation must not need an effectful activate')
+ assert.equal(f.calls.filter(c=>c.action==='observe').length,1)
+})
 test('explicit focus and observe requires local consent and cannot write without separate one-use approval',async t=>{
  let approvals=0
  const f=await fixture(t,{electron:true,confirm:async()=>{approvals++;return approvals===2}})

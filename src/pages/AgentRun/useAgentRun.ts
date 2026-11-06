@@ -25,6 +25,7 @@ export type RunStateKey = "queued" | "running" | "paused" | "awaiting_approval" 
 // 字段名与 agent_runs collection 1:1（snake_case，禁止转换层）
 export type AgentRunRow = {
   source_access_revoked?:boolean
+  agent_deleted?:boolean
   id: string
   rh_user_id: string
   spec_id: string
@@ -43,6 +44,21 @@ export type AgentRunRow = {
   feedback: RunFeedback | null
   created: string
   updated: string
+}
+
+export type RunAttemptRow = {
+  id:string
+  attempt_no:number
+  status:RunStateKey
+  model:string
+  error:string
+  result:string
+  current_step:number
+  max_steps:number
+  created:string
+  updated:string
+  archived_ms:number
+  events:RunEventRow[]
 }
 
 // 运行评估（agent_runs.evaluation，与后端 evaluate 路由产物 1:1）
@@ -278,6 +294,8 @@ export function useAgentRun() {
   const [isStarting, setIsStarting] = useState(false)
   const [activeRun, setActiveRun] = useState<AgentRunRow | null>(null)
   const [runEvents, setRunEvents] = useState<RunEventRow[]>([])
+  const [runAttempts, setRunAttempts] = useState<RunAttemptRow[]>([])
+  const [retryingRunId, setRetryingRunId] = useState("")
   const [controlBusy, setControlBusy] = useState<"" | "pause" | "resume" | "cancel">("")
   const [runHistory, setRunHistory] = useState<AgentRunRow[]>([])
   const [copiedFlag, setCopiedFlag] = useState(false)
@@ -326,6 +344,7 @@ export function useAgentRun() {
 
   const tickInFlightRef = useRef(false)
   const startInFlightRef = useRef(false)
+  const retryInFlightRef = useRef(false)
   const pollBusyRef = useRef(false)
   // Invalidates older history reads/polls when the employee switches tasks.
   const viewedRunGenerationRef=useRef(0)
@@ -521,12 +540,19 @@ export function useAgentRun() {
         id: string
         name: string
         enabled: boolean
+        status: string
+        last_checked_at: string
         provider: string
         models: string[]
       }[]) : []
       const options: CustomModelOption[] = []
       for (const conn of items) {
-        if (!conn.enabled) continue
+        const checkedAt = String(conn.last_checked_at || "")
+        const checkedMs = Date.parse(checkedAt)
+        // Match the server's verifiedModelIds admission rule so the quick picker
+        // never offers an enabled-but-untested or stale connection as runnable.
+        if (!conn.enabled || conn.status !== "ok" || !checkedAt ||
+            checkedAt.startsWith("0001-") || !Number.isFinite(checkedMs) || checkedMs <= 0) continue
         const providerLabel = PROVIDER_META[normalizeProvider(conn.provider)].shortLabel
         for (const modelId of conn.models || []) {
           options.push({
@@ -539,12 +565,16 @@ export function useAgentRun() {
       setCustomModels(options)
       setModel((prev) => {
         if (prev && options.some((opt) => opt.value === prev)) return prev
+        // When restoring a task URL, let its authoritative run config choose
+        // the model. A late model-catalog response must not race and replace it
+        // with the first catalog item, which could make a retry use the wrong model.
+        if (requestedRunId) return prev
         return options.length > 0 ? options[0].value : ""
       })
     } catch {
       // 模型连接加载失败不阻塞其余配置
     }
-  }, [base])
+  }, [base, requestedRunId])
 
   useEffect(() => {
     if (!rhUserId) return
@@ -723,6 +753,17 @@ export function useAgentRun() {
     [base],
   )
 
+  const fetchRunAttempts = useCallback(async (runId:string):Promise<RunAttemptRow[]> => {
+    if(!runId)return []
+    const res=await fetch(`${base}/api/agent-runs/${encodeURIComponent(runId)}/attempts`,{
+      headers:{...vibexAuthHeaders()},
+    })
+    if(res.status===401||res.status===412){setNeedsRhLogin(true);return []}
+    if(!res.ok)return []
+    const data=await res.json()
+    return Array.isArray(data?.items)?data.items as RunAttemptRow[]:[]
+  },[base])
+
   // 将运行 ID 放入当前 URL：刷新/复制链接后可恢复同一次运行，包括尚未回答的审批。
   // 所有运行详情与事件仍通过服务端按员工身份校验，不依赖本地缓存做授权。
   const rememberRunUrl = useCallback((runId: string, specId: string) => {
@@ -750,11 +791,22 @@ export function useAgentRun() {
         setActiveRun(run)
         setRunEvents(events)
         setSelectedSpecId(run.spec_id)
+        const runCustomModel=run.config?.custom_model as {connection_id?:string;model_id?:string}|null
+        if(runCustomModel?.connection_id&&runCustomModel.model_id)
+          setModel(`custom:${runCustomModel.connection_id}:${runCustomModel.model_id}`)
       }).catch(() => {
         if (!cancelled) setErrorMsg("恢复任务失败，请检查网络并刷新重试。")
       })
     return () => { cancelled = true }
   }, [requestedRunId, rhUserId, fetchRunRecord, fetchRunEvents])
+
+  useEffect(()=>{
+    const runId=activeRun?.id||""
+    if(!runId){setRunAttempts([]);return}
+    let current=true
+    void fetchRunAttempts(runId).then(items=>{if(current)setRunAttempts(items)})
+    return()=>{current=false}
+  },[activeRun?.id,activeRun?.status,fetchRunAttempts])
 
   const pollOnce = useCallback(
     async (runId: string) => {
@@ -1437,6 +1489,7 @@ export function useAgentRun() {
     setActiveRun(null)
     viewedRunGenerationRef.current++
     setRunEvents([])
+    setRunAttempts([])
     setInstruction("")
     setErrorMsg("")
     setOptimizeError("")
@@ -1461,7 +1514,12 @@ export function useAgentRun() {
       try {
         const full = await fetchRunRecord(row.id)
         if(generation!==viewedRunGenerationRef.current)return
-        if (full?.id===row.id) setActiveRun(full)
+        if (full?.id===row.id) {
+          setActiveRun(full)
+          const runCustomModel=full.config?.custom_model as {connection_id?:string;model_id?:string}|null
+          if(runCustomModel?.connection_id&&runCustomModel.model_id)
+            setModel(`custom:${runCustomModel.connection_id}:${runCustomModel.model_id}`)
+        }
         const items = await fetchRunEvents(row.id)
         if(generation!==viewedRunGenerationRef.current)return
         setRunEvents(items)
@@ -1477,6 +1535,80 @@ export function useAgentRun() {
       prev.includes(toolId) ? prev.filter((item) => item !== toolId) : [...prev, toolId],
     )
   }, [])
+
+  const handleRetryRun = useCallback(async (row?: AgentRunRow) => {
+    if (retryInFlightRef.current) return
+    let target = row || activeRun
+    if (!target || target.status !== "failed" || target.agent_deleted || target.source_access_revoked) return
+    setSelectedSpecId(target.spec_id)
+    retryInFlightRef.current = true
+    setRetryingRunId(target.id)
+    setIsStarting(true)
+    setErrorMsg("")
+    try {
+      if (target.id !== activeRun?.id) {
+        const full = await fetchRunRecord(target.id)
+        if (!full) {
+          setErrorMsg("无法读取原任务，刷新任务记录后再重试")
+          return
+        }
+        target = full
+        setActiveRun(full)
+        setSelectedSpecId(full.spec_id)
+        rememberRunUrl(full.id, full.spec_id)
+        setRunEvents(await fetchRunEvents(full.id))
+      }
+      const chosenModel = model || target.model
+      const requestId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : Date.now().toString(36) + "-" + Math.random().toString(36).slice(2)
+      const response = await fetch(`${base}/api/agent-runs/${encodeURIComponent(target.id)}/retry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
+        body: JSON.stringify({ request_id: requestId, model: chosenModel }),
+      })
+      const data = await response.json().catch(() => null)
+      if (response.status === 401 || response.status === 412) {
+        setNeedsRhLogin(true)
+        setErrorMsg("登录态已过期，请重新登录后再重试")
+        return
+      }
+      if (response.status === 404) {
+        // Distinguish an older backend missing the retry route from a genuinely
+        // missing/inaccessible task. Never silently start a replacement task.
+        const original = await fetchRunRecord(target.id).catch(() => null)
+        setErrorMsg(original?.id === target.id
+          ? "原任务仍存在，但当前服务端不提供任务原位重跑接口（HTTP 404）。请先升级配套的 Agent Engine 后端 Hooks；不要连续点击重试或新建重复任务。"
+          : "原任务不存在或当前账号无权访问。请刷新任务列表核对原任务状态，不要自动重复发起操作。")
+        return
+      }
+      if (!response.ok) {
+        setErrorMsg(data?.message || "重新运行未能启动，请检查 Agent、模型和资源连接")
+        return
+      }
+      const fresh = await fetchRunRecord(target.id)
+      if (fresh?.id === target.id) {
+        setActiveRun(fresh)
+        const refreshedCustomModel = fresh.config?.custom_model as {connection_id?:string;model_id?:string}|null
+        setModel(refreshedCustomModel?.connection_id && refreshedCustomModel.model_id
+          ? `custom:${refreshedCustomModel.connection_id}:${refreshedCustomModel.model_id}`
+          : fresh.model || "")
+      }
+      const [events, attempts] = await Promise.all([
+        fetchRunEvents(target.id), fetchRunAttempts(target.id),
+      ])
+      setRunEvents(events)
+      setRunAttempts(attempts)
+      rememberRunUrl(target.id, target.spec_id)
+      await loadRunHistory(rhUserId)
+    } catch {
+      setErrorMsg("网络异常，重试结果尚未确认；请刷新原任务状态后再操作")
+    } finally {
+      retryInFlightRef.current = false
+      setRetryingRunId("")
+      setIsStarting(false)
+    }
+  }, [activeRun, model, base, fetchRunRecord, fetchRunEvents, fetchRunAttempts, rememberRunUrl, loadRunHistory, rhUserId])
 
   const handleCopyResult = useCallback(() => {
     const text = activeRun?.result || ""
@@ -1582,6 +1714,9 @@ export function useAgentRun() {
     handleCopyResult,
     copiedFlag,
     runHistory,
+    runAttempts,
+    retryingRunId,
+    handleRetryRun,
     handleViewHistoryRun,
     handlePrepareNewTask,
     priceHint,

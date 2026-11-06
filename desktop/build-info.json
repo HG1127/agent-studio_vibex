@@ -1,6 +1,6 @@
 {
-  "sourceCommit": "de3bcd6469f2b7e560563b03beca2f4e446061d9",
-  "version": "0.1.0-preview.24",
+  "sourceCommit": "eaf6e08d3f684424fa7e69815f85cefb61ff2dc1",
+  "version": "0.1.0-preview.27",
   "platform": "win32-x64",
   "codeSigned": false,
   "integratedSources": {
@@ -19,7 +19,14 @@
     "visibleWindow": "4daa40a7c5507fb9bf60941e9c35724613c11961",
     "compiledWindowProbe": "e20f118b357c57b28f2b3626e8a39201e6db8ad6",
     "updateRecovery": "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11",
-    "applicationObservation": "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11"
+    "applicationObservation": "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11",
+    "workbuddyForegroundObservation": "connector-0.1.0-preview.29-foreground-readonly-no-redundant-activation",
+    "applicationFailureDiagnostics": "structured-local-confirmation-timeout-unavailable-cancelled",
+    "agentRunRetry": "retry-route-registered-with-agent-engine",
+    "authoringPreviewDiagnostics": "http-status-specific-backend-version-diagnosis-idempotent-retry-chrome-verified",
+    "agentBoundLifecycle": "validated-working-tree-before-preview25",
+    "runModelSettings": "single-resource-settings-control",
+    "desktopComputerWorkspaceLayout": "validated-working-tree-before-preview25"
   },
-  "sourceState": "committed-preview24-with-pinned-native-action-helper-and-workbuddy-focus-recovery"
+  "sourceState": "preview27-candidate-workbuddy-receipts-and-authoring-preview-backend-version-diagnostics"
 }
