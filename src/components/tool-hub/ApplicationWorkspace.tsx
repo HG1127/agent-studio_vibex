@@ -4,6 +4,7 @@ import {deviceConnectionState} from '@/lib/localConnectionSetup'
 import {decodeRhToken} from '@/lib/studioAuth'
 import {useDesktopComputer} from './DesktopComputerContext'
 import {ApplicationTaskLauncher} from './ApplicationTaskLauncher'
+import {ApplicationVisionPanel,type VisualObservation} from './ApplicationVisionPanel'
 import {applicationFailure} from '../../../local-executor/application-feedback.mjs'
 type App={id:string;name:string;adapter:'desktop'|'codex';control:boolean;allowWrite?:boolean}
 type AppWindow={id:string;title:string}
@@ -15,6 +16,7 @@ function ApplicationSession({device,statusVerified,onBusyChange}:{device:LocalDe
  const candidates=tools.flatMap(t=>Array.isArray(t.inputSchema['x-studio-applications'])?t.inputSchema['x-studio-applications']:[])
  const apps:App[]=[...new Map(candidates.filter((g):g is App=>!!g&&typeof g==='object'&&typeof g.id==='string'&&/^[a-f0-9]{24}$/.test(g.id)&&typeof g.name==='string'&&['desktop','codex'].includes(g.adapter)).map(g=>[g.id,g])).values()]
  const [app,setApp]=useState(''),[windows,setWindows]=useState<AppWindow[]>([]),[windowId,setWindowId]=useState(''),[observation,setObservation]=useState<Observation|null>(null),[element,setElement]=useState(''),[text,setText]=useState(''),[key,setKey]=useState('Enter')
+ const [visual,setVisual]=useState<VisualObservation|null>(null),[visualAt,setVisualAt]=useState(0)
  const [prompt,setPrompt]=useState(''),[root,setRoot]=useState(''),[write,setWrite]=useState(false),[task,setTask]=useState<Task|null>(null),[taskList,setTaskList]=useState<{id:string;status:string;workspace:string}[]>([]),[job,setJob]=useState<LocalJob|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[receipt,setReceipt]=useState(''),[launchState,setLaunchState]=useState(''),[observedAt,setObservedAt]=useState(0),[now,setNow]=useState(Date.now()),[taskPreparing,setTaskPreparing]=useState(false)
  const alive=useRef(true),owner=useRef(decodeRhToken()?.sub),locked=useRef(false),action=useRef(''),active=useRef({device,statusVerified})
  active.current={device,statusVerified}
@@ -40,11 +42,12 @@ function ApplicationSession({device,statusVerified,onBusyChange}:{device:LocalDe
     if(action.current==='apps.windows'||action.current==='apps.launch'){const rows=(data.windows||[]).filter(w=>typeof w.id==='string'&&typeof w.title==='string');setWindows(rows);setWindowId(rows[0]?.id||'');setLaunchState(rows.length?'已发现 '+rows.length+' 个窗口，可继续观察或创建应用任务。':data.status==='waiting_window'?'应用启动已受理，但窗口尚未就绪。请检查启动弹窗后刷新窗口；不会重复启动。':'未发现可用窗口。应用可能尚未启动、正在启动或窗口版本不匹配。')}
     if(action.current==='apps.observe'&&data.observation){const o=value as Observation;setObservation(o);setObservedAt(Date.now());setNow(Date.now());setElement(String(o.controls.find(c=>c.enabled&&!c.password)?.id??''))}
     if(action.current==='apps.observe'&&!data.observation&&data.message){setObservation(null);const rows=(data.windows||[]).filter(w=>typeof w.id==='string'&&typeof w.title==='string');setWindows(rows);setWindowId(rows[0]?.id||'');setLaunchState(data.message)}
+    if(action.current==='apps.observe_visual'||action.current==='apps.act_visual'){const view=value as VisualObservation;setObservation(null);if(view.mode==='vision'&&Number.isInteger(view.imageSize?.width)&&Number.isInteger(view.imageSize?.height)&&next.images?.length){setVisual(view);setVisualAt(Date.now());setNow(Date.now())}else{setVisual(null);if(data.message)setLaunchState(data.message)}}
     if(action.current.startsWith('apps.task_')&&data.id)setTask(value as Task)
     if(action.current==='apps.task_list')setTaskList(data.tasks||[])
     setReceipt(action.current==='apps.act'?'应用已接收操作。请重新观察窗口，核对应用中的实际结果。':action.current==='apps.launch'?'系统已接收启动请求。可见窗口列在下方，尚未验证应用内任务。':next.result)
    }else if(!['queued','running'].includes(next.status)){
-    const failure=applicationFailure(next);setError(failure.message);setReceipt(failure.receipt);setObservation(null)
+    const failure=applicationFailure(next);setError(failure.message);setReceipt(failure.receipt);setObservation(null);setVisual(null)
     if(action.current==='apps.launch'||action.current==='apps.windows'){setWindows([]);setWindowId('');setLaunchState('')}
    }
   }catch(e){if(!controller.signal.aborted&&valid())setError((e as Error).message+'；不会自动重新执行。')}finally{reading=false}}
@@ -52,10 +55,10 @@ function ApplicationSession({device,statusVerified,onBusyChange}:{device:LocalDe
  },[job?.id,pending])
  const perform=async(tool:string,args:Record<string,unknown>)=>{
   if(locked.current||pending||!valid()||!active.current.statusVerified||deviceConnectionState(active.current.device)!=='online'||!can(tool))return
-  locked.current=true;setBusy(true);setError('');setReceipt('');action.current=tool;if(tool!=='apps.act')setObservation(null)
+  locked.current=true;setBusy(true);setError('');setReceipt('');action.current=tool;setVisual(null);if(tool!=='apps.act')setObservation(null)
   try{const next=await localApi<{id:string}>('/api/local-devices/'+device.id+'/jobs',{tool,arguments:{app:appId,...args},confirm:true,request_id:crypto.randomUUID()});if(valid())setJob({id:next.id,status:'queued',result:'',error:''})}catch(e){if(valid())setError((e as Error).message+'；提交状态未确认时，请先检查调用记录，避免重复操作。')}finally{locked.current=false;if(valid())setBusy(false)}
  }
- const changeApp=(id:string)=>{setApp(id);setWindows([]);setWindowId('');setObservation(null);setTask(null);setTaskList([]);setJob(null);setReceipt('');setError('');setText('');setWrite(false);setLaunchState('')}
+ const changeApp=(id:string)=>{setApp(id);setWindows([]);setWindowId('');setObservation(null);setVisual(null);setTask(null);setTaskList([]);setJob(null);setReceipt('');setError('');setText('');setWrite(false);setLaunchState('')}
  const act=(kind:string)=>{if(!observation||observationExpired||!supports(kind))return;const token=observation.observation;setObservation(null);void perform('apps.act',{observation:token,element:Number(element),action:kind,...(kind==='type'?{text}:kind==='key'?{key}:{})})}
  const authorize=()=>{if(!profile||!computer)return;computer.setExpanded(true);void computer.act('applications.open',{id:profile.id,fingerprint:profile.fingerprint})}
  return <section aria-label="本地应用工作区" className="space-y-4">
@@ -67,8 +70,9 @@ function ApplicationSession({device,statusVerified,onBusyChange}:{device:LocalDe
     <p className="text-xs text-muted-foreground">下方为手动检查工具；仅点击启动应用不会执行上面填写的任务。冷启动会等待窗口就绪。</p>
     <div className="flex flex-wrap gap-2"><button type="button" className={button} disabled={blocked||!can('apps.launch')} onClick={()=>void perform('apps.launch',{})}>启动应用</button><button type="button" className={button} disabled={blocked||!can('apps.windows')} onClick={()=>void perform('apps.windows',{})}>刷新应用窗口</button></div>
     {launchState&&<p role="status" className="rounded-lg bg-secondary p-3 text-sm">{launchState}</p>}
-    <label className="block text-sm">应用窗口<select aria-label="应用窗口" className={field} value={windowId} disabled={blocked} onChange={e=>{setWindowId(e.target.value);setObservation(null)}}><option value="">选择窗口</option>{windows.map(w=><option key={w.id} value={w.id}>{w.title}</option>)}</select></label>
-    <button type="button" className={button} disabled={blocked||!windowId||!can('apps.observe')} onClick={()=>void perform('apps.observe',{window:windowId})}>观察窗口与控件</button>
+    <label className="block text-sm">应用窗口<select aria-label="应用窗口" className={field} value={windowId} disabled={blocked} onChange={e=>{setWindowId(e.target.value);setObservation(null);setVisual(null)}}><option value="">选择窗口</option>{windows.map(w=><option key={w.id} value={w.id}>{w.title}</option>)}</select></label>
+    <div className="flex flex-wrap gap-2"><button type="button" className={button} disabled={blocked||!windowId||!can('apps.observe')} onClick={()=>void perform('apps.observe',{window:windowId})}>观察窗口与控件</button>{can('apps.observe_visual')&&<button type="button" className={button} disabled={blocked||!windowId} onClick={()=>void perform('apps.observe_visual',{window:windowId,activate:selected.control===true})}>观察窗口画面</button>}</div>
+    {visual&&job?.images?.[0]&&<ApplicationVisionPanel observation={visual} image={'data:'+job.images[0].mimeType+';base64,'+job.images[0].data} disabled={blocked} expired={now-visualAt>=30000} canControl={can('apps.act_visual')} text={text} onTextChange={setText} onAction={(point,args)=>{if(now-visualAt<30000&&typeof visual.observation==='string')void perform('apps.act_visual',{observation:visual.observation,...point,...args})}}/>}
     {observation&&<div className="space-y-3 rounded-xl border p-4"><p className="text-xs text-muted-foreground">{observationExpired?'观察已过期，请重新点击“观察窗口与控件”。':'观察剩余 '+Math.max(0,30-Math.floor((now-observedAt)/1000))+' 秒，只可执行一次。'}操作会在主界面请求确认，确认后核对控件身份再执行。</p>{!!job?.images?.length&&<img className="max-h-96 max-w-full rounded-lg border object-contain" alt="已授权应用窗口截图" src={'data:'+job.images[0].mimeType+';base64,'+job.images[0].data}/>}
      <label className="block text-sm">目标控件<select className={field} aria-label="目标控件" value={element} disabled={blocked} onChange={e=>setElement(e.target.value)}><option value="">选择控件</option>{observation.controls.filter(c=>c.enabled&&!c.password).map(c=><option key={c.id} value={c.id}>{c.id} · {c.name||c.type}</option>)}</select></label>
      {chosenControl?.value&&<div aria-label="当前控件内容" className="rounded-lg bg-secondary p-3 text-sm"><p className="text-xs text-muted-foreground">观察时的控件内容（操作后需重新观察核对）</p><pre className="whitespace-pre-wrap break-all">{chosenControl.value}</pre></div>}

@@ -3904,7 +3904,12 @@ routerAdd("POST", "/api/agent-runs/{id}/evaluate", function (e) {
     if (evalStr) {
       try {
         var evalOld = JSON.parse(evalStr)
-        if (evalOld && typeof evalOld === "object" && !Array.isArray(evalOld)) {
+        // A newly created/retried JSON field can be {}. Only a complete score
+        // is cached; an empty object must not suppress the first evaluation.
+        if (evalOld && typeof evalOld === "object" && !Array.isArray(evalOld) &&
+            typeof evalOld.score === "number" && isFinite(evalOld.score) &&
+            Array.isArray(evalOld.dimensions) && evalOld.dimensions.length > 0 &&
+            Array.isArray(evalOld.suggestions)) {
           return e.json(200, { ok: true, run_id: id, evaluation: evalOld, cached: true })
         }
       } catch (_) {}

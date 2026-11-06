@@ -19,6 +19,7 @@ export function localApplicationReadiness(need:AgentCapabilityRequirement,tools:
   if(!mentionsApplication(text,app.name))return false
   if(app.adapter==='codex')return has('apps.task_start','apps.task_status','apps.task_cancel')&&allows('apps.task_start',app.id)&&(!visual)&&(need.access==='read'||app.allowWrite===true&&catalog.get('apps.task_start')?.['x-studio-app-workspace-write']===true)
   if(launch&&!operate&&!visual)return allows('apps.launch',app.id)
+  if(visual&&has('apps.windows','apps.observe_visual')&&allows('apps.observe_visual',app.id))return need.access==='read'||app.control===true&&allows('apps.act_visual',app.id)
   return has('apps.windows','apps.observe')&&allows('apps.observe',app.id)&&(!visual||catalog.get('apps.observe')?.['x-studio-application-images']===true)&&(need.access==='read'||app.control===true&&allows('apps.act',app.id))
  })
  return {modern:raw.length>0,supported,matched:apps.some(app=>mentionsApplication(text,app.name))}

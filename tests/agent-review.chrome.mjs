@@ -358,6 +358,12 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
       const done=await evaluate(`(() => {const b=[...document.querySelectorAll("button")].find(x=>x.textContent?.includes(${JSON.stringify(text)}));if(!b||b.disabled)return false;b.click();return true})()`)
       assert.ok(done,"Missing enabled browser button: "+text)
     }
+    const selectPlanningModel=async()=>{
+      const key=JSON.stringify([connection.item.id,'review-ui-model'])
+      await wait('Array.from(document.querySelector(\'select[aria-label="Agent 规划模型"]\')?.options||[]).some(o=>o.value==='+JSON.stringify(key)+')','employee-authorized planning model is available')
+      await evaluate(`(()=>{const select=document.querySelector('select[aria-label="Agent 规划模型"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,${JSON.stringify(key)});select.dispatchEvent(new Event('change',{bubbles:true}))})()`)
+      await wait('document.querySelector(\'select[aria-label="Agent 规划模型"]\')?.value==='+JSON.stringify(key),'planning model explicitly selected')
+    }
     await cmd("Page.navigate",{url:webOrigin+"/login?next=%2Fagent-run"})
     try {
       await wait('document.querySelector("input[type=email]")!==null',"login page")
@@ -931,6 +937,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
         await wait('document.querySelector("#agent-requirement")!==null','negative-scope requirement editor')
         await evaluate('document.querySelector("#agent-requirement").focus()')
         await cmd('Input.insertText',{text:'V30_DENY_RESOURCES：禁止使用 doc_search，也不要联网；只对我提供的文字做文本摘要。'})
+        await selectPlanningModel()
         await clickText('预览要求与能力依赖')
         await wait('[...document.querySelectorAll("button")].some(b=>b.textContent?.includes("确认要求并生成方案")&&!b.disabled)','saved requirements and verified model available for negative-scope generation')
         await clickText('确认要求并生成方案');await wait('document.body.innerText.includes("已生成可编辑方案")','model-proposed conflicting resource plan')
@@ -976,6 +983,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
       await cmd("Input.insertText",{text:requirement})
       await wait('document.querySelector("#agent-requirement")?.value.includes("V17_CREATE_JOURNEY")',
         "real user requirement typed")
+      await selectPlanningModel()
       await clickText('预览要求与能力依赖')
       await wait('[...document.querySelectorAll("button")].some(b=>b.textContent?.includes("确认要求并生成方案")&&!b.disabled)','saved requirements and verified model before generating the positive plan')
       await clickText('确认要求并生成方案')
@@ -1554,8 +1562,21 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
     await wait('document.body.innerText.includes("根据反馈优化方案")',"integrated optimization section")
     assert.equal(await evaluate('document.getElementById("spec-optimize")===null'),true,
       "Version improvement must be inline, not hidden in a distant sidebar")
+    await cmd('Network.enable')
     await clickText("生成评估")
-    await wait('document.body.innerText.includes("总分")',"actual model/rule evaluation")
+    try{await wait('document.body.innerText.includes("总分")',"actual model/rule evaluation")}
+    catch(error){
+      const responses=chrome.client.events.filter(e=>e.method==='Network.responseReceived'&&e.params?.response?.url?.endsWith('/evaluate'))
+      const responseBodies=[]
+      for(const entry of responses)responseBodies.push({status:entry.params.response.status,...await cmd('Network.getResponseBody',{requestId:entry.params.requestId}).catch(()=>({body:'unavailable'}))})
+      console.error('EVALUATION_DIAGNOSTIC',JSON.stringify({persisted:(await api('GET','/api/agent_runs/'+run.run_id)).evaluation,responses:responseBodies,pbLogs:pbLogs.slice(-1800)}))
+      throw error
+    }
+    const evaluatedOriginal=await api('GET','/api/agent_runs/'+run.run_id)
+    assert.equal(typeof evaluatedOriginal.evaluation?.score,'number','empty JSON evaluation must generate an actual score')
+    const cachedEvaluation=await api('POST','/api/agent-runs/'+run.run_id+'/evaluate',{})
+    assert.equal(cachedEvaluation.cached,true,'complete evaluation is reused without another model call')
+    assert.deepEqual(cachedEvaluation.evaluation,evaluatedOriginal.evaluation)
     // Select an unrelated Agent on the left to ensure optimization stays bound
     // to the run's original Agent ID, never the sidebar selection.
     assert.ok(await evaluate(`(()=>{

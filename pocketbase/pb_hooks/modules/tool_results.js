@@ -226,18 +226,24 @@ function projectRun(app,uid,run) {  try { assertRunAccessible(app,uid,String(run
   if (!run.source_access_revoked) {
     // PocketBase JSON fields can be empty objects after an explicit retry reset.
     // Normalize incomplete optional DTOs to null so UI consumers see the declared contract.
-    var evaluation = run.evaluation
+    // publicExport can expose Go-backed JSON maps/slices. Materialize their
+    // JSON value before Array.isArray checks; valid saved scores must survive
+    // this DTO projection rather than being mistaken for an empty retry reset.
+    var evaluation = null
+    try { evaluation = JSON.parse(JSON.stringify(run.evaluation)) } catch (_) {}
     if (evaluation && (typeof evaluation !== "object" || Array.isArray(evaluation) ||
         !Array.isArray(evaluation.dimensions) || !Array.isArray(evaluation.suggestions) ||
-        !Number.isFinite(Number(evaluation.score)))) run.evaluation = null
-    var feedback = run.feedback
+        typeof evaluation.score !== "number" || !Number.isFinite(evaluation.score))) evaluation = null
+    run.evaluation = evaluation
+    var feedback = null
+    try { feedback = JSON.parse(JSON.stringify(run.feedback)) } catch (_) {}
     if (feedback && (typeof feedback !== "object" || Array.isArray(feedback) ||
         (feedback.rating !== "up" && feedback.rating !== "down") || !Array.isArray(feedback.tags))) {
-      run.feedback = null
+      feedback = null
     } else if (feedback) {
       feedback.comment = String(feedback.comment || "")
-      run.feedback = feedback
     }
+    run.feedback = feedback
 
     var checkpoint = {}
     try {
@@ -257,6 +263,13 @@ function projectRecord(app,uid,record) {
     exported.checkpoint = JSON.parse(String(record.getString("checkpoint") || "{}")) || {}
   } catch (_) {
     exported.checkpoint = {}
+  }
+  // Read persisted JSON directly. publicExport's Go JSONRaw wrappers are not
+  // ordinary JS objects during validation, even though HTTP marshals them as JSON.
+  var optional = ["evaluation", "feedback"]
+  for (var i=0;i<optional.length;i++) {
+    try { exported[optional[i]] = JSON.parse(String(record.getString(optional[i]) || "null")) }
+    catch (_) { exported[optional[i]] = null }
   }
   return projectRun(app,uid,exported)
 }

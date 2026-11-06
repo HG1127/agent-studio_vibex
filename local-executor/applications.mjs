@@ -7,6 +7,7 @@ import {applicationNative} from './application-native.mjs'
 import {confirmManaged} from './managed-confirmation.mjs'
 import {mcpResult} from './result.mjs'
 import {createCodexTasks} from './codex-tasks.mjs'
+import {registerApplicationVision} from './application-vision.mjs'
 import {setTimeout as delay} from 'node:timers/promises'
 import {allowedWindowTarget,resolveWindowTarget,shortcutApplicationPath,isQoderHelper} from './application-target.mjs'
 import {APPLICATION_FAILURE_MESSAGES} from './application-feedback.mjs'
@@ -87,10 +88,11 @@ export function prioritizeApplicationControls(rows){
 export function hasActionableElectronControls(rows){
  return rows.some(c=>c.enabled&&!c.password&&/\.(Edit|Button|TabItem|ComboBox|ListItem|CheckBox|RadioButton)$/.test(c.type||'')&&Array.isArray(c.actions)&&c.actions.some(a=>a==='click'||a==='type'||a==='key'))
 }
-export function registerApplications({add,config,native=applicationNative,launch=spawn,confirm=confirmManaged,clock=Date.now,launchWaitMs=25000,pollMs=600}){
+export function registerApplications({add,config,native=applicationNative,nativeVision,launch=spawn,confirm=confirmManaged,clock=Date.now,launchWaitMs=25000,pollMs=600}){
  const permission=validateApplicationControl(config.applications)
  if(!permission.enabled||!permission.grants.length)return {close:async()=>{}}
  const grants=new Map(permission.grants.map(g=>[g.id,g])),observations=new Map(),windowCache=new Map()
+ let vision
  const desktop=permission.grants.filter(g=>g.adapter==='desktop'),controlled=desktop.filter(g=>g.control)
  const appSchema=list=>({type:'string',enum:list.map(g=>g.id)})
  const addTool=(name,description,properties,fn,required)=>{const s=schema(properties,required);if(name===(desktop.length?'apps.windows':'apps.task_start'))s['x-studio-applications']=permission.grants.map(g=>({id:g.id,name:g.name,adapter:g.adapter,control:g.control,...(g.adapter==='codex'?{allowWrite:g.allowWrite}:{})}));if(name==='apps.observe')s['x-studio-application-images']=permission.images;if(name==='apps.task_start')s['x-studio-app-workspace-write']=(config.roots||[]).some(r=>!r.allowedFiles&&r.readOnly!==true);add(name,description,s,fn)}
@@ -119,6 +121,7 @@ export function registerApplications({add,config,native=applicationNative,launch
   })
   addTool('apps.windows','列出已授权应用的可见窗口。只返回该应用的窗口，不枚举其他应用的数据。',{app:appSchema(desktop)},async(args,signal)=>{exact(args,['app']);const g=await checked(args.app);return JSON.stringify({application:g.name,windows:(await windows(g,signal)).map(({path,...w})=>w)})})
   addTool('apps.observe','只读观察已授权窗口；后台窗口不会盲读 Electron 控件。需要在同一次操作中激活并观察时，明确传 activate:true，须本机确认后才切换前台。凭据30秒有效。',{app:appSchema(desktop),window:str,activate:{type:'boolean'}},async(args,signal)=>{
+   vision?.invalidate(args.app)
    exact(args,['app','window','activate'],['app','window']);const g=await checked(args.app);if(typeof args.window!=='string'||!/^\d{1,20}$/.test(args.window))throw Error('application_window_changed');if(args.activate!==undefined&&typeof args.activate!=='boolean')throw Error('invalid_application_arguments');if(args.activate===true&&!g.control)throw Error('application_control_denied')
    observations.delete(g.id)
    const changed=async list=>JSON.stringify({application:g.name,status:list.length?'window_changed':'waiting_window',requestedWindow:args.window,windows:list.map(({path,...w})=>w),actionable:false,retryAction:false,message:'原窗口已关闭或重建。请使用刷新后的窗口编号重新观察；未重新启动、点击或输入。'})
@@ -156,6 +159,7 @@ export function registerApplications({add,config,native=applicationNative,launch
   })
  }
  if(controlled.length)addTool('apps.act','在已授权应用窗口内点击、输入或按键。需要30秒内一次性观察凭据，接管/窗口变化会停止。每次输入均需本机明确确认；发送消息等不能由模型自行批准。',{app:appSchema(controlled),observation:str,element:integer,action:{type:'string',enum:['click','type','key']},text:{type:'string',maxLength:4000},key:{type:'string',enum:keys}},async(args,signal)=>{
+  vision?.invalidate(args.app)
   exact(args,['app','observation','element','action','text','key'],['app','observation','element','action']);const g=await checked(args.app)
   if(!g.control)throw Error('application_control_denied')
   const o=observations.get(g.id);observations.delete(g.id)
@@ -172,6 +176,7 @@ export function registerApplications({add,config,native=applicationNative,launch
   if(result?.accepted!==true)throw Error('application_action_unconfirmed')
   return JSON.stringify({application:g.name,accepted:true,action:args.action,observeAgain:true,contentsVerified:false})
  },['app','observation','element','action'])
+ vision=registerApplicationVision({permission,addTool,checked,windows,confirm,clock,native:nativeVision,invalidateControls:id=>observations.delete(id)})
  const tasks=createCodexTasks({grants:permission.grants.filter(g=>g.adapter==='codex'),roots:config.roots,checked,confirm,launch,addTool})
- return {close:async()=>{observations.clear();windowCache.clear();await tasks.close()}}
+ return {close:async()=>{observations.clear();windowCache.clear();vision.close();await tasks.close()}}
 }

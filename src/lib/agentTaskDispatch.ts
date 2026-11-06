@@ -64,7 +64,8 @@ export function buildAgentTaskDispatch(instruction:string,context:DispatchContex
    '需要选中的电脑在线，目标目录必须位于已授权目录内，并单独授权这一具体动作；写入、移动和删除在执行前需确认。',available)
  }
  if(appTask){
-  add('desktop-app',/codex/.test(text)?'本机 Codex 任务':'本机应用操作',/codex/.test(text)?['apps.task_start','apps.task_status','apps.task_cancel']:hasOpen&&!/输入|点击|按键|操作|控制|\b(type|click|control)\b/.test(text)?['apps.launch']:['apps.windows','apps.observe',...(appAccess==='write'?['apps.act']:[])],appAccess==='write','只使用所选电脑明确授权的应用和具体动作；窗口、任务及写入权限会重新核对，执行前仍需审批。',application.supported)
+  const windowTools=local.has('apps.observe_visual')?['apps.windows','apps.observe_visual',...(appAccess==='write'?['apps.act_visual']:[])]:['apps.windows','apps.observe',...(appAccess==='write'?['apps.act']:[])]
+  add('desktop-app',/codex/.test(text)?'本机 Codex 任务':'本机应用操作',/codex/.test(text)?['apps.task_start','apps.task_status','apps.task_cancel']:hasOpen&&!/输入|点击|按键|操作|控制|\b(type|click|control)\b/.test(text)?['apps.launch']:windowTools,appAccess==='write','只使用所选电脑明确授权的应用和具体动作；窗口、任务及写入权限会重新核对，执行前仍需审批。',application.supported)
  }else if(hasOpen&&!hasFiles){
   add('desktop-app','打开本机应用',['apps.launch'],true,'只允许连接器公开且经授权的应用操作；不执行任意 shell 或脚本。',localAll(['apps.launch']))
  }

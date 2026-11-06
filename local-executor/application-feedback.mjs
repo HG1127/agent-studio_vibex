@@ -1,6 +1,8 @@
 // Shared by the connector and employee UI. Never expose native error stacks,
 // executable paths or untrusted application text as a diagnostic message.
 export const APPLICATION_FAILURE_MESSAGES=Object.freeze({
+ application_vision_unavailable:'本机视觉操作组件尚未就绪，请更新桌面客户端并恢复连接。没有执行视觉操作。',
+ application_coordinate_denied:'坐标不属于当前窗口截图，未执行。请重新观察截图并使用图片内坐标。',
  application_launcher_needs_review:'此应用的启动器与实际窗口程序需要重新核对。请打开“管理应用授权”，重新选择当前应用并保存，再恢复连接；Qoder 请选择重新发现的编辑器程序。',
  application_launch_failed:'应用启动失败或进程异常退出，未发现已授权应用的可用窗口。请检查应用是否可以手动打开；未自动重复启动。',
  application_launch_denied:'Windows 拒绝启动此应用。请检查当前账号的应用访问权限及系统提示；未自动提权或重复启动。',

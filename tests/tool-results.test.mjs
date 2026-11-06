@@ -32,6 +32,27 @@ function fixture() {
   return {db,app,store,envelope,scope,grants,runs,configs,save,sanitize}
 }
 
+test('record projection preserves persisted evaluation and feedback while rejecting empty retry resets',()=>{
+ const f=fixture();try{
+  f.save()
+  const evaluation={score:80,dimensions:[{name:'Output',score:80}],suggestions:[],mode:'rule'}
+  const feedback={rating:'up',tags:[],comment:'Verified fixture'}
+  const json={evaluation,feedback,checkpoint:{attempt_no:2}}
+  const record={publicExport:()=>({id:'run-a',evaluation:{},feedback:{}}),getString:key=>JSON.stringify(json[key])}
+  const projected=f.store.projectRecord(f.app,'alice',record)
+  assert.deepEqual(JSON.parse(JSON.stringify(projected.evaluation)),evaluation)
+  assert.deepEqual(JSON.parse(JSON.stringify(projected.feedback)),feedback)
+  assert.equal(projected.attempt_no,2)
+  json.evaluation={};json.feedback={}
+  const reset=f.store.projectRecord(f.app,'alice',record)
+  assert.equal(reset.evaluation,null);assert.equal(reset.feedback,null)
+  json.evaluation=evaluation;json.feedback=feedback;f.grants.clear()
+  const revoked=f.store.projectRecord(f.app,'alice',record)
+  assert.equal(revoked.evaluation,null);assert.equal(revoked.feedback,null)
+  assert.equal(revoked.source_access_revoked,true)
+ }finally{f.db.close()}
+})
+
 test('invalid structured output stays in audit storage but cannot become evidence or replay as success',()=>{
   const f=fixture();try{
     f.envelope.validation={status:'invalid',error:'structured_tool_output_required'}
