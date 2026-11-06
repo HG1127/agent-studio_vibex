@@ -85,6 +85,7 @@ tmp/
 temp/
 # Agent Studio worktree-local browser profiles and scratch files
 .tmp/
+.ci-fonts/
 agentstudio-ci-*/
 test-results/
 playwright-report/

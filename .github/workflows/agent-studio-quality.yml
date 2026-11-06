@@ -181,11 +181,33 @@ jobs:
           test "$(sudo -n /usr/bin/setpriv --reuid=nobody --regid=nogroup --init-groups --no-new-privs /usr/bin/env -i PATH=/usr/bin:/bin HOME=/tmp /usr/bin/id -u)" = "$(id -u nobody)"
           sudo -n /usr/bin/setpriv --reuid=nobody --regid=nogroup --init-groups --no-new-privs /usr/bin/env -i PATH=/usr/bin:/bin HOME=/tmp /usr/bin/bash -c 'test ! -r /etc/shadow'
           echo "LINUX_BUILDER_PRIVDROP_OK"
+      - name: Cache Chinese PDF test font
+        uses: actions/cache@v4
+        with:
+          path: .ci-fonts
+          key: noto-cjk-regular-v1-${{ runner.os }}-${{ runner.arch }}
       - name: Install Chinese PDF test font
+        timeout-minutes: 6
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
-          test -s /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+          set -euo pipefail
+          font=/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+          cached=.ci-fonts/NotoSansCJK-Regular.ttc
+          if test -s "$cached"; then
+            sudo install -D -m 0644 "$cached" "$font"
+          elif ! test -s "$font"; then
+            # The Azure HTTP mirror repeatedly stalled on the 61 MB package.
+            # Keep apt's signed metadata/package verification, use Ubuntu's
+            # official HTTPS archive, and fail within this step's budget.
+            if test -f /etc/apt/apt-mirrors.txt; then
+              sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+            fi
+            timeout 120s sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=1 update -qq
+            timeout 180s sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=1 install -y --no-install-recommends fonts-noto-cjk
+          fi
+          test -s "$font"
+          test "$(head -c 4 "$font")" = ttcf
+          mkdir -p .ci-fonts
+          if ! test -s "$cached"; then cp "$font" "$cached"; fi
       - name: Unit regression and TypeScript production build
         run: pnpm check
       - name: Internal production readiness policy (offline unit checks only)
