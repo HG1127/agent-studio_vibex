@@ -8,6 +8,17 @@ function originalDirectoryExecutorObservation(command,phase,stdoutBytes,stderrBy
  const count=value=>Number.isSafeInteger(value)&&value>=0?Math.min(65536,value):0
  return Object.freeze({command:['pair','run','recover','commit-result'].includes(command)?command:'unknown',phase:['admission','network','imports','argv','config','scope','ca','native','request-plan','request','response','online','settled','network-report'].includes(phase)?phase:'unknown',stdout_bytes:count(stdoutBytes),stderr_bytes:count(stderrBytes),output_bound_exceeded:!Number.isSafeInteger(stdoutBytes)||stdoutBytes<0||!Number.isSafeInteger(stderrBytes)||stderrBytes<0||stdoutBytes+stderrBytes>65536,exit_code:code===null?null:Number.isSafeInteger(code)&&code>=0&&code<=255?code:'unknown',signal:signal===null?'none':['SIGTERM','SIGKILL','SIGINT'].includes(signal)?signal:'unknown'})
 }
+export async function serveOriginalDirectoryReleaseMetadata(method,raw,readStatic,res){
+ if(method!=='GET'||raw!=='/downloads/connector-release.json')return false
+ // This directory-only fixture qualifies no release binary. A404 must reflect
+ // actual absence from the original build, never a fabricated valid manifest.
+ try{await readStatic('downloads/connector-release.json');throw Error('original_directory_connector_artifact_not_qualified')}catch(error){if(error?.code!=='ENOENT')throw error}
+ res.writeHead(404,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end('{"error":"connector_release_unavailable"}');return true
+}
+function originalDirectoryRefusalObservation(method,kind,digest,ordinal){
+ if(!['denied','legacy'].includes(kind)||typeof digest!=='string'||!/^[a-f0-9]{64}$/.test(digest)||!Number.isSafeInteger(ordinal)||ordinal<1||ordinal>24)return null
+ return Object.freeze({event:'original_directory_refused_route_fingerprint',method:['GET','POST','HEAD','PUT','PATCH','DELETE','OPTIONS'].includes(method)?method:'unknown',kind,pathname_sha256:digest,ordinal})
+}
 export async function startOriginalDirectoryFixture(env=process.env){
  requireOriginalDirectoryCi(env)
  const network=installOriginalDirectoryNetworkGuard(env)
@@ -57,7 +68,8 @@ export async function startOriginalDirectoryFixture(env=process.env){
    const kind=originalDirectoryRoute(req.method,req.url,body);if(['authorization','x-rh-user-id','x-forwarded-user','x-agentstudio-identity'].some(k=>req.headers[k]!==undefined))throw Error('original_directory_forbidden_auth_header')
    if(kind==='page'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});res.end(index);return}
    if(kind==='asset'){const p=new URL(req.url,f.allowedOrigin).pathname.slice(1),data=await staticFile(p),extension=path.extname(p),types={'.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.woff2':'font/woff2','.woff':'font/woff','.ico':'image/x-icon','.ttf':'font/ttf'};if(!types[extension])throw Error('original_directory_asset_type');res.writeHead(200,{'Content-Type':types[extension],'Cache-Control':'no-store'});res.end(data);return}
-   if(kind!=='native'){failures.push(kind);res.writeHead(405,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end('{"error":"original_directory_route_refused"}');return}
+   if(kind==='release-metadata'){if(await serveOriginalDirectoryReleaseMetadata(req.method,req.url,staticFile,res)!==true)throw Error('original_directory_release_metadata_not_handled');return}
+   if(kind!=='native'){failures.push(kind);const observation=originalDirectoryRefusalObservation(req.method,kind,hash(req.url.split('?')[0].slice(0,4096)),failures.length);if(observation)try{process.stderr.write(JSON.stringify(observation)+'\n')}catch{}res.writeHead(405,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end('{"error":"original_directory_route_refused"}');return}
    const native=req.url.slice('/__pg_native'.length);inventoryWire.observe(req.method,native,'admitted');requests.push({method:req.method,path:native});if(req.method==='POST'&&native.startsWith('/api/v2/local-devices'))posts.push({path:native,body:structuredClone(body)})
    let hold;if(nextHold&&req.method==='GET'&&native==='/api/v2/local-devices/jobs/'+nextHold.id){hold=nextHold;nextHold=null;hold.enter({actual_original_get_received:true});await hold.done}
    const headers=Object.fromEntries(Object.entries(req.headers).filter(([k])=>!hop.has(k)));headers.host=upstream.host

@@ -23,6 +23,7 @@ export function originalDirectoryRoute(method,raw,body){
   }
   return 'denied'
  }
+ if(method==='GET'&&raw==='/downloads/connector-release.json')return 'release-metadata'
  if(method!=='GET')return 'denied'
  if(u.pathname==='/login'&&(!u.search||u.search==='?next='+encodeURIComponent('/tool-hub?view=devices')))return 'page'
  if(u.pathname==='/tool-hub'&&(!u.search||u.search==='?view=devices'))return 'page'

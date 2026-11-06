@@ -13,11 +13,23 @@ export async function withHostedProfileDiagnostics(profile,body){
  if(!profiles.has(profile))return await body()
  return await scope.run({profile},body)
 }
+// Known code DATA only. Unknown errors remain private; no message/stack/cause is read.
+const hostedProfileHttpCodes=Object.freeze({original_home_knowledge_statistics_unavailable:'original_home_knowledge_statistics_unavailable',original_quality_schema_unavailable:'original_quality_schema_unavailable'})
+function hostedProfileKnownFailure(selected,phase,error){
+ try{
+  let error_kind=quality089SchemaErrorKind(error)
+  if(error_kind==='unclassified'&&error!==null&&(typeof error==='object'||typeof error==='function')&&!isProxy(error)){
+   const descriptor=Object.getOwnPropertyDescriptor(error,'code')
+   if(descriptor&&Object.hasOwn(descriptor,'value')&&typeof descriptor.value==='string'&&Object.hasOwn(hostedProfileHttpCodes,descriptor.value))error_kind=hostedProfileHttpCodes[descriptor.value]
+  }
+  if(error_kind!=='unclassified')emit({event:'hosted_profile_known_failure',profile:selected.profile,phase,error_kind})
+ }catch{}
+}
 export async function hostedProfilePhase(phase,body){
  const selected=scope.getStore(),enabled=selected&&phases.has(phase)
  if(enabled)emit({event:'hosted_profile_phase',profile:selected.profile,phase,state:'enter'})
  try{const result=await body();if(enabled)emit({event:'hosted_profile_phase',profile:selected.profile,phase,state:'passed'});return result}
- catch(error){if(enabled)emit({event:'hosted_profile_phase',profile:selected.profile,phase,state:'refused'});throw error}
+ catch(error){if(enabled){emit({event:'hosted_profile_phase',profile:selected.profile,phase,state:'refused'});hostedProfileKnownFailure(selected,phase,error)}throw error}
 }
 export function hostedProfileCatalogRefusal(auditor,check){
  const selected=scope.getStore();if(!selected||!auditors.has(auditor)||!Number.isSafeInteger(check)||check<0||check>limits[auditor])return

@@ -32,7 +32,7 @@ test('actual original PluginMarket full action paths keep owner, source, consent
     await p.getByRole('textbox', { name: '工作邮箱', exact: true }).fill(f.credentials[who].email);
     await p.getByLabel('密码', { exact: true }).fill(f.credentials[who].password);
     await p.getByRole('button', { name: '登录', exact: true }).click();
-    await expect(p).toHaveURL(f.url); await expect(p.getByRole('heading', { name: '插件', exact: true })).toBeVisible();
+    await expect(p).toHaveURL(f.url); await expect(p.getByRole('heading', { name: '插件市场', exact: true })).toBeVisible();
     await expect(p.getByRole('heading', { name: '探索插件', exact: true })).toBeVisible();
   };
   const connectionSection = p => p.getByRole('heading', { name: /^我的连接/ }).locator('xpath=ancestor::section[1]');
@@ -41,7 +41,7 @@ test('actual original PluginMarket full action paths keep owner, source, consent
   const advanced = async () => { const details = page.locator('details').filter({ has: page.locator('summary').filter({ hasText: '高级功能 · MCP 公共注册表' }) }); if (await details.getAttribute('open') === null) await details.locator('summary').click(); await expect(page.getByRole('heading', { name: '工具市场', exact: true })).toBeVisible(); };
   const ownedCount = async who => (await f.db.query('SELECT count(*)::integer AS value FROM agentstudio.mcp_connections WHERE owner_user_id=$1::uuid', [f.users[who]])).rows[0].value;
   const createSeed = async (who, name, suffix) => {
-    const reply = await f.request(who, '/api/v2/mcp-connections', { name, description: 'Owned fresh CI seed; no tool execution', url: 'https://tools.example.com/seed/' + suffix, headers: [], enabled: true }, { headers: headers(who) });
+    const reply = await f.request(who, '/api/v2/mcp-connections', { request_id: crypto.randomUUID(), name, description: 'Owned fresh CI seed; no tool execution', url: 'https://tools.example.com/seed/' + suffix, headers: [], enabled: true }, { headers: headers(who) });
     expect(reply.status).toBe(201); return reply.body.item;
   };
   const discoverSeed = async (who, row) => {

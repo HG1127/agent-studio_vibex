@@ -1325,7 +1325,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-genuine-source-pins.mjs",
-      "sha256": "c9ddc421c822b5a8ee2b953c06712acd236fa58aebe8ad6e8866edfd37fa918f"
+      "sha256": "583f122fc3c902a0038cbad624137155b97a21064571af6d0407f269d61e4e63"
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-original-home-guard.mjs",
@@ -1333,7 +1333,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-original-home-reviewed-sources.json",
-      "sha256": "3dbe7cb5a8b717514900b1d8fa2464bc0ad3655629c6252ff7cb305496d4664e"
+      "sha256": "f52e07a7fd3cc277d8f75acfd4de24810276a80a1a1c02b2f8505b0190bfe64e"
     },
     {
       "path": "services/pg-api/tests/helpers/workflow-v2-agent-fixture.mjs",
@@ -3602,16 +3602,22 @@
     {"path": "services/pg-api/src/staff084-quality089-api-audit.mjs", "sha256": "a8b85c831936b67020fb225a77e75d94d1fe6e75c82cc0398766cde84f8096d4"},
     {"path": "services/pg-api/tests/complete069-source-directory-cycle-source-pure.test.mjs", "sha256": "c9d5444847dec0b4b0445af37649b112a5819b43a760b2a1e91f7f19222208a9"},
     {"path": "services/pg-api/tests/full069-node-executable-stream-hash-source-pure.test.mjs", "sha256": "7acfb19897e25e09b0155806906719c5668f27626663129eed92f4f688258c45"},
-    {"path": "services/pg-api/tests/original-create-parent-sequence-source-pure.test.mjs", "sha256": "29287c3092497730b4471c014e99a22f9375c5cfa86d3ffb5951472efeef26fd"},
+    {"path": "services/pg-api/tests/original-create-parent-sequence-source-pure.test.mjs", "sha256": "fd4f55096a835a0b7f9a3801e9d080face3b2f0d5750d7d879e31d4011fcbda3"},
     {"path": "services/pg-api/tests/original-ui-unified-catalog-source-pure.test.mjs", "sha256": "384231eb9ebc79d36c280d0bd4ae50cffa810856803a2f515c3cebe4d2918cce"},
     {"path": "services/pg-api/tests/original-ui-unified-role-delta-source-pure.test.mjs", "sha256": "ee8898aff3aaed64f3173ce71f92d803ad34dddc1541e7f18dd9e407a4df6d97"},
     {"path": "services/pg-api/tests/quality089-release-trigger-integrity-source-pure.test.mjs", "sha256": "1e9b4698e4fcd5cc922a0beb9b237d9b2c02dc2c95da7291b1dd0431eb3a3339"},
-    {"path": "services/pg-api/tests/staff084-statistics-api-source-pure.test.mjs", "sha256": "a65718351ef4b19e4814fb935c2a7076b4b511266d6d15deea015fed4c204d5c"},
+    {"path": "services/pg-api/tests/staff084-statistics-api-source-pure.test.mjs", "sha256": "7ddc6b2b7965fc8a4a0670421fc29cba6bda728a51a57662440bd7bba01c28d6"},
     {"path": "services/pg-api/tests/worker-heartbeat-reader-directory-cycle-source-pure.test.mjs", "sha256": "5a217906851ef5e56dc71c9c5c72f87adca063cc40d21dc11f8eebbc796a747b"},
-    {"path": "tests/profile-phases-source-pure.test.mjs", "sha256": "778f53674a1079281c582a206d249f0e890690d5cec6c946bbffafd20a602774"},
+    {"path": "tests/profile-phases-source-pure.test.mjs", "sha256": "b81f8acf640aa4332af6f484322ad7688b2b1e5c4df00f131efeb92620e6846f"},
     {"path": "services/pg-api/src/employee-quality089-contract.d.mts", "sha256": "f14e2253b1a587e23fb60473f90f3ef0d25a8a4bc69af63180cb83a89d35822a"},
     {"path": "services/pg-api/src/employee-staff084-profile.d.mts", "sha256": "b3099615397feb93508f6ca370f97a84666dd80b31df5c26bc327f5b78006c25"},
     {"path": "services/pg-api/tests/original-statistics-selected-boundary-source-pure.test.mjs", "sha256": "56d8bc2eefb7c6b1e45d7246ec91f4fad987ca43d1d85a275969623867534956"},
-    {"path": "services/pg-api/tests/helpers/original-directory-policy-source-inverse.mjs", "sha256": "941f3773b06820a6fc7d534fc7d01b2168e1c32c6c47dc4e55580bcb0eaa4b6c"}
+    {"path": "services/pg-api/tests/helpers/original-directory-policy-source-inverse.mjs", "sha256": "f337d918c11815f60ce392b900109a5c5cd954702827777fd23b5892306a61a6"}
+,
+    {"path": "services/pg-api/tests/original-create-install-paths-and-legacy-bindings-source-pure.test.mjs", "sha256": "635cea4a42f7895f605b0eb600f10043128ed2548c424dffe60b2ad985b019f5"},
+    {"path": "tests/hosted-profile-known-failure-source-pure.test.mjs", "sha256": "00a5b00382a2dfdd5c3019ff7e24cc1c24d7544f2d25202668ba698450c873b9"},
+    {"path": "tests/original-directory-connector-metadata-pure.test.mjs", "sha256": "a892f969091d38095694f0ba6ebb0d361a1d2504281bb9054314263254d3e9ce"},
+    {"path": "tests/original-plugin-fixture-request-contract-pure.test.mjs", "sha256": "b2bc0c5a6466144558c2c365aaa1c1161ce0982999d40d9d48632d2c87c920a9"},
+    {"path": "tests/original-legacy-source-views-pure.test.mjs", "sha256": "e3b2e6ff1aebf456fe008ac19a59fb4402c9d877165e44a781fed1bfa0667fc5"}
 ]
 }
