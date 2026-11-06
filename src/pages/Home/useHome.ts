@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {confirmInStudio} from "@/lib/studioDialogs"
 import {localApi} from '@/lib/localDevices'
 import {captureRequirements,previewRequirements,type AuthoringPreview,type CapturedRequirements} from '@/lib/authoringRequirements'
+import {authoringRequestErrorText} from '@/lib/authoringErrorText'
 import { callLlmWithFallback, type LlmMessage } from "@/lib/llm"
 import { llmErrorText } from "@/lib/llmErrorText"
 import { getPocketBaseUrl } from "@/lib/pb"
@@ -457,12 +458,18 @@ export function useHome() {
     const context=specContextRef.current
     if(captureKey.current.text!==text)captureKey.current={text,key:crypto.randomUUID()}
     setIsGenerating(true);setErrorMsg('')
+    let stage:"capture"|"preview"="capture"
     try{
       const captured=await captureRequirements(text,captureKey.current.key)
+      stage="preview"
       const preview=await previewRequirements(captured.request_id,{goal:'',task_scope:'',tools:[],task_plan:[]})
       if(context===specContextRef.current)setCreationPreview({text,requestId:captured.request_id,plan:preview.plan})
-    }catch{if(context===specContextRef.current)setErrorMsg('需求预览未完成，请检查登录和服务连接后重试。')}
-    finally{if(context===specContextRef.current)setIsGenerating(false)}
+    }catch(error){
+      if(context===specContextRef.current){
+        const message=authoringRequestErrorText(error,stage)
+        if(message)setErrorMsg(message)
+      }
+    }finally{if(context===specContextRef.current)setIsGenerating(false)}
   },[userInput,isGenerating])
 
   const handleCreate = useCallback(() => {

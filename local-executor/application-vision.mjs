@@ -22,8 +22,10 @@ export function registerApplicationVision({permission,addTool,checked,windows,co
   observations.delete(g.id);invalidateControls(g.id)
   if(typeof window!=='string'||!/^\d{1,20}$/.test(window))throw Error('invalid_application_arguments')
   const selected=(await windows(g,signal)).find(w=>w.id===window);if(!selected)throw Error('application_window_changed')
-  if(activate){if(!g.control)throw Error('application_control_denied');if(!await confirm({kind:'application',message:'应用：'+g.name+'\n操作：激活已授权窗口并获取窗口截图。截图将提供给本次模型；不点击、不输入、不发送。'},signal))throw Error('application_action_declined');await checked(g.id)}
-  signal?.throwIfAborted();return observation(g,await native({action:'observe',path:g.windowPath||g.path,window,activate},{signal}))
+  if(activate&&!g.control)throw Error('application_control_denied')
+  const shouldActivate=activate&&selected.foreground!==true
+  if(shouldActivate){if(!await confirm({kind:'application',message:'应用：'+g.name+'\n窗口：'+selected.title+'\n操作：激活已授权窗口并获取窗口截图。截图将提供给本次模型；不点击、不输入、不发送。'},signal))throw Error('application_action_declined');await checked(g.id)}
+  signal?.throwIfAborted();return observation(g,await native({action:'observe',path:g.windowPath||g.path,window,activate:shouldActivate},{signal}))
  }
  addTool('apps.observe_visual','视觉观察已授权应用窗口，跳过控件树。截图图片坐标与30秒一次性凭据供 act_visual 使用。截图须已授权；activate:true 须本机确认。',{app:app(desktop),window:str,activate:{type:'boolean'}},async(args,signal)=>{
   exact(args,['app','window','activate'],['app','window']);if(!allowed.has(args.app))throw Error('application_denied');if(args.activate!==undefined&&typeof args.activate!=='boolean')throw Error('invalid_application_arguments');return observe(await checked(args.app),args.window,args.activate===true,signal)

@@ -34,6 +34,18 @@ test('approval rejection and executable changes prevent visual input',async()=>{
 test('background observations return authorized images but no input token',async()=>{
  const f=fixture();f.setBackground(true);const o=await f.call('observe_visual',{window:'123'});assert.equal(o.actionable,false);assert.equal(o.observation,null)
 })
+
+test('foreground visual reads skip redundant activation approval while background activation still requires it',async()=>{
+ let confirmations=0
+ const f=fixture({confirm:async()=>{confirmations++;return true}})
+ const o=await f.call('observe_visual',{window:'123',activate:true})
+ assert.equal(o.actionable,true);assert.equal(confirmations,0);assert.equal(f.calls[0].activate,false)
+ f.setBackground(true);await f.call('observe_visual',{window:'123',activate:true})
+ assert.equal(confirmations,1);assert.equal(f.calls.at(-1).activate,true)
+ const rejected=fixture({confirm:async()=>false});rejected.setBackground(true)
+ await assert.rejects(rejected.call('observe_visual',{window:'123',activate:true}),/declined/)
+ assert.equal(rejected.calls.length,0)
+})
 test('a failed post-action screenshot preserves the action receipt and forbids replay',async()=>{
  const f=fixture(),o=await f.call('observe_visual',{window:'123'});f.setPostFailure(true);const result=await f.call('act_visual',{observation:o.observation,x:2,y:3,action:'type',text:'Public research only'})
  assert.equal(result.accepted,true);assert.equal(result.reobserveOnly,true);assert.equal(result.observation,null);assert.equal(f.calls.filter(c=>c.action==='act').length,1)

@@ -1,6 +1,6 @@
 {
   "sourceCommit": "eaf6e08d3f684424fa7e69815f85cefb61ff2dc1",
-  "version": "0.1.0-preview.26",
+  "version": "0.1.0-preview.27",
   "platform": "win32-x64",
   "codeSigned": false,
   "integratedSources": {
@@ -20,10 +20,14 @@
     "compiledWindowProbe": "e20f118b357c57b28f2b3626e8a39201e6db8ad6",
     "updateRecovery": "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11",
     "applicationObservation": "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11",
+    "workbuddyForegroundObservation": "connector-0.1.0-preview.29-foreground-readonly-no-redundant-activation",
+    "applicationFailureDiagnostics": "structured-local-confirmation-timeout-unavailable-cancelled",
     "agentRunRetry": "retry-route-registered-with-agent-engine",
+    "authoringPreviewDiagnostics": "http-status-specific-backend-version-diagnosis-idempotent-retry-chrome-verified",
     "agentBoundLifecycle": "validated-working-tree-before-preview25",
     "runModelSettings": "single-resource-settings-control",
-    "desktopComputerWorkspaceLayout": "validated-working-tree-before-preview25"
+    "desktopComputerWorkspaceLayout": "validated-working-tree-before-preview25",
+    "windowScopedVision": "5f43271cf8dbd059e5134ead0b0355965ccdfbb7"
   },
-  "sourceState": "preview26-candidate-agent-retry-route-local-executor-deadline-and-resource-settings-model-selection"
+  "sourceState": "preview27-candidate-integrated-window-vision-authoring-diagnostics-and-agent-receipt-fixes"
 }

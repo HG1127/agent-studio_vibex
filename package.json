@@ -96,7 +96,8 @@
     "test:research-core": "node tests/tool-results.integration.mjs && node tests/research-workflow.integration.mjs && node tests/research-reports.integration.mjs && node tests/research-monitors.integration.mjs && node tests/authoring-requirements.integration.mjs",
     "test:research-vertical": "node tests/research-vertical.integration.mjs",
     "test:research-ui": "node tests/authoring-requirements.integration.mjs --browser && node tests/tool-results.integration.mjs --browser && node tests/research-workflow.integration.mjs --browser",
-    "test:application-feedback": "node tests/application-feedback.chrome.mjs && node tests/application-vision.chrome.mjs"
+    "test:application-feedback": "node tests/application-feedback.chrome.mjs && node tests/application-vision.chrome.mjs",
+    "test:authoring-errors": "node --experimental-strip-types --test tests/authoring-error-diagnostics.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

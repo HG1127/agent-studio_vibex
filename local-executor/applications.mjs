@@ -105,21 +105,21 @@ export function registerApplications({add,config,native=applicationNative,native
    exact(args,['app']);const g=await checked(args.app);signal?.throwIfAborted()
    if(isQoderHelper(g.path))throw Error('application_launcher_needs_review')
    const existing=await windows(g,signal,true)
-   if(existing.length)return JSON.stringify({application:g.name,accepted:true,status:'ready',alreadyRunning:true,windows:existing.map(({path,...w})=>w)})
+   if(existing.length)return JSON.stringify({app:g.id,application:g.name,accepted:true,status:'ready',alreadyRunning:true,windows:existing.map(({path,...w})=>w)})
    // Window discovery starts a native helper. Cancellation or an application
    // update during that await must be checked before any launch side effect.
    await checked(args.app);signal?.throwIfAborted()
    let exitCode=null,launchError=false
    await new Promise((resolve,reject)=>{const child=launch(g.path,g.accessibility==='electron'?['--force-renderer-accessibility']:[],{shell:false,windowsHide:false,stdio:'ignore',cwd:path.dirname(g.path),env:applicationEnvironment()});child.on('error',error=>{launchError=true;reject(Error(error.code==='ENOENT'?'application_binary_missing':['EACCES','EPERM'].includes(error.code)?'application_launch_denied':'application_launch_failed'))});child.once('exit',code=>{exitCode=code});child.once('spawn',()=>{child.unref();resolve()})})
    const deadline=Date.now()+launchWaitMs
-   do{signal?.throwIfAborted();if(launchError)throw Error('application_launch_failed');const list=await windows(g,signal,true);if(list.length){await checked(args.app);signal?.throwIfAborted();return JSON.stringify({application:g.name,accepted:true,status:'ready',alreadyRunning:false,windows:list.map(({path,...w})=>w)})}if(Date.now()>=deadline)break;await delay(pollMs,undefined,{signal})}while(true)
+   do{signal?.throwIfAborted();if(launchError)throw Error('application_launch_failed');const list=await windows(g,signal,true);if(list.length){await checked(args.app);signal?.throwIfAborted();return JSON.stringify({app:g.id,application:g.name,accepted:true,status:'ready',alreadyRunning:false,windows:list.map(({path,...w})=>w)})}if(Date.now()>=deadline)break;await delay(pollMs,undefined,{signal})}while(true)
    // Single-instance apps/version launchers can exit before the real window
    // appears. Only a window with the pinned identity proves readiness; wait
    // for the bounded discovery period without ever launching a second time.
    if(exitCode!==null&&exitCode!==0)throw Error('application_launch_failed')
-   return JSON.stringify({application:g.name,accepted:true,status:'waiting_window',windows:[],retryLaunch:false,message:'启动请求已受理，但尚未发现可操作窗口。请刷新窗口检查启动弹窗；不会重复启动。'})
+   return JSON.stringify({app:g.id,application:g.name,accepted:true,status:'waiting_window',windows:[],retryLaunch:false,message:'启动请求已受理，但尚未发现可操作窗口。请刷新窗口检查启动弹窗；不会重复启动。'})
   })
-  addTool('apps.windows','列出已授权应用的可见窗口。只返回该应用的窗口，不枚举其他应用的数据。',{app:appSchema(desktop)},async(args,signal)=>{exact(args,['app']);const g=await checked(args.app);return JSON.stringify({application:g.name,windows:(await windows(g,signal)).map(({path,...w})=>w)})})
+  addTool('apps.windows','列出已授权应用的可见窗口。只返回该应用的窗口，不枚举其他应用的数据。',{app:appSchema(desktop)},async(args,signal)=>{exact(args,['app']);const g=await checked(args.app);return JSON.stringify({app:g.id,application:g.name,windows:(await windows(g,signal)).map(({path,...w})=>w)})})
   addTool('apps.observe','只读观察已授权窗口；后台窗口不会盲读 Electron 控件。需要在同一次操作中激活并观察时，明确传 activate:true，须本机确认后才切换前台。凭据30秒有效。',{app:appSchema(desktop),window:str,activate:{type:'boolean'}},async(args,signal)=>{
    vision?.invalidate(args.app)
    exact(args,['app','window','activate'],['app','window']);const g=await checked(args.app);if(typeof args.window!=='string'||!/^\d{1,20}$/.test(args.window))throw Error('application_window_changed');if(args.activate!==undefined&&typeof args.activate!=='boolean')throw Error('invalid_application_arguments');if(args.activate===true&&!g.control)throw Error('application_control_denied')
@@ -127,11 +127,16 @@ export function registerApplications({add,config,native=applicationNative,native
    const changed=async list=>JSON.stringify({application:g.name,status:list.length?'window_changed':'waiting_window',requestedWindow:args.window,windows:list.map(({path,...w})=>w),actionable:false,retryAction:false,message:'原窗口已关闭或重建。请使用刷新后的窗口编号重新观察；未重新启动、点击或输入。'})
    const current=await windows(g,signal);const selected=current.find(w=>w.id===args.window);if(!selected)return changed(current)
    if(args.activate!==true&&selected.foreground===false&&!permission.images)return JSON.stringify({application:g.name,status:'window_background',actionable:false,retryAction:false,requestedWindow:args.window,windows:current.map(({path,...w})=>w),message:'应用当前在后台，尚未读取输入框，也未执行操作。可选择 activate:true 并在本机确认切换前台后一次性观察；请勿在后台重复点击。'})
-   if(args.activate===true){const started=clock();const message='应用：'+g.name+'\n窗口：'+selected.title+'\n操作：激活窗口并读取可访问控件（不点击控件、不输入、不发送）\n请先保存其他应用中的草稿并确认暂时停止键鼠操作。';if(!await confirm({message,kind:'application'},signal))throw Error('application_action_declined');if(clock()-started>90000)throw Error('application_observation_expired');await checked(g.id);signal?.throwIfAborted()}
+    // If the verified window is already foreground, there is no activation
+    // side effect and no reason to request another 90s local confirmation.
+    // A foreground change between listing and observation is rechecked by
+    // the native observer, which returns background without an action token.
+    const shouldActivate=args.activate===true&&selected.foreground!==true
+    if(shouldActivate){const started=clock();const message='应用：'+g.name+'\n窗口：'+selected.title+'\n操作：激活窗口并读取可访问控件（不点击控件、不输入、不发送）\n请先保存其他应用中的草稿并确认暂时停止键鼠操作。';if(!await confirm({message,kind:'application'},signal))throw Error('application_action_declined');if(clock()-started>90000)throw Error('application_observation_expired');await checked(g.id);signal?.throwIfAborted()}
    // The native observer revalidates the window's current executable identity.
    // A known handle saves a redundant helper spawn, never an authorization check.
    let view
-   try{view=await native({action:args.activate===true?'activate_observe':'observe',path:g.windowPath||g.path,window:args.window,images:permission.images},{signal})}
+   try{view=await native({action:shouldActivate?'activate_observe':'observe',path:g.windowPath||g.path,window:args.window,images:permission.images},{signal})}
    catch(error){if(error.message==='application_window_changed')return changed(await windows(g,signal));throw error}
        if(view.window?.foreground===false){
      // A background Chromium surface is not a safe input source. Keep its
@@ -174,7 +179,7 @@ export function registerApplications({add,config,native=applicationNative,native
   signal?.throwIfAborted()
   const result=await native({action:'act',kind:args.action,path:g.windowPath||g.path,window:o.window,title:o.view.window.title,element:c.id,name:c.name,runtime:c.runtime||'',text:args.text||'',key:args.key||''},{signal})
   if(result?.accepted!==true)throw Error('application_action_unconfirmed')
-  return JSON.stringify({application:g.name,accepted:true,action:args.action,observeAgain:true,contentsVerified:false})
+  return JSON.stringify({app:g.id,application:g.name,accepted:true,action:args.action,observeAgain:true,contentsVerified:false})
  },['app','observation','element','action'])
  vision=registerApplicationVision({permission,addTool,checked,windows,confirm,clock,native:nativeVision,invalidateControls:id=>observations.delete(id)})
  const tasks=createCodexTasks({grants:permission.grants.filter(g=>g.adapter==='codex'),roots:config.roots,checked,confirm,launch,addTool})

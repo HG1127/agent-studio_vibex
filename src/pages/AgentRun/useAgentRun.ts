@@ -1573,6 +1573,15 @@ export function useAgentRun() {
         setErrorMsg("登录态已过期，请重新登录后再重试")
         return
       }
+      if (response.status === 404) {
+        // Distinguish an older backend missing the retry route from a genuinely
+        // missing/inaccessible task. Never silently start a replacement task.
+        const original = await fetchRunRecord(target.id).catch(() => null)
+        setErrorMsg(original?.id === target.id
+          ? "原任务仍存在，但当前服务端不提供任务原位重跑接口（HTTP 404）。请先升级配套的 Agent Engine 后端 Hooks；不要连续点击重试或新建重复任务。"
+          : "原任务不存在或当前账号无权访问。请刷新任务列表核对原任务状态，不要自动重复发起操作。")
+        return
+      }
       if (!response.ok) {
         setErrorMsg(data?.message || "重新运行未能启动，请检查 Agent、模型和资源连接")
         return

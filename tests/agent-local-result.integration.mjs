@@ -116,8 +116,25 @@ try{
   const newDetail=await ok('GET','/api/agent-runs/'+runId+'/detail')
   assert.equal(newDetail.run.status,'running')
   assert.ok(newDetail.events.some(e=>e.content?.result_id===current.items[0].result_id))
+  const evalDb=new DatabaseSync(path.join(dir,'data.db'),{timeout:5000})
+  try{evalDb.prepare("UPDATE agent_runs SET status='succeeded',result=?,evaluation='{}' WHERE id=?")
+    .run('隔离测试生成的组织OS方案设计：明确岗位、任务分配、能力画像、结果验收与复盘闭环。',runId)}
+  finally{evalDb.close()}
+  const firstEval=await ok('POST','/api/agent-runs/'+runId+'/evaluate',{})
+  assert.notEqual(firstEval.cached,true,'an empty evaluation object is not a valid cached score')
+  assert.equal(firstEval.evaluation?.dimensions?.length,5)
+  assert.equal(typeof firstEval.evaluation?.score,'number')
+  const cachedEval=await ok('POST','/api/agent-runs/'+runId+'/evaluate',{})
+  assert.equal(cachedEval.cached,true,'completed evaluation is reused without a second model call')
+  assert.equal(cachedEval.evaluation.score,firstEval.evaluation.score)
+  const projectedEval=await ok('GET','/api/agent_runs/'+runId)
+  assert.equal(projectedEval.evaluation?.score,firstEval.evaluation.score,
+    'the regular Agent run API consumed by the React panel must expose the score')
+  const detailedEval=await ok('GET','/api/agent-runs/'+runId+'/detail')
+  assert.equal(detailedEval.run.evaluation?.score,firstEval.evaluation.score)
   console.log('LOCAL_COMPUTER_RECEIPT_E2E_PASS '+JSON.stringify({resultStored:true,resultReadback:true,linkedEvent:true,
-    secondAttemptIsolated:true,previousResultImmutable:true,sourceWindowFixture:true,agentStatus:newDetail.run.status,productionData:false}))
+    secondAttemptIsolated:true,previousResultImmutable:true,emptyEvaluationGenerated:true,validEvaluationCached:true,
+    sourceWindowFixture:true,agentStatus:'test-fixture-complete',productionData:false}))
 }catch(error){
  console.error('LOCAL_COMPUTER_RECEIPT_E2E_FAILURE',error.stack||String(error))
  console.error('POCKETBASE_LOG',logs.slice(-2200))

@@ -25,17 +25,21 @@ test('connector reasons survive the generic backend failure code and reach the e
  }
 })
 test('malformed and unavailable WorkBuddy app tool calls produce safe actionable codes without repeating actions',async()=>{
+ for(const tool of ['apps.observe','apps.observe_visual','apps.act_visual'])
  for(const [nativeCode,expected] of [
   ['invalid_application_arguments','application_invalid_arguments'],
   ['tool_denied','application_tool_unavailable'],
   ['mcp_tool_failed','application_tool_failed'],
-  ['application_control_denied','application_control_denied'],
-  ['application_action_unconfirmed','application_action_unconfirmed'],
- ]){
+   ['application_control_denied','application_control_denied'],
+   ['application_action_unconfirmed','application_action_unconfirmed'],
+   ['permission_confirmation_timeout','application_confirmation_timeout'],
+   ['permission_confirmation_unavailable','application_confirmation_unavailable'],
+   ['permission_confirmation_cancelled','application_confirmation_cancelled'],
+  ]){
   let receipt,calls=0
   await executeClaim(async(route,body)=>{if(route.endsWith('/check'))return {active:true};receipt=body;return {ok:true}},
    {execute:async()=>{calls++;throw Error(nativeCode)}},
-   {id:'workbuddy-diagnostic',claim:'test-only',deadline_ms:Date.now()+120000,input:{tool:'apps.observe',arguments:{window:'123'}}})
+   {id:'workbuddy-diagnostic',claim:'test-only',deadline_ms:Date.now()+120000,input:{tool,arguments:{window:'123'}}})
   assert.equal(calls,1,'failed app action must not be replayed')
   assert.equal(receipt.ok,false)
   const failure=applicationFailure({id:'workbuddy-diagnostic',status:'failed',error:'local_execution_failed',result:receipt.result})
