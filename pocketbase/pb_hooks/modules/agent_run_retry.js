@@ -25,6 +25,14 @@ function canonical(value) {
     return JSON.stringify(key) + ":" + canonical(value[key])
   }).join(",") + "}"
 }
+function safeLocalRetryPayload(raw) {
+  var payload
+  try { payload = JSON.parse(String(raw || "")) } catch (_) { return false }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false
+  // These fixed product tools only observe, or idempotently reveal an app.
+  // Unknown tools and GUI inputs may have submitted an external message.
+  return /^(?:files\.(?:stat|list|read|trash_list)|apps\.(?:launch|windows|observe|observe_visual|task_status|task_result)|browser\.browser_(?:navigate|snapshot|take_screenshot|wait_for))$/.test(String(payload.tool || ""))
+}
 function retry(app, owner, runId, input) {
   var body = input || {}
   var requestId = String(body.request_id || "").trim()
@@ -209,6 +217,18 @@ function retry(app, owner, runId, input) {
       ).bind({ run: runId }).one(uncertain)
       if (Number(uncertain.total || 0) > 0)
         fault(409, "write_reconciliation_required", "上一轮存在结果未确认的外部写操作。请先核查外部系统，完成核对后再决定是否重跑")
+
+      // Local jobs bypass the generic HTTP side-effect journal. New attempt
+      // keys must not turn a fresh observation into replayed typing/submission.
+      // Queued/expired jobs were never claimed; every other mutating receipt,
+      // including a failed partial input, requires reviewing the actual effect.
+      var localHistory = arrayOf(new DynamicModel({ payload:"" }))
+      tx.db().newQuery("SELECT payload FROM studio_local_jobs WHERE owner={:owner} AND run_id={:run} " +
+        "AND status NOT IN ('queued','expired')").bind({owner:owner,run:runId}).all(localHistory)
+      for (var li = 0; li < localHistory.length; li++) {
+        if (!safeLocalRetryPayload(localHistory[li].payload))
+          fault(409, "local_action_reconciliation_required", "上一轮已包含可能改变电脑状态的操作。请先核对应用消息、提交或文件结果，再基于尚未完成的工作发起新任务，避免重复执行。")
+      }
 
       var activeLease = new DynamicModel({ total: 0 })
       var now = new Date().getTime()

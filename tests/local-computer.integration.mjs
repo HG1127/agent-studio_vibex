@@ -242,7 +242,31 @@ try {
   assert.equal((await ok('GET', '/api/agent_runs/' + visualRun.run_id)).status, 'awaiting_approval')
   await ok('POST', '/api/agent-runs/' + visualRun.run_id + '/approve', { decision: 'approve' })
   await visionTick()
+  const failedVisualJob = (await api('/poll', { tools: runtime.tools })).job
+  assert.ok(failedVisualJob)
+  await executeClaim(api,{execute:async()=>{throw Error('application_capture_timeout')}},failedVisualJob)
+  await visionTick()
+  assert.equal((await ok('GET','/api/agent_runs/'+visualRun.run_id)).status,'failed')
+  const retryId=randomUUID()
+  const retried=await ok('POST','/api/agent-runs/'+visualRun.run_id+'/retry',{request_id:retryId})
+  assert.equal(retried.run_id,visualRun.run_id);assert.equal(retried.attempt_no,2)
+  assert.equal((await ok('POST','/api/agent-runs/'+visualRun.run_id+'/retry',{request_id:retryId})).deduplicated,true)
+  assert.equal((await api('/poll',{tools:runtime.tools})).job,null,'retry cannot dispatch without new approval')
+  await visionTick()
+  assert.equal((await ok('GET','/api/agent_runs/'+visualRun.run_id)).status,'awaiting_approval')
+  await ok('POST','/api/agent-runs/'+visualRun.run_id+'/approve',{decision:'approve'})
+  await visionTick();await visionTick()
   const visualJob = (await api('/poll', { tools: runtime.tools })).job
+  assert.ok(visualJob,'retry must enqueue a new observation instead of returning a prior failed job')
+  assert.notEqual(visualJob.id,failedVisualJob.id)
+  const queueDb=new DatabaseSync(path.join(data,'data.db'))
+  try{
+    const rows=queueDb.prepare('SELECT id,job_key,status FROM studio_local_jobs WHERE run_id=? ORDER BY created_ms').all(visualRun.run_id)
+    assert.equal(rows.length,2,'repeated ticks in the same attempt must not duplicate jobs')
+    assert.equal(rows[0].job_key,'agent:'+visualRun.run_id+':1','legacy initial attempts retain their idempotency key')
+    assert.equal(rows[0].status,'failed','the previous receipt remains immutable')
+    assert.equal(rows[1].job_key,'agent:'+visualRun.run_id+':attempt:2:1')
+  }finally{queueDb.close()}
   await executeClaim(api, runtime, visualJob)
   const visualResult = await ok('GET', '/api/local-jobs/' + visualJob.id)
   assert.equal(visualResult.status, 'succeeded', visualResult.error)
@@ -256,6 +280,24 @@ try {
   assert.equal(visualState.checkpoint.harness_stats.image_inputs, 1)
   assert.ok(!JSON.stringify(visualState).includes('iVBORw0KGgo'), 'Screenshot bytes must not enter checkpoint/events')
   passed('real MCP screenshot, private owner access, vision request and metadata-only Agent checkpoint')
+  passed('a fresh approved retry captures new raster bytes while retaining the failed prior observation')
+
+  // A new observation is safe; previous GUI input may have submitted a message
+  // even when its post-action receipt failed. Never replay it on task retry.
+  const safetyId=randomBytes(12).toString('hex'),safetyDb=new DatabaseSync(path.join(data,'data.db'))
+  try{
+    const owner=safetyDb.prepare('SELECT rh_user_id FROM agent_runs WHERE id=?').get(visualRun.run_id).rh_user_id
+    safetyDb.prepare("UPDATE agent_runs SET status='failed' WHERE id=?").run(visualRun.run_id)
+    safetyDb.prepare("INSERT INTO studio_local_jobs(id,owner,device_id,run_id,job_key,args_hash,payload,status,created_ms,deadline_ms) VALUES(?,?,?,?,?,?,?,'unknown',?,?)")
+      .run(safetyId,owner,paired.device_id,visualRun.run_id,'retry-safety-'+safetyId,'fixture',JSON.stringify({tool:'apps.act_visual',arguments:{action:'key',key:'Enter'}}),Date.now(),Date.now()+120000)
+  }finally{safetyDb.close()}
+  for(const status of ['unknown','succeeded','failed']){
+    const db=new DatabaseSync(path.join(data,'data.db'));try{db.prepare('UPDATE studio_local_jobs SET status=? WHERE id=?').run(status,safetyId)}finally{db.close()}
+    await api('/poll',{tools:runtime.tools})
+    const denied=await request('POST','/api/agent-runs/'+visualRun.run_id+'/retry',{request_id:randomUUID()})
+    assert.equal(denied.status,409,JSON.stringify(denied.data));assert.equal(denied.data.error,'local_action_reconciliation_required')
+  }
+  passed('uncertain, succeeded and failed GUI inputs require effect reconciliation instead of replay on retry')
 
   if (desktopPython) {
     desktopFixture = spawn(path.join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),

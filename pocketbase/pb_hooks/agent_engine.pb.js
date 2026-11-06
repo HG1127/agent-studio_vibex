@@ -1926,8 +1926,15 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
           if ($security.sha256(liveLocal.canonical(JSON.parse(String(liveDevice.catalog)))) !== configuredDestinationHash)
             throw Error("local_device_catalog_changed")
           executionBudget.reserve(tx,uid,runId,"tool",false)
+          // A retry keeps run_id but starts a new approved execution. Keep the
+          // first-attempt key for in-flight upgrade compatibility; later
+          // attempts must not reuse a terminal observation from an older one.
+          var queueAttemptNo = Number(localCp.attempt_no || 1)
+          if (!Number.isFinite(queueAttemptNo) || queueAttemptNo < 1 || Math.floor(queueAttemptNo) !== queueAttemptNo)
+            throw Error("invalid_run_attempt")
+          var localJobKey = "agent:" + runId + (queueAttemptNo > 1 ? ":attempt:" + queueAttemptNo : "") + ":" + stepIndex
           localJobId = require(__hooks + "/modules/local_devices.js").enqueue(tx, uid, cfg.local_device_id,
-            toolInput, "agent:" + runId + ":" + stepIndex, runId)
+            toolInput, localJobKey, runId)
           localCp.local_job = { id: localJobId, plan_node_id: structuredPlanning && activeRole ? activeRole.id : "", local_tool: String(toolInput.tool || "") }
           localCp.pending_approval = null
           localCp.approval_decision = ""
