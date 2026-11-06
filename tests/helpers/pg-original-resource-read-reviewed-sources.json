@@ -62,7 +62,7 @@
     },
     {
       "path": ".github/workflows/pg18-original-toolhub-ci.yml",
-      "sha256": "8e3df1b4fe2df5a4ce7baf26f61f97c0a7a23a3ecef1344063f281f3ab7963d6"
+      "sha256": "170f212dfcdbc51c612dd63f127d37cd4b486a96554bbebae460767a744cc81e"
     },
     {
       "path": ".github/workflows/pg18-tool-hub-genuine-ci.yml",
@@ -1570,7 +1570,7 @@
     },
     {
       "path": "services/pg-api/src/employee-staff084-profile.mjs",
-      "sha256": "251ab24226018bae075963326ecc5b53582437379a3dafa352af8720e6b08376"
+      "sha256": "de0c097e216e830834559dc78039217b2c70fe6d27e30933517b12ac283d8f0c"
     },
     {
       "path": "services/pg-api/src/employee-staff084-source.mjs",
@@ -1578,11 +1578,11 @@
     },
     {
       "path": "services/pg-api/src/hosted-profile-diagnostic.d.mts",
-      "sha256": "9430f99bbd7a30c48662f8c7e433be5dcc2a9cb0561d129e23b70efcb22fbe79"
+      "sha256": "31937967b1b8d4fd661d6c2fdd78c266160606cdf8c9159ff6fbb30a3a54b5eb"
     },
     {
       "path": "services/pg-api/src/hosted-profile-diagnostic.mjs",
-      "sha256": "25d0a163c7b0a0b9117fc03b1cc8ee9ccb8a9b31908fa9cc1d3735b6f19d626f"
+      "sha256": "e467f5f8d74a66018da3b6ddec453d1ede3d3ee5d0d78f7ccc8fe3b94446e1d5"
     },
     {
       "path": "services/pg-api/src/http.ts",
@@ -1866,7 +1866,7 @@
     },
     {
       "path": "services/pg-api/src/model-config-receipt-startup075.ts",
-      "sha256": "4cbb30ce16c81ece966f2558819ab1dd762f3d0e32fa7561864abaf64d3b8060"
+      "sha256": "452f863088b1930e58575ddd2418310cf1c0ac8339b1f2db7eb67d7995b3c9d2"
     },
     {
       "path": "services/pg-api/src/model-connection-crypto.ts",
@@ -2030,7 +2030,7 @@
     },
     {
       "path": "services/pg-api/src/native-home-agent-specs-runtime.ts",
-      "sha256": "6b53a4f9b6f3b8c60955fa9b9402588ce4eb84653fe541581c2b969a897d0727"
+      "sha256": "4605bfc0c66766bcf85148e517261db54232db04a4ec3e1e0c59a62f8c06a170"
     },
     {
       "path": "services/pg-api/src/native-home-authoring-audit.ts",
@@ -3398,7 +3398,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/agent-caller-genuine-fixture.mjs",
-      "sha256": "bde4cfae2db302e4f819ce20c7b852fadf492ee86ff1b05a200f85db8edab662"
+      "sha256": "8e43a1ee0e819e5caa70c1703f4b60b1bd41df40d803f4d8d90a0e8bcc529d73"
     },
     {
       "path": "services/pg-api/tests/helpers/agent-caller-genuine-guard.mjs",
@@ -3410,15 +3410,15 @@
     },
     {
       "path": "services/pg-api/tests/helpers/agent-create-journey-genuine-sources.mjs",
-      "sha256": "e5a92d4a0298fbca67c6c1ed9f1235115c7d5d9e90a964dd46a3569267d5fec6"
+      "sha256": "780e0e9330b4764fc8cdfcca696819ab37e0f9098dc2dcbfe191f621a47c69f7"
     },
     {
       "path": "services/pg-api/tests/helpers/agent-design-genuine-fixture.mjs",
-      "sha256": "7dcfd72bb5eba7600f0e7240a887bcfbeccd234250afaa2cae9c0c599b44ce31"
+      "sha256": "7c63938ffa9fd920ecbb2801aad3cd6486b39623cb5b4ef0772596c2826509c8"
     },
     {
       "path": "services/pg-api/tests/helpers/agent-internal-share-genuine-fixture.mjs",
-      "sha256": "f2434635f3e7bdc03db364451c4034c14fc56d320471c1a19fd0f2920ae442aa"
+      "sha256": "b72694df4d3b8cd7c32923f4b21e2c044402c2913f4842d0b9257cff251d3b4d"
     },
     {
       "path": "services/pg-api/tests/helpers/agent-internal-share-genuine-guard.mjs",
@@ -3434,11 +3434,11 @@
     },
     {
       "path": "services/pg-api/tests/helpers/agent-plan-workflow-genuine-fixture.mjs",
-      "sha256": "04b85afab5587aa37a93f4c782de7f938931b8d117b63623f3e384638c08e5f7"
+      "sha256": "a929f1901dee3759395a461f2346d8cebce4b4fb70bb20a183bf79e58975b43b"
     },
     {
       "path": "services/pg-api/tests/helpers/agent-plan-workflow-runtime-genuine-fixture.mjs",
-      "sha256": "801a9bf89ff051cd9a461ce965cb0788b244d0f8d56cc79d0c101007c2a80ae6"
+      "sha256": "60facdf46ff46a57493b84496ab270ce415abecd53a29de51dc47f61c5248be6"
     },
     {
       "path": "services/pg-api/tests/helpers/agent-review-ledger-fixture.mjs",
@@ -3446,11 +3446,11 @@
     },
     {
       "path": "services/pg-api/tests/helpers/agent-template-market-genuine-fixture.mjs",
-      "sha256": "941e831606ebd4d72e96068534bf062ebd02c71e8ff364a500bc234da2385ecd"
+      "sha256": "4266dce88185f71089fc55f546af1832db27016e36502485db60b21e10ce8937"
     },
     {
       "path": "services/pg-api/tests/helpers/approval-delegation-genuine-fixture.mjs",
-      "sha256": "2a2e4b39a3cc2a8d048d13665209d3a7ac90c5f7942d4aa5b98cb8bbe41291ce"
+      "sha256": "5ac9719ffca947c4d09f77a953babc7159ca0c428c54e97c972205774049d41c"
     },
     {
       "path": "services/pg-api/tests/helpers/approval-delegation-genuine-guard.mjs",
@@ -3490,7 +3490,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/native-local-device-genuine-fixture.mjs",
-      "sha256": "8a8d5fd4e642fc0ef54973b15600e5dbfbcbdf933d7f40227c90689fb2ca2b28"
+      "sha256": "48c84c759fc29040eb995678ba3642e9ce3dcbc21cf062c2cd589a68ea62fcd8"
     },
     {
       "path": "services/pg-api/tests/helpers/native-local-device-genuine-guard.mjs",
@@ -3502,7 +3502,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/native-local-executor-operator-source-pins.mjs",
-      "sha256": "e2bccf3d94f0f51ea35d4444931e0d9ab22b8e3d6d6658696f60ee3dc8339853"
+      "sha256": "9bbde387beab74d32fdf1d0dd60a5792d6ca2fdd45d70ea364ada4ab3311ba87"
     },
     {
       "path": "services/pg-api/tests/helpers/native-monitor073-ci-guard.mjs",
@@ -3510,7 +3510,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/native-monitor073-reviewed-sources.mjs",
-      "sha256": "5cfd6451d9365521e674f85a52e70c8fead554fe272e4c62fd5598c0eacff968"
+      "sha256": "ec5aacd4d97a23506f82b70c309dfbddadf170feb21047dc17e785e8c376a0cc"
     },
     {
       "path": "services/pg-api/tests/helpers/native-monitor073-seed-statement.mjs",
@@ -3526,7 +3526,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/native-monitor074-reviewed-sources.mjs",
-      "sha256": "6e3892d0f20b93c3fac630183a19df836114dafb03d25cccf2bc3b1b56897bc1"
+      "sha256": "9b1c204070c2088ecc7f1ebd5ff0a8e9e5e1debeb20ca332e7e0cec4fef8d180"
     },
     {
       "path": "services/pg-api/tests/helpers/native-monitor074-row-lock-genuine.mjs",
@@ -3550,7 +3550,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/native-original-directory-reviewed-sources.mjs",
-      "sha256": "78639e696f0b0609c89fa00924f178e47239e403f96cec4a518cb4639d839ac7"
+      "sha256": "437dbdf32f49e43bf5fedef2320bc4f62ddd9c679348d5de51f52454cb834c8b"
     },
     {
       "path": "services/pg-api/tests/helpers/native-original-directory-source-preflight.mjs",
@@ -3566,7 +3566,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/optimization-retest-genuine-fixture.mjs",
-      "sha256": "72eaca45605110189cab5fc41f7ba7cc21e7ab1b19fd95e034eea9dd25dd3e67"
+      "sha256": "ebb032793c9ab53a3b33204e3fdab0f2bfed1156ac69abfe41915b2cbad92b0e"
     },
     {
       "path": "services/pg-api/tests/helpers/optimization-retest-genuine-guard.mjs",
@@ -3722,7 +3722,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-genuine-source-pins.mjs",
-      "sha256": "583f122fc3c902a0038cbad624137155b97a21064571af6d0407f269d61e4e63"
+      "sha256": "7e304980b6359f7bb463b0e69af158b2a6734445f7e786b928309d8795fa3e1f"
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-original-home-guard.mjs",
@@ -3730,7 +3730,7 @@
     },
     {
       "path": "services/pg-api/tests/helpers/tool-hub-original-home-reviewed-sources.json",
-      "sha256": "f52e07a7fd3cc277d8f75acfd4de24810276a80a1a1c02b2f8505b0190bfe64e"
+      "sha256": "4ae36e74c0d1a966a89fa991c3d20b819ee235b13bb89f02ba287f97b07c397d"
     },
     {
       "path": "services/pg-api/tests/helpers/worker-heartbeat-activation-control-ci-container.mjs",
@@ -6878,15 +6878,15 @@
     },
     {
       "path": "tests/helpers/pg-native-agent-caller-genuine-fixture.mjs",
-      "sha256": "ca68ac377e0aa6b40db53aee3c67185d011d2a01b91df9e457b3b3d631f7da78"
+      "sha256": "166371ce6ebdf269603d01d37dda9ebdbb68b1047aebf3ed8fd9af206a380254"
     },
     {
       "path": "tests/helpers/pg-native-agent-plan-workflow-genuine-fixture.mjs",
-      "sha256": "2d7b9314fc4a879ec5c0fa82c57c306d7a205780a7d77c55bb5c64864621b3c6"
+      "sha256": "ca4776dd30343fb79cd7a0d5c6db5acd4a586f171b9e62a8f4fa4205fab8e80e"
     },
     {
       "path": "tests/helpers/pg-native-approval-delegation-genuine-fixture.mjs",
-      "sha256": "33012d0ef88b2ed506f2de0443ed24e1cf0ed32e173a41cb21264aa6df29c790"
+      "sha256": "20b6f047090c16f02bfa39fe9275c22e7ce031aacb6ff313cf07815132e0e852"
     },
     {
       "path": "tests/helpers/pg-native-feedback-fixture.mjs",
@@ -6894,7 +6894,7 @@
     },
     {
       "path": "tests/helpers/pg-native-internal-share-genuine-fixture.mjs",
-      "sha256": "423788c2eba1b2898b461b6c7929a9667029586798cbe7c4e79d6d4abc80f4e6"
+      "sha256": "d623f29a7a72ef0cd0351e3c2e77f9d41ad2ff6b8606df3d76a3cba7d9e177fe"
     },
     {
       "path": "tests/helpers/pg-native-optimization-fixture.mjs",
@@ -6902,11 +6902,11 @@
     },
     {
       "path": "tests/helpers/pg-native-optimization-retest-genuine-fixture.mjs",
-      "sha256": "dba05dc015d2c4bef15a4ac053678e7048b12bc683fd76f928c38c425be6b63d"
+      "sha256": "59f630b4cb32755a70fde8ec73eeea204104a2b033fcd12fa4450d5dfb993a06"
     },
     {
       "path": "tests/helpers/pg-native-template-market-genuine-fixture.mjs",
-      "sha256": "35e45a3c5b6d3ac3dd026d1f535d324db67061ab39197b52fc3401a6c4551616"
+      "sha256": "1de0a0265814d450cf2d2bf1354adb5ad7b837a6722e6f76acbdec74b66a8699"
     },
     {
       "path": "tests/helpers/pg-native-tool-hub-genuine-fixture.mjs",
@@ -6950,7 +6950,7 @@
     },
     {
       "path": "tests/helpers/pg-original-internal-overview-reviewed-sources.mjs",
-      "sha256": "c2ed6c3aa04674aa0c293d92de0f39419d1502f2aeed98d0d5c34ff6f6e72441"
+      "sha256": "d699f66388e60c39f32853813cd0e21b74912fc898557f70afa03ef84bfbe830"
     },
     {
       "path": "tests/helpers/pg-original-internal-share-browser-fixture.mjs",
@@ -6974,7 +6974,7 @@
     },
     {
       "path": "tests/helpers/pg-original-internal-share-reviewed-sources.mjs",
-      "sha256": "f4b06b3c137c03ac18939d73a81791bbc19c1ac17be4f6b18b9cca7785146bb8"
+      "sha256": "abf72aeb8af7245f3921608ed1957f5127d94d40bdf07bb1d3eb8b813ac80a9c"
     },
     {
       "path": "tests/helpers/pg-original-login-browser-guard.mjs",
@@ -6990,7 +6990,7 @@
     },
     {
       "path": "tests/helpers/pg-original-login-reviewed-sources.mjs",
-      "sha256": "70aed982ef442f56cb849f0fa7098d406d34d8fde606ed96476c96dbe97467fd"
+      "sha256": "f9121bea731ab3bb037ed0eac79223517c919576b701a46a5bc7785488b56e5a"
     },
     {
       "path": "tests/helpers/pg-original-model-committed-prefix-loss.mjs",
@@ -7190,7 +7190,7 @@
     },
     {
       "path": "tests/helpers/pg-original-schedule-worker-reviewed-sources.mjs",
-      "sha256": "a2decc86c2971fff88d78e2508a63d2eec19fb5c1e56f93e039bd515b48b83e1"
+      "sha256": "36435bff7edc615a8dcf960ffa62ff0a76571433d7789fc85dd67cf40fd6b3ce"
     },
     {
       "path": "tests/helpers/pg-original-schedules078-backend-fixture.mjs",
@@ -7218,7 +7218,7 @@
     },
     {
       "path": "tests/helpers/pg-original-schedules078-reviewed-sources.mjs",
-      "sha256": "03fc164316c9ca5f62052e9703744a09cc0df6ad44c36ed16b49cbd78064bea2"
+      "sha256": "911928c1f894610bd2847fb7402bd6b78288fad12a8d63fb05ff41133e5d4e99"
     },
     {
       "path": "tests/helpers/pg-original-schedules078-sql-diagnostic.mjs",
@@ -7278,7 +7278,7 @@
     },
     {
       "path": "tests/helpers/pg-original-toolhub-reviewed-sources.json",
-      "sha256": "9233e31c878f7cc8bc07a97df683cb001aae2a13ae36e99a00aa7934be169d45"
+      "sha256": "11626370a9dae52588d6f47e40424c023b5f4c1b9bf63b867a486b62fe336c15"
     },
     {
       "path": "tests/helpers/pg-original-version-release-artifacts.mjs",
@@ -8070,7 +8070,7 @@
     },
     {
       "path": "tests/pg-native-browser/original-computer-directory-pg18.spec.mjs",
-      "sha256": "7a27dddbd23409663186207ab23f15430cc92421b6a32408a72ac178f6164b9f"
+      "sha256": "70535713b655b72b78cf8ebffc70444f40cac61308912f565bff2990ce04b003"
     },
     {
       "path": "tests/pg-native-browser/original-computer-directory.config.mjs",
@@ -8467,7 +8467,7 @@
     {"path": "src/lib/originalAgentCreateReader.ts", "sha256": "770ab3a82b20e948c5b93a6896d64353fbf5d8e508dc505756b03d5ff1e510ee"},
     {"path": "tests/original-agent-create-read-pure.test.mjs", "sha256": "8e4dcb84bfbc81b4cd2693e3f20f59acbf7621c6cee2981df7f59c16f9f52b88"},
     {"path": "tests/helpers/install-original-agent-create-chromium.mjs", "sha256": "2dabe60597398b940afe2b9b45bde37869c194898aa7d852628fa3a4b96688f7"},
-    {"path": "tests/helpers/pg-original-agent-create-backend-fixture.mjs", "sha256": "fefcb136a7b1dddfcc30c0628f62724f28ac8ceb8d0896ac18060cdaf3d099f4"},
+    {"path": "tests/helpers/pg-original-agent-create-backend-fixture.mjs", "sha256": "ec3596a30e39b78c37b2eee5a37dbf0af5663607a5c7b6f63f3c01d7efe9ce3a"},
     {"path": "tests/helpers/pg-original-agent-create-browser-fixture.mjs", "sha256": "80a0a14d8f5bce3805490b1f6203e91169abce23b7003a94171998dafd43ef22"},
     {"path": "tests/helpers/pg-original-agent-create-guard.mjs", "sha256": "8120d061f114b32af9128cb43d1c66169539f242cbd3dae1bc1a40fe7fba4538"},
     {"path": "tests/helpers/pg-original-agent-create-policy.mjs", "sha256": "f206967e40c5d0c82da2c67d528ca2ca5c1c580832f9579a590eb40ff65bb03c"},
@@ -8545,29 +8545,34 @@
     {"path": "services/pg-api/src/original-ui-unified-role-login-catalog.mjs", "sha256": "17d996f4add255e139ffee006db81b9c833772dfb6ba0ff2a4fa22f5fbafcad0"},
     {"path": "services/pg-api/src/staff084-complete078-api-audit.d.mts", "sha256": "933b9531c876a8fd0f3515fa152277bf4b974eb029ac3d03c54039176919732a"},
     {"path": "services/pg-api/src/staff084-complete078-api-audit.mjs", "sha256": "50f8c45bbf5b6d9ca2c5e4d030440da8755cd2ee43d51f482655e958d955f2fa"},
-    {"path": "services/pg-api/src/staff084-home-knowledge-stats-audit.ts", "sha256": "da55cd707e18d09dc714b716141612c371e5b49f9b925b732cb9fab9614593a0"},
-    {"path": "services/pg-api/src/staff084-knowledge-parent-audit.ts", "sha256": "3a7fbc8bf1b58cf986c971a7283ce05aef3dd3254a69bf067abd0316eaf84b27"},
+    {"path": "services/pg-api/src/staff084-home-knowledge-stats-audit.ts", "sha256": "4db5c96ffb6563ff6629e66e8d04e5827ba2ca303dc7c29a8d39c70727e0c173"},
+    {"path": "services/pg-api/src/staff084-knowledge-parent-audit.ts", "sha256": "d340dbc3ac8176bf75c146112e1695c498370dfedb5166d280d74821b17f1a1f"},
     {"path": "services/pg-api/src/staff084-quality089-api-audit.d.mts", "sha256": "6c4e2de3ab749315925532e1bc8ecdff1bbacb52f6fbf26ab5984ed48033a126"},
     {"path": "services/pg-api/src/staff084-quality089-api-audit.mjs", "sha256": "a8b85c831936b67020fb225a77e75d94d1fe6e75c82cc0398766cde84f8096d4"},
     {"path": "services/pg-api/tests/complete069-source-directory-cycle-source-pure.test.mjs", "sha256": "c9d5444847dec0b4b0445af37649b112a5819b43a760b2a1e91f7f19222208a9"},
     {"path": "services/pg-api/tests/full069-node-executable-stream-hash-source-pure.test.mjs", "sha256": "7acfb19897e25e09b0155806906719c5668f27626663129eed92f4f688258c45"},
-    {"path": "services/pg-api/tests/original-create-parent-sequence-source-pure.test.mjs", "sha256": "fd4f55096a835a0b7f9a3801e9d080face3b2f0d5750d7d879e31d4011fcbda3"},
+    {"path": "services/pg-api/tests/original-create-parent-sequence-source-pure.test.mjs", "sha256": "37432ab71ca3f52e9db89c3010a0f3304d6cff86cffffd2fa389ad93f4db508f"},
     {"path": "services/pg-api/tests/original-ui-unified-catalog-source-pure.test.mjs", "sha256": "384231eb9ebc79d36c280d0bd4ae50cffa810856803a2f515c3cebe4d2918cce"},
     {"path": "services/pg-api/tests/original-ui-unified-role-delta-source-pure.test.mjs", "sha256": "ee8898aff3aaed64f3173ce71f92d803ad34dddc1541e7f18dd9e407a4df6d97"},
     {"path": "services/pg-api/tests/quality089-release-trigger-integrity-source-pure.test.mjs", "sha256": "1e9b4698e4fcd5cc922a0beb9b237d9b2c02dc2c95da7291b1dd0431eb3a3339"},
-    {"path": "services/pg-api/tests/staff084-statistics-api-source-pure.test.mjs", "sha256": "7ddc6b2b7965fc8a4a0670421fc29cba6bda728a51a57662440bd7bba01c28d6"},
+    {"path": "services/pg-api/tests/staff084-statistics-api-source-pure.test.mjs", "sha256": "1738d7b2a126dc70fc6d65a09cb8d9a2bc3aebacfec2b3724cf39c76addd14a1"},
     {"path": "services/pg-api/tests/worker-heartbeat-reader-directory-cycle-source-pure.test.mjs", "sha256": "5a217906851ef5e56dc71c9c5c72f87adca063cc40d21dc11f8eebbc796a747b"},
-    {"path": "tests/profile-phases-source-pure.test.mjs", "sha256": "b81f8acf640aa4332af6f484322ad7688b2b1e5c4df00f131efeb92620e6846f"},
+    {"path": "tests/profile-phases-source-pure.test.mjs", "sha256": "0f7ef94c3953178d024b7bba1611ef59524925cef147732516431617b1f6e08c"},
     {"path": "services/pg-api/src/employee-quality089-contract.d.mts", "sha256": "f14e2253b1a587e23fb60473f90f3ef0d25a8a4bc69af63180cb83a89d35822a"},
     {"path": "services/pg-api/src/employee-staff084-profile.d.mts", "sha256": "b3099615397feb93508f6ca370f97a84666dd80b31df5c26bc327f5b78006c25"},
-    {"path": "services/pg-api/tests/original-statistics-selected-boundary-source-pure.test.mjs", "sha256": "56d8bc2eefb7c6b1e45d7246ec91f4fad987ca43d1d85a275969623867534956"},
+    {"path": "services/pg-api/tests/original-statistics-selected-boundary-source-pure.test.mjs", "sha256": "54a62e620223c42c05502e978b13d0e566c35e7797adfde8651c54c6ab794ad8"},
     {"path": "services/pg-api/tests/helpers/original-directory-policy-source-inverse.mjs", "sha256": "f337d918c11815f60ce392b900109a5c5cd954702827777fd23b5892306a61a6"}
 ,
-    {"path": "services/pg-api/tests/original-create-install-paths-and-legacy-bindings-source-pure.test.mjs", "sha256": "635cea4a42f7895f605b0eb600f10043128ed2548c424dffe60b2ad985b019f5"},
+    {"path": "services/pg-api/tests/original-create-install-paths-and-legacy-bindings-source-pure.test.mjs", "sha256": "af71e01cd3cb409016f3e9927956270ec2289f607de7ad747d905a2e36337c5e"},
     {"path": "tests/hosted-profile-known-failure-source-pure.test.mjs", "sha256": "00a5b00382a2dfdd5c3019ff7e24cc1c24d7544f2d25202668ba698450c873b9"},
     {"path": "tests/original-directory-connector-metadata-pure.test.mjs", "sha256": "a892f969091d38095694f0ba6ebb0d361a1d2504281bb9054314263254d3e9ce"},
     {"path": "tests/original-plugin-fixture-request-contract-pure.test.mjs", "sha256": "b2bc0c5a6466144558c2c365aaa1c1161ce0982999d40d9d48632d2c87c920a9"},
-    {"path": "tests/original-legacy-source-views-pure.test.mjs", "sha256": "e3b2e6ff1aebf456fe008ac19a59fb4402c9d877165e44a781fed1bfa0667fc5"}
+    {"path": "tests/original-legacy-source-views-pure.test.mjs", "sha256": "d9899045c3e9b1398d861e5da9fffede3e3266b94d63b9a96ad3bcaf4325fb74"}
+,
+    {"path": "tests/original-directory-logout-navigation-pure.test.mjs", "sha256": "7c6feeb07eabaf5e485cf14f81dcd5512d89a35c4c1a24a5979a39f0f0ca4e25"},
+    {"path": "tests/model-config-receipt075-hosted-phases-source-pure.test.mjs", "sha256": "172ec8684d1fbbb7a04ba3c13cccca62b1b0126053ae37180d7c0630a49e0748"},
+    {"path": "tests/staff42501-fixed-stages-source-pure.test.mjs", "sha256": "cc7d882a55a0904cab510a03e0ced3ca8e77757e023b5762281db6de17e9dacb"},
+    {"path": "tests/original-create-knowledge-scope-source-pure.test.mjs", "sha256": "59eb2dddf1780591cd8df95d941fb617fd0ff01c05ac6b1dcf614d60a75a806a"}
 ],
   "Root_final_legacy_and_this_map_reseal_required": true,
   "no_runtime_acceptance_claim": true

@@ -1,3 +1,4 @@
+import {hostedStaff084Phase} from './hosted-profile-diagnostic.mjs'
 // Named Staff source excludes legacy declaration 0.
 import {createHash} from 'node:crypto'
 import {HttpError,type SqlClient,type SqlPool} from './contracts.ts'
@@ -25,7 +26,7 @@ export const originalHomeStatisticsPresenceSql="SELECT 'migration' AS kind,versi
  "SELECT 'event_trigger',evtname::text FROM pg_catalog.pg_event_trigger WHERE starts_with(evtname,'original_home_knowledge_stats')"
 function exact(rows:{kind:string;name:string}[],expected:string[]):void{if(!Array.isArray(rows)||rows.some(row=>typeof row.kind!=='string'||typeof row.name!=='string')||JSON.stringify(rows.map(row=>row.kind+':'+row.name).sort())!==JSON.stringify(expected))unavailable()}
 async function principal(db:SqlClient):Promise<void>{
- const row=(await db.query<{ok:boolean}>("SELECT current_user='agentstudio_api' AND session_user<>current_user AND r.rolcanlogin AND NOT r.rolinherit AND NOT r.rolsuper AND NOT r.rolbypassrls AND NOT r.rolcreatedb AND NOT r.rolcreaterole AND NOT r.rolreplication AND r.rolconfig IS NULL AND r.rolvaliduntil IS NULL AS ok FROM pg_catalog.pg_roles r WHERE r.rolname=session_user")).rows[0]
+ const row=(await hostedStaff084Phase('stats_principal_01',()=>db.query<{ok:boolean}>("SELECT current_user='agentstudio_api' AND session_user<>current_user AND r.rolcanlogin AND NOT r.rolinherit AND NOT r.rolsuper AND NOT r.rolbypassrls AND NOT r.rolcreatedb AND NOT r.rolcreaterole AND NOT r.rolreplication AND r.rolconfig IS NULL AND r.rolvaliduntil IS NULL AS ok FROM pg_catalog.pg_roles r WHERE r.rolname=session_user"))).rows[0]
  if(row?.ok!==true)unavailable()
 }
 const functionSql="SELECT p.prosecdef AND p.provolatile='s' AND p.proisstrict=$4::boolean AND p.proretset=$5::boolean AND p.pronargs=$6::integer AND ($6::integer=0 OR p.proargtypes[0]='uuid'::regtype) AND NOT p.proleakproof AND p.prosupport=0 AND p.proparallel='u' AND p.proconfig=ARRAY['search_path=pg_catalog']::text[] AND l.lanname=$3::text AND "+
@@ -36,36 +37,36 @@ const functionSql="SELECT p.prosecdef AND p.provolatile='s' AND p.proisstrict=$4
 async function functions(db:SqlClient,statistics:boolean):Promise<void>{
  for(const pin of originalHomeStatisticsFunctionPins){
   if((pin.signature==='original_home_knowledge_stats(uuid)')!==statistics)continue
-  const row=(await db.query<{ok:boolean;source:string;result:string}>(functionSql,['agentstudio.'+pin.signature,pin.owner,pin.language,pin.strict,pin.set,pin.args,[...pin.roles]])).rows[0]
+  const row=(await hostedStaff084Phase('stats_functions_01',()=>db.query<{ok:boolean;source:string;result:string}>(functionSql,['agentstudio.'+pin.signature,pin.owner,pin.language,pin.strict,pin.set,pin.args,[...pin.roles]]))).rows[0]
   if(row?.ok!==true||typeof row.source!=='string'||typeof row.result!=='string'||canonical(row.result)!==pin.result||createHash('sha256').update(row.source).digest('hex')!==pin.sha256)unavailable()
  }
 }
 /** Validate original ACL code BEFORE invoking its metadata RPC. No auth DTO. */
-async function verifyOriginalHomeKnowledgeAclDependencies(db:SqlClient):Promise<void>{await db.query('SET LOCAL search_path=pg_catalog');await principal(db);await functions(db,false)}
+async function verifyOriginalHomeKnowledgeAclDependencies(db:SqlClient):Promise<void>{await hostedStaff084Phase('stats_acl_01',()=>db.query('SET LOCAL search_path=pg_catalog'));await hostedStaff084Phase('stats_acl_02',()=>principal(db));await hostedStaff084Phase('stats_acl_03',()=>functions(db,false))}
 /** Per-read072/dependency integrity; no caller-provided schema status or pins. */
 async function verifyOriginalHomeKnowledgeStats(db:SqlClient):Promise<void>{
- await verifyOriginalHomeKnowledgeAclDependencies(db);exact((await db.query<{kind:string;name:string}>(originalHomeStatisticsPresenceSql)).rows,expected072);await functions(db,true)
+ await hostedStaff084Phase('stats_metadata_01',()=>verifyOriginalHomeKnowledgeAclDependencies(db));exact((await hostedStaff084Phase('stats_metadata_02',()=>db.query<{kind:string;name:string}>(originalHomeStatisticsPresenceSql))).rows,expected072);await hostedStaff084Phase('stats_metadata_03',()=>functions(db,true))
 }
 async function fullPredecessor(db:SqlClient,selected:Staff084StatisticsSelection):Promise<void>{
- exact((await db.query<{kind:string;name:string}>(originalHome070PresenceSql)).rows,expected070)
- exact((await db.query<{kind:string;name:string}>(originalAgentCatalog071PresenceSql)).rows,expected071)
- await verifyNativeHomeAuthoringSchema(db);await verifyNativeAgentCatalogSchema(db)
+ exact((await hostedStaff084Phase('stats_predecessor_01',()=>db.query<{kind:string;name:string}>(originalHome070PresenceSql))).rows,expected070)
+ exact((await hostedStaff084Phase('stats_predecessor_02',()=>db.query<{kind:string;name:string}>(originalAgentCatalog071PresenceSql))).rows,expected071)
+ await hostedStaff084Phase('stats_predecessor_03',()=>verifyNativeHomeAuthoringSchema(db));await hostedStaff084Phase('stats_predecessor_04',()=>verifyNativeAgentCatalogSchema(db))
  // Original functions run verbatim on the actual072 catalog. No filtered view
  // is passed to any old auditor and no old complete069 receipt is minted.
- for(const verify of [verifyApprovalDelegationCredentials,verifyNativeLocalDeviceSchema,verifyAgentCallerCredentials,verifyOwnerToolTrialCredentials])if(await verify(db)!==true)unavailable()
- await verifyStaff084KnowledgeHelperCredentials(db,selected)
- const tables=(await db.query<{name:string;ok:boolean}>("SELECT c.relname::text AS name,c.relkind='r' AND c.relrowsecurity AND c.relforcerowsecurity AS ok FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='agentstudio' AND c.relname IN('knowledge_access','knowledge_access_receipts','knowledge_content_receipts','knowledge_bases','knowledge_documents','knowledge_chunks') ORDER BY c.relname")).rows
+ for(const verify of [verifyApprovalDelegationCredentials,verifyNativeLocalDeviceSchema,verifyAgentCallerCredentials,verifyOwnerToolTrialCredentials])if(await hostedStaff084Phase('stats_predecessor_05',()=>verify(db))!==true)unavailable()
+ await hostedStaff084Phase('stats_predecessor_06',()=>verifyStaff084KnowledgeHelperCredentials(db,selected))
+ const tables=(await hostedStaff084Phase('stats_predecessor_07',()=>db.query<{name:string;ok:boolean}>("SELECT c.relname::text AS name,c.relkind='r' AND c.relrowsecurity AND c.relforcerowsecurity AS ok FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='agentstudio' AND c.relname IN('knowledge_access','knowledge_access_receipts','knowledge_content_receipts','knowledge_bases','knowledge_documents','knowledge_chunks') ORDER BY c.relname"))).rows
  if(tables.length!==6||tables.some(row=>row.ok!==true)||new Set(tables.map(row=>row.name)).size!==6)unavailable()
 }
 export async function inspectStaff084OriginalHomeKnowledgeStatisticsSchema(pool:SqlPool,selected:Staff084StatisticsSelection):Promise<'installed'>{
- const db=await pool.connect();let primary:unknown,discard=false
+ const db=await hostedStaff084Phase('stats_inspect_01',()=>pool.connect());let primary:unknown,discard=false
  try{
-  await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');await db.query('SET LOCAL ROLE agentstudio_api');await db.query('SET LOCAL search_path=pg_catalog');await principal(db)
-  const rows=(await db.query<{kind:string;name:string}>(originalHomeStatisticsPresenceSql)).rows
+  await hostedStaff084Phase('stats_inspect_02',()=>db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY'));await hostedStaff084Phase('stats_inspect_03',()=>db.query('SET LOCAL ROLE agentstudio_api'));await hostedStaff084Phase('stats_inspect_04',()=>db.query('SET LOCAL search_path=pg_catalog'));await hostedStaff084Phase('stats_inspect_05',()=>principal(db))
+  const rows=(await hostedStaff084Phase('stats_inspect_06',()=>db.query<{kind:string;name:string}>(originalHomeStatisticsPresenceSql))).rows
   if(!Array.isArray(rows))unavailable();if(rows.length===0)unavailable()
-  exact(rows,expected072);await verifyOriginalHomeKnowledgeStats(db);await fullPredecessor(db,selected);return'installed'
+  exact(rows,expected072);await hostedStaff084Phase('stats_inspect_07',()=>verifyOriginalHomeKnowledgeStats(db));await hostedStaff084Phase('stats_inspect_08',()=>fullPredecessor(db,selected));return'installed'
  }catch(error){primary=error;throw error}
- finally{try{await db.query('ROLLBACK')}catch{discard=true;if(primary===undefined)throw Error('original_home_statistics_schema_rollback_required')}finally{if(discard)Reflect.apply(db.release,db,[true]);else db.release()}}
+ finally{try{await hostedStaff084Phase('stats_inspect_09',()=>db.query('ROLLBACK'))}catch{discard=true;if(primary===undefined)throw Error('original_home_statistics_schema_rollback_required')}finally{if(discard)Reflect.apply(db.release,db,[true]);else db.release()}}
 }
 
 // Named Staff source excludes legacy declaration 10.

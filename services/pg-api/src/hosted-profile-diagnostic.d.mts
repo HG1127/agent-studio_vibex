@@ -14,3 +14,4 @@ export function validateStaff031Observation(value:unknown):unknown
 export function quality015ConstraintObservation(table:unknown,constraint:unknown,actual:unknown,normalize:unknown,tableOrdinal:unknown,constraintOrdinal:unknown):unknown
 export function validateQuality015Observation(value:unknown):unknown
 export function emitHostedStaffComplete078ContractRefusal(auditor:unknown,check:unknown,error:unknown):void
+export function hostedStaff084Phase<T>(step:unknown,body:()=>T):Promise<Awaited<T>>
