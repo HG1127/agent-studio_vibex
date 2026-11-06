@@ -13,7 +13,7 @@ export function registerApplicationVision({permission,addTool,checked,windows,co
   if(!view?.image||view.imageError)throw Error(view?.imageError||'application_capture_failed')
   if(!w||![w.x,w.y,w.width,w.height,w.pid,iw,ih].every(Number.isInteger)||w.width<40||w.height<40||iw<1||ih<1||!/^\d+$/.test(w.id))throw Error('application_capture_failed')
   const actionable=g.control&&w.foreground===true,token=actionable?randomBytes(16).toString('hex'):null
-  const text={application:g.name,mode:'vision',...receipt,window:{id:w.id,width:w.width,height:w.height,foreground:w.foreground},imageSize:{width:iw,height:ih},coordinateSpace:'image_pixels',actionable,observation:token,expiresInSeconds:token?30:0,message:actionable?'坐标必须来自本次截图；输入只追加文字，不清空草稿。完成操作后核对新截图，提交或发送结果不确定时不得重放。':'只读截图。操作需要控制授权、前台窗口和新的观察凭据。'}
+  const text={application:g.name,mode:'vision',...receipt,window:{id:w.id,width:w.width,height:w.height,foreground:w.foreground},imageSize:{width:iw,height:ih},captureSource:view.imageSource||'window',coordinateSpace:'image_pixels',actionable,observation:token,expiresInSeconds:token?30:0,message:actionable?'坐标必须来自本次截图；输入只追加文字，不清空草稿。完成操作后核对新截图，提交或发送结果不确定时不得重放。':'只读截图。操作需要控制授权、前台窗口和新的观察凭据。'}
   const result=mcpResult({content:[{type:'text',text:JSON.stringify(text)},{type:'image',mimeType:'image/png',data:view.image}]},true)
   if(token)observations.set(g.id,{token,created:clock(),window:{...w},iw,ih})
   return result
@@ -25,7 +25,9 @@ export function registerApplicationVision({permission,addTool,checked,windows,co
   if(activate&&!g.control)throw Error('application_control_denied')
   const shouldActivate=activate&&selected.foreground!==true
   if(shouldActivate){if(!await confirm({kind:'application',message:'应用：'+g.name+'\n窗口：'+selected.title+'\n操作：激活已授权窗口并获取窗口截图。截图将提供给本次模型；不点击、不输入、不发送。'},signal))throw Error('application_action_declined');await checked(g.id)}
-  signal?.throwIfAborted();return observation(g,await native({action:'observe',path:g.windowPath||g.path,window,activate:shouldActivate},{signal}))
+  signal?.throwIfAborted();const view=await native({action:'observe',path:g.windowPath||g.path,window,activate:shouldActivate},{signal})
+  if(['application_foreground_unavailable','application_window_occluded'].includes(view?.imageError))return JSON.stringify({application:g.name,mode:'vision',status:view.imageError==='application_window_occluded'?'window_occluded':'window_background',window:{id:window},actionable:false,observation:null,diagnostic:view.imageError,message:g.control?'窗口截图需要授权窗口处于前台且无遮挡。可经本人确认使用 apps.observe_visual activate:true 重新观察；若有覆盖窗口请本人处理。不重新启动、点击或发送。':'窗口截图需要前台无遮挡，请本人切回授权窗口后重新观察。只读授权不能激活或输入。'})
+  return observation(g,view)
  }
  addTool('apps.observe_visual','视觉观察已授权应用窗口，跳过控件树。截图图片坐标与30秒一次性凭据供 act_visual 使用。截图须已授权；activate:true 须本机确认。',{app:app(desktop),window:str,activate:{type:'boolean'}},async(args,signal)=>{
   exact(args,['app','window','activate'],['app','window']);if(!allowed.has(args.app))throw Error('application_denied');if(args.activate!==undefined&&typeof args.activate!=='boolean')throw Error('invalid_application_arguments');return observe(await checked(args.app),args.window,args.activate===true,signal)

@@ -4,12 +4,26 @@ import {registerApplicationVision} from '../local-executor/application-vision.mj
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j4f8AAAAASUVORK5CYII='
 function fixture({images=true,control=true,confirm=async()=>true}={}){
  const grant={id:'a'.repeat(24),adapter:'desktop',name:'Fixture',path:'D:\\Fixture.exe',control},handlers=new Map(),calls=[]
- let now=1000,postFailure=false,background=false,changed=false,checks=0
- const view=()=>({window:{id:'123',title:'Fixture',pid:42,x:10,y:20,width:800,height:600,foreground:!background},image:png,imageWidth:400,imageHeight:300})
+ let now=1000,postFailure=false,background=false,changed=false,checks=0,captureError=null
+ const view=()=>({window:{id:'123',title:'Fixture',pid:42,x:10,y:20,width:800,height:600,foreground:!background},image:captureError?null:png,imageError:captureError,imageWidth:400,imageHeight:300})
  const runtime=registerApplicationVision({permission:{images,grants:[grant]},addTool:(name,_d,_s,fn)=>handlers.set(name,fn),checked:async id=>{checks++;if(changed)throw Error('application_binary_changed');assert.equal(id,grant.id);return grant},windows:async()=>[{id:'123',title:'Fixture',foreground:!background}],confirm,clock:()=>now,native:async input=>{calls.push(input);if(input.action==='act')return {accepted:true};if(postFailure)throw Error('application_capture_failed');return view()}})
  const call=async(name,args)=>{const r=await handlers.get('apps.'+name)({app:grant.id,...args});return typeof r==='string'?JSON.parse(r):JSON.parse(r.text)}
- return {call,calls,handlers,grant,runtime,setNow:n=>now=n,setPostFailure:v=>postFailure=v,setBackground:v=>background=v,setChanged:v=>changed=v,get checks(){return checks}}
+ return {call,calls,handlers,grant,runtime,setNow:n=>now=n,setPostFailure:v=>postFailure=v,setBackground:v=>background=v,setCaptureError:v=>captureError=v,setChanged:v=>changed=v,get checks(){return checks}}
 }
+
+test('unavailable bounded screenshots return recovery guidance without an input token or replay',async()=>{
+ for(const [code,status] of [['application_foreground_unavailable','window_background'],['application_window_occluded','window_occluded']]){
+  const f=fixture(),old=await f.call('observe_visual',{window:'123'});f.setCaptureError(code)
+  const failed=await f.call('observe_visual',{window:'123'});assert.equal(failed.status,status);assert.equal(failed.observation,null);assert.equal(failed.actionable,false)
+  await assert.rejects(f.call('act_visual',{observation:old.observation,x:1,y:1,action:'click'}),/expired/)
+  assert.equal(f.calls.filter(c=>c.action==='act').length,0)
+ }
+ let f,approved=0;f=fixture({confirm:async()=>{approved++;f.setBackground(false);f.setCaptureError(null);return true}})
+ f.setBackground(true);f.setCaptureError('application_foreground_unavailable')
+ assert.equal((await f.call('observe_visual',{window:'123'})).status,'window_background');assert.equal(approved,0)
+ assert.equal((await f.call('observe_visual',{window:'123',activate:true})).actionable,true);assert.equal(approved,1)
+ const read=fixture({control:false});read.setCaptureError('application_foreground_unavailable');assert.equal((await read.call('observe_visual',{window:'123'})).actionable,false);await assert.rejects(read.call('observe_visual',{window:'123',activate:true}),/control_denied/)
+})
 test('visual tools require explicit screenshot permission and respect read-only app grants',async()=>{
  assert.equal(fixture({images:false}).handlers.size,0)
  const read=fixture({control:false});assert.equal(read.handlers.has('apps.act_visual'),false);const result=await read.call('observe_visual',{window:'123'});assert.equal(result.actionable,false);assert.equal(result.observation,null)

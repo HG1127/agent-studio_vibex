@@ -92,6 +92,7 @@
     "test:office-flow": "node tests/local-computer.integration.mjs",
     "test:skill-role": "node tests/skill-role.integration.mjs",
     "test:applications-native": "node tests/local-applications.windows.mjs",
+    "test:applications-capture": "node tests/application-capture.windows.mjs",
     "test:agent-review": "node tests/agent-review.chrome.mjs",
     "test:agent-create-acceptance": "node tests/agent-creation-acceptance.chrome.mjs",
     "test:research-core": "node tests/tool-results.integration.mjs && node tests/research-workflow.integration.mjs && node tests/research-reports.integration.mjs && node tests/research-monitors.integration.mjs && node tests/authoring-requirements.integration.mjs",

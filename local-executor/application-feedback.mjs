@@ -37,6 +37,7 @@ export const APPLICATION_FAILURE_MESSAGES=Object.freeze({
  application_task_not_found:'未找到此连接启动的任务。连接重启后不会自动重交旧任务。',
  application_capture_failed:'当前应用不支持窗口截图，可关闭截图授权后使用控件观察。',
  application_capture_timeout:'窗口截图暂未返回，本次保留已经读取的控件，不重复操作应用。请恢复窗口后重新观察。',
+ application_window_occluded:'授权窗口被其他窗口覆盖，未读取覆盖内容。请移开遮挡后重新观察；未执行点击、输入或发送。',
  application_capture_too_large:'窗口截图超出大小限制，本次仅返回已经读取的控件。请缩小窗口后重新观察。',
  application_window_size_denied:'当前窗口尺寸不适合截图，本次仅返回已经读取的控件。请恢复正常大小后重新观察。',
  application_desktop_unavailable:'Windows 桌面当前不可访问。请保持电脑解锁并检查桌面会话，再重新观察。',

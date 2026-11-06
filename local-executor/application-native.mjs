@@ -9,7 +9,7 @@ using System;using System.Collections.Generic;using System.Diagnostics;using Sys
 public static class StudioApplications {
  public class Win {public string id,title,path;public int pid,x,y,width,height;public bool minimized,foreground;}
  public class Control {public int id;public string name,type,runtime;public bool password,enabled;public double[] rect;public List<string> actions;public string value;}
- public class View {public Win window;public uint input;public List<Control> controls;public string image,imageError;public int imageWidth,imageHeight;public bool controlsTruncated;}
+ public class View {public Win window;public uint input;public List<Control> controls;public string image,imageError,imageSource;public int imageWidth,imageHeight;public bool controlsTruncated;}
  [StructLayout(LayoutKind.Sequential)]public struct Rect{public int left,top,right,bottom;}
  [StructLayout(LayoutKind.Sequential)]public struct LastInput{public uint size,time;}
  [StructLayout(LayoutKind.Sequential)]struct Input{public uint type;public InputData data;}
@@ -39,6 +39,8 @@ public static class StudioApplications {
  [DllImport("user32.dll")]static extern IntPtr GetAncestor(IntPtr h,uint flags);
  [DllImport("user32.dll")]static extern bool PrintWindow(IntPtr h,IntPtr dc,uint flags);
  [DllImport("user32.dll")]static extern bool SetProcessDPIAware();
+ [DllImport("user32.dll")]static extern IntPtr GetWindow(IntPtr h,uint command);
+ [DllImport("user32.dll")]static extern int GetSystemMetrics(int index);
  public static uint InputEpoch(){var i=new LastInput();i.size=(uint)Marshal.SizeOf(i);if(!GetLastInputInfo(ref i))throw new Exception("application_desktop_unavailable");return i.time;}
  public static List<Win> Windows(string expected){var list=new List<Win>();EnumWindows(delegate(IntPtr h,IntPtr s){if(list.Count>=100)return false;try{if(!IsWindowVisible(h))return true;var w=Get(h,expected);if(w.title.Length>0&&(IsIconic(h)||w.width>=40&&w.height>=40))list.Add(w);}catch{}return true;},IntPtr.Zero);return list;}
  // PROCESS_QUERY_LIMITED_INFORMATION avoids enumerating modules while Electron
@@ -78,21 +80,53 @@ public static class StudioApplications {
   }catch{}}
   if(i<all.Count)truncated=true;return output;
  }
+ static void EncodeCapture(View captured,Bitmap bitmap,Win w){
+  foreach(int limit in new int[]{1600,1200,900,640}){double ratio=Math.Min(1.0,Math.Min((double)limit/w.width,(limit*9.0/16.0)/w.height));
+   using(var scaled=new Bitmap(Math.Max(1,(int)(w.width*ratio)),Math.Max(1,(int)(w.height*ratio)))){
+    using(var graphics=Graphics.FromImage(scaled)){graphics.DrawImage(bitmap,0,0,scaled.Width,scaled.Height);}
+    using(var stream=new MemoryStream()){scaled.Save(stream,ImageFormat.Png);if(stream.Length<=1048576){captured.image=Convert.ToBase64String(stream.ToArray());captured.imageWidth=scaled.Width;captured.imageHeight=scaled.Height;return;}}
+   }
+  }throw new Exception("application_capture_too_large");
+ }
+ static Rectangle VisibleCaptureRegion(IntPtr h,Win expected){
+  var now=Get(h,expected.path);
+  if(now.pid!=expected.pid||now.title!=expected.title||now.x!=expected.x||now.y!=expected.y||now.width!=expected.width||now.height!=expected.height)throw new Exception("application_window_changed");
+  if(IsIconic(h)||GetForegroundWindow()!=h)throw new Exception("application_foreground_unavailable");
+  var visible=Rectangle.Intersect(new Rectangle(now.x,now.y,now.width,now.height),new Rectangle(GetSystemMetrics(76),GetSystemMetrics(77),GetSystemMetrics(78),GetSystemMetrics(79)));
+  if(visible.Width<40||visible.Height<40)throw new Exception("application_foreground_unavailable");
+  // Reject every visible higher-Z window whose bounding rectangle intersects.
+  // This is deliberately conservative, including same-app popups and overlays;
+  // no other application's pixels may enter the fallback image.
+  var seen=new HashSet<IntPtr>();var above=GetWindow(h,3);int count=0;
+  while(above!=IntPtr.Zero){
+   if(++count>512||!seen.Add(above))throw new Exception("application_window_occluded");
+   if(IsWindowVisible(above)&&!IsIconic(above)){Rect bounds;if(!GetWindowRect(above,out bounds))throw new Exception("application_window_occluded");
+    var overlap=Rectangle.Intersect(visible,Rectangle.FromLTRB(bounds.left,bounds.top,bounds.right,bounds.bottom));if(overlap.Width>0&&overlap.Height>0)throw new Exception("application_window_occluded");}
+   above=GetWindow(above,3);
+  }return visible;
+ }
+ static void CaptureVisibleWindow(View result,IntPtr h,Win w){
+  uint epoch=InputEpoch();var visible=VisibleCaptureRegion(h,w);
+  using(var bitmap=new Bitmap(w.width,w.height)){
+   using(var graphics=Graphics.FromImage(bitmap)){graphics.Clear(Color.Black);graphics.CopyFromScreen(visible.Location,new Point(visible.Left-w.x,visible.Top-w.y),visible.Size,CopyPixelOperation.SourceCopy);}
+   var after=VisibleCaptureRegion(h,w);if(after!=visible||InputEpoch()!=epoch)throw new Exception("application_user_takeover");
+   EncodeCapture(result,bitmap,w);result.imageSource="visible_window";
+  }
+ }
  static void Capture(View result,IntPtr h,Win w){
   if(w.width<40||w.height<40||w.width>8192||w.height>8192||(long)w.width*w.height>16777216){result.imageError="application_window_size_denied";return;}
   var captured=new View();var thread=new System.Threading.Thread(delegate(){
    try{using(var bitmap=new Bitmap(w.width,w.height)){
     using(var g=Graphics.FromImage(bitmap)){var dc=g.GetHdc();bool ok;try{ok=PrintWindow(h,dc,2);}finally{g.ReleaseHdc(dc);}if(!ok)throw new Exception("application_capture_failed");}
-    foreach(int limit in new int[]{1600,1200,900,640}){double ratio=Math.Min(1.0,Math.Min((double)limit/w.width,(limit*9.0/16.0)/w.height));
-    using(var scaled=new Bitmap(Math.Max(1,(int)(w.width*ratio)),Math.Max(1,(int)(w.height*ratio)))){
-     using(var graphics=Graphics.FromImage(scaled)){graphics.DrawImage(bitmap,0,0,scaled.Width,scaled.Height);}
-     using(var stream=new MemoryStream()){scaled.Save(stream,ImageFormat.Png);if(stream.Length<=1048576){captured.image=Convert.ToBase64String(stream.ToArray());captured.imageWidth=scaled.Width;captured.imageHeight=scaled.Height;break;}}
-    }
-    }if(captured.image==null)throw new Exception("application_capture_too_large");
+    EncodeCapture(captured,bitmap,w);captured.imageSource="window";
    }}catch(Exception error){captured.imageError=error.Message.StartsWith("application_capture_")?error.Message:"application_capture_failed";}
   });thread.IsBackground=true;thread.SetApartmentState(System.Threading.ApartmentState.STA);thread.Start();
-  if(!thread.Join(2500)){result.imageError="application_capture_timeout";return;}
-  result.image=captured.image;result.imageError=captured.imageError;result.imageWidth=captured.imageWidth;result.imageHeight=captured.imageHeight;
+  bool completed=thread.Join(2500);
+  if(!completed||captured.image==null){
+   try{CaptureVisibleWindow(result,h,w);return;}
+   catch(Exception error){result.imageError=error.Message.StartsWith("application_")?error.Message:"application_capture_failed";return;}
+  }
+  result.image=captured.image;result.imageError=captured.imageError;result.imageSource=captured.imageSource;result.imageWidth=captured.imageWidth;result.imageHeight=captured.imageHeight;
  }
  public static View Observe(string id,string exe,bool image){SetProcessDPIAware();var h=new IntPtr(Int64.Parse(id));var w=Get(h,exe);if(IsIconic(h))ShowWindow(h,9);System.Threading.Thread.Sleep(150);w=Get(h,exe);if(!w.foreground){var background=new View{window=w,input=InputEpoch(),controls=new List<Control>(),controlsTruncated=false};if(image)Capture(background,h,w);return background;}try{Process.GetProcessById(w.pid).WaitForInputIdle(3000);}catch{}bool truncated;var controls=Controls(h,out truncated);var result=new View{window=w,input=InputEpoch(),controls=controls,controlsTruncated=truncated};if(image)Capture(result,h,w);return result;}
 
