@@ -106,11 +106,13 @@ async function launchChrome(profile){
   const attachment=await client.command("Target.attachToTarget",{targetId:target.targetId,flatten:true})
   await client.command("Page.enable",{},attachment.sessionId)
   await client.command("Runtime.enable",{},attachment.sessionId)
+  await client.command("Network.enable",{},attachment.sessionId)
+  await client.command("Log.enable",{},attachment.sessionId)
   return {child,client,sessionId:attachment.sessionId}
 }
 
 async function stopOwnedTestChild(child){
-  if(!child||child.exitCode!==null)return
+  if(!child||child.exitCode!==null||child.signalCode!==null||!Number.isInteger(child.pid))return
   if(process.platform==='win32'){
     const stop=spawn(path.join(process.env.SystemRoot,'System32/taskkill.exe'),['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore',timeout:10000})
     await new Promise(resolve=>{stop.once('error',resolve);stop.once('close',resolve)})
@@ -137,7 +139,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
   const secret=randomBytes(16).toString("hex")
   const password="Ui-"+randomBytes(18).toString("hex")+"!"
   const email="review-"+randomBytes(5).toString("hex")+"@example.test"
-  let pb, frontend, chrome, mock
+  let pb, frontend, chrome, mock, productionBuild
   t.signal.addEventListener('abort',()=>{try{chrome?.client.close()}catch{}},{once:true})
   let pbLogs="",viteLogs="",agentModelCalls=0,optimizeModelCalls=0,optimizeSource=""
   let v17PlanCalls=0,v17McpCalls=0,v17ModelToolCalls=0,v17ApprovalQuestions=0
@@ -320,7 +322,18 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
     const run=await start()
     await api("POST","/api/llm/agent-engine/"+run.run_id+"/tick",{})
     assert.equal((await api("GET","/api/agent_runs/"+run.run_id)).status,"awaiting_input")
-    frontend=spawn(process.execPath,[vite,"--config","vibex-local/vite.local.config.ts",
+    // Exercise the same static assets shipped in the EXE. A development
+    // dependency-optimizer reload can invalidate an otherwise healthy route
+    // during this long multi-page acceptance journey.
+    const productionDir=path.join(testDir,'production-web')
+    await new Promise((resolve,reject)=>{
+      const build=productionBuild=spawn(process.execPath,[vite,"build","--config","vibex-local/vite.local.config.ts","--outDir",productionDir],
+        {cwd:root,windowsHide:true,signal:t.signal,stdio:["ignore","pipe","pipe"],env:{...process.env,NODE_OPTIONS:"--max-old-space-size=768 --v8-pool-size=1",GOMAXPROCS:"1"}})
+      let buildLog=""
+      for(const stream of [build.stdout,build.stderr])stream.on('data',chunk=>buildLog=(buildLog+chunk).slice(-2500))
+      build.once('error',reject);build.once('close',code=>code===0?resolve():reject(Error('production_fixture_build_failed:'+buildLog)))
+    })
+    frontend=spawn(process.execPath,[vite,"preview","--config","vibex-local/vite.local.config.ts","--outDir",productionDir,
       "--host","127.0.0.1","--port",String(vitePort),"--strictPort"],
       {cwd:root,windowsHide:true,stdio:["ignore","pipe","pipe"],
         env:{...process.env,AGENT_STUDIO_PB_ORIGIN:apiOrigin,
@@ -367,7 +380,13 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
           exception:item.params?.exceptionDetails?.text,
           stack:item.params?.exceptionDetails?.stackTrace?.callFrames?.slice(0,4),
         }))
-      console.error("CHROME_UI_SAFE_PAGE_STATE",JSON.stringify({label,page,browserErrors,viteLog:viteLogs.slice(-520)}))
+      const networkErrors=(chrome?.client?.events||[]).filter(item=>
+        item.method==='Network.loadingFailed'||item.method==='Network.responseReceived'&&item.params?.response?.status>=400||
+        item.method==='Log.entryAdded'&&['error','warning'].includes(item.params?.entry?.level)||item.method==='Page.javascriptDialogOpening')
+        .slice(-8).map(item=>({method:item.method,status:item.params?.response?.status,error:item.params?.errorText,
+          type:item.params?.type,text:String(item.params?.entry?.text||'').slice(0,220),
+          path:(()=>{try{return new URL(item.params?.response?.url||item.params?.url).pathname}catch{return undefined}})()}))
+      console.error("CHROME_UI_SAFE_PAGE_STATE",JSON.stringify({label,page,browserErrors,networkErrors,viteLog:viteLogs.slice(-520)}))
       throw new Error("Chrome UI did not show "+label+". "+last+
         " state="+JSON.stringify(page).slice(0,370))
     }
@@ -1983,6 +2002,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
       await stopOwnedTestChild(chrome.child)
     }
     await stopOwnedTestChild(frontend)
+    await stopOwnedTestChild(productionBuild)
     if(pb) {try{await stopHeadlessPocketBase(pb)}catch{}}
     if(mock){
       try{mock.closeAllConnections()}catch{}
