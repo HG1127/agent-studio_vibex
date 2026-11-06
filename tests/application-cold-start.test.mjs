@@ -1,4 +1,4 @@
-import test from 'node:test'
+import nodeTest from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -6,6 +6,9 @@ import os from 'node:os'
 import {EventEmitter} from 'node:events'
 import {inspectApplication,registerApplications,validateApplicationControl,applicationEnvironment,discoverApplications} from '../local-executor/applications.mjs'
 import {resolveWindowTarget,shortcutApplicationPath} from '../local-executor/application-target.mjs'
+// Real .exe path grants are Windows-only. The quality workflow runs this whole
+// suite on Windows; Linux must not relax the production validator for fixtures.
+const test=process.platform==='win32'?nodeTest:nodeTest.skip
 async function fixture(t,options={}){
  const base=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'studio-cold-'))),exe=path.join(base,'Example.exe');await fs.writeFile(exe,'MZ-fixture')
  if(options.electron)await fs.writeFile(path.join(base,'LICENSE.electron.txt'),'fixture')

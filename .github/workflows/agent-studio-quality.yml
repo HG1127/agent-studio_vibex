@@ -7,6 +7,35 @@ on:
   workflow_dispatch:
 
 jobs:
+  windows-application-policy:
+    name: Windows application grants and cold launch (synthetic)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      NODE_OPTIONS: '--max-old-space-size=1024'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Windows path, application identity, approvals and launch regression
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .tmp/ci-windows | Out-Null
+          $env:TEMP = (Resolve-Path .tmp/ci-windows).Path
+          $env:TMP = $env:TEMP
+          $env:TMPDIR = $env:TEMP
+          node --test --test-concurrency=2 tests/application-cold-start.test.mjs tests/local-applications.test.mjs
   pg17-tcp-isolated:
     name: Real PostgreSQL 17 / RLS / multi-worker (ephemeral)
     runs-on: ubuntu-latest
@@ -152,6 +181,11 @@ jobs:
           test "$(sudo -n /usr/bin/setpriv --reuid=nobody --regid=nogroup --init-groups --no-new-privs /usr/bin/env -i PATH=/usr/bin:/bin HOME=/tmp /usr/bin/id -u)" = "$(id -u nobody)"
           sudo -n /usr/bin/setpriv --reuid=nobody --regid=nogroup --init-groups --no-new-privs /usr/bin/env -i PATH=/usr/bin:/bin HOME=/tmp /usr/bin/bash -c 'test ! -r /etc/shadow'
           echo "LINUX_BUILDER_PRIVDROP_OK"
+      - name: Install Chinese PDF test font
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          test -s /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
       - name: Unit regression and TypeScript production build
         run: pnpm check
       - name: Internal production readiness policy (offline unit checks only)

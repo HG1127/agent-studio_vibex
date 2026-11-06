@@ -1,4 +1,4 @@
-import test from 'node:test'
+import nodeTest from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -10,6 +10,9 @@ import {applicationPermissionDraft,saveApplicationPermissions} from '../local-ex
 import {readGuidedProfile} from '../local-executor/profiles.mjs'
 import {codexTaskArguments,createCodexTasks} from '../local-executor/codex-tasks.mjs'
 import {createRuntime} from '../local-executor/runtime.mjs'
+// These fixtures exercise Windows executable grants and paths. They are run
+// by the required Windows CI job, without permitting POSIX paths in production.
+const test=process.platform==='win32'?nodeTest:nodeTest.skip
 
 async function fixture(t,{codex=false,control=true,electron=false,images=false,confirm=async()=>true,clock=Date.now}={}){
  const base=path.resolve('.tmp/application-unit');await fs.mkdir(base,{recursive:true});const home=await fs.mkdtemp(path.join(base,'disposable-')),exe=path.join(home,codex?'codex.exe':'fixture.exe');await fs.writeFile(exe,'MZ-synthetic-no-program')
