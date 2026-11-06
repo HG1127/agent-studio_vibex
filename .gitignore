@@ -104,3 +104,6 @@ Thumbs.db
 agent-studio-connect*.json
 **/.local-device-credentials.json
 local-executor/*.local.json
+
+# Public company CA only; private certificate keys remain ignored.
+!desktop/trust/agentstudio-root-ca.pem

@@ -3,6 +3,7 @@ import https from 'node:https'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import {pipeline} from 'node:stream'
+import companyHttps from './company-https.cjs'
 
 const MIME = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.ico':'image/x-icon','.woff2':'font/woff2','.pdf':'application/pdf'}
 const hop = new Set(['connection','keep-alive','proxy-authenticate','proxy-authorization','te','trailer','transfer-encoding','upgrade','host','origin','referer','forwarded','x-forwarded-host','x-forwarded-proto','x-forwarded-for'])
@@ -41,7 +42,7 @@ export async function createGateway({webRoot, serverOrigin, port=0}) {
       headers['x-forwarded-host'] = upstream.host
       headers['x-forwarded-proto'] = upstream.protocol.slice(0,-1)
       const target = new URL(url.pathname + url.search, upstream)
-      const proxy = (target.protocol === 'https:' ? https : http).request(target, {method:req.method,headers}, reply => {
+      const proxy = (target.protocol === 'https:' ? https : http).request(target, {method:req.method,headers,...companyHttps.companyTlsOptions(target)}, reply => {
         if(res.destroyed){reply.destroy();return}
         // Never forward credentials through a redirect to a different endpoint.
         if (reply.statusCode >= 300 && reply.statusCode < 400 && reply.headers.location) {

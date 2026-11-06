@@ -1,6 +1,6 @@
 {
   "name": "agent-studio-desktop",
-  "version": "0.1.0-preview.27",
+  "version": "0.1.0-preview.28",
   "private": true,
   "description": "Agent Studio Windows desktop client",
   "author": "Agent Studio",
@@ -29,6 +29,8 @@
       "update-helper.cjs",
       "update-controller.cjs",
       "update-trust.json",
+      "company-https.cjs",
+      "trust/**",
       "release-history.json",
       "ui/**",
       "build-info.json",

@@ -9,6 +9,7 @@ import {createHash} from 'node:crypto'
 import {fileURLToPath} from 'node:url'
 import JSZip from 'jszip'
 import {CONNECTOR_VERSION} from '../local-executor/version.mjs'
+import companyHttps from '../desktop/company-https.cjs'
 export {CONNECTOR_VERSION}
 export const NODE_VERSION='24.14.1'
 export const APP_FILES=['application-feedback.mjs','application-target.mjs','application-native.mjs','application-vision-native.mjs','application-vision.mjs','applications.mjs','application-permissions.mjs','codex-tasks.mjs','connect.mjs','setup.mjs','run.mjs','runtime.mjs','file-actions.mjs','file-application.mjs','file-capabilities.mjs','result.mjs','office.mjs','office-table.mjs','office-worker.mjs','connection.mjs','connection-feedback.mjs','version.mjs','profiles.mjs','native-picker.mjs','setup-progress.mjs','workspace.mjs','browser-settings.mjs','permissions.mjs','workbench-control.mjs','native-confirmation.mjs','managed-confirmation.mjs','permission-entry.mjs','browser-server.mjs','browser-feedback.mjs','desktop.mjs','self-test.mjs','ui/index.html','ui/app.js','ui/workbench-home.js','ui/permission-panel.js','ui/style.css']
@@ -89,6 +90,8 @@ export async function buildConnector({destination=path.join(root,'public','downl
  }
  for(const node of global.values())await install(node,path.join(app,'node_modules',node.meta.name),global)
  for(const file of APP_FILES){const target=path.join(app,'local-executor',file);await fs.mkdir(path.dirname(target),{recursive:true});await fs.copyFile(path.join(root,'local-executor',file),target)}
+ // The standalone and embedded connectors use the same app-scoped public CA.
+ for(const file of ['company-https.cjs',...companyHttps.companyTrust().files.map(file=>'trust/'+file)]){const target=path.join(app,'desktop',file);await fs.mkdir(path.dirname(target),{recursive:true});await fs.copyFile(path.join(root,'desktop',file),target)}
  await buildApplicationWindowProbe(packageRoot)
  await fs.mkdir(path.join(app,'src','lib'),{recursive:true});await fs.copyFile(path.join(root,'src','lib','localConnectionSetup.ts'),path.join(app,'src','lib','localConnectionSetup.ts'))
  await fs.writeFile(path.join(app,'package.json'),JSON.stringify({name:'agent-studio-connector',version:CONNECTOR_VERSION,type:'module',private:true}))

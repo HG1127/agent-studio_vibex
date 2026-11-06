@@ -38,7 +38,10 @@
     "desktop/verify-install.cjs",
     "desktop/startup-health.cjs",
     "desktop/update-guard.cs",
-    "ops/build-desktop-update-guard.mjs"
+    "ops/build-desktop-update-guard.mjs",
+    "desktop/company-https.cjs",
+    "desktop/trust/company-ca.json",
+    "desktop/trust/agentstudio-root-ca.pem"
   ],
   "integratedSources": [
     "97fb7c5020cb0751a7690a60f41b758c0c701ef0",

@@ -17,6 +17,7 @@ function fixture({testHome,pending=false,state={busy:false,confirmations:[]},syn
   if(name==='./update-helper.cjs')return {inventory:async()=>({})}
   if(name==='./update-trust.json')return {publicKey:'test-only-public-key'}
   if(name==='./release-history.json')return []
+  if(name==='./company-https.cjs')return require('../company-https.cjs')
   if(name==='node:fs/promises')return {mkdir:async()=>{writes++;throw Error('unexpected_transaction_write')}}
   return require(name)
  }

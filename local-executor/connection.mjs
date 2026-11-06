@@ -1,12 +1,14 @@
 import {BROWSER_FAILURE_MESSAGES} from './browser-feedback.mjs'
 import {FILE_APPLICATION_ERRORS} from './file-application.mjs'
 import {APPLICATION_FAILURE_MESSAGES} from './application-feedback.mjs'
+import companyHttps from '../desktop/company-https.cjs'
+const companyFetch=companyHttps.createCompanyFetch()
 export function connection(server, token = '') {
   const url = new URL(server)
   if (url.username || url.password || url.search || url.hash || !['/', '/__pb', '/__pb/'].includes(url.pathname) ||
       !(url.protocol === 'https:' || url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))) throw Error('server_requires_https')
   return async (route, body = {}, signal) => {
-    const response = await fetch(url.origin + url.pathname.replace(/\/$/, '') + '/api/public/local-executor' + route, { method: 'POST', redirect: 'error',
+    const response = await companyFetch(url.origin + url.pathname.replace(/\/$/, '') + '/api/public/local-executor' + route, { method: 'POST', redirect: 'error',
       headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Studio-Device-Token': token } : {}) },
       body: JSON.stringify(body), signal: signal || AbortSignal.timeout(15000) })
     if (!response.ok) { const error = Error('executor_http_' + response.status); error.status = response.status; throw error }

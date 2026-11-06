@@ -1,11 +1,12 @@
 'use strict'
 const {createUpdater,safeUrl}=require('./update-core.cjs'),fs=require('node:fs/promises'),path=require('node:path'),{randomUUID}=require('node:crypto'),{spawn}=require('node:child_process')
 const trust=require('./update-trust.json')
+const {createCompanyFetch}=require('./company-https.cjs')
 function updateWindowSize(area={}){const valid=(value,fallback)=>Number.isFinite(value)&&value>0?Math.floor(value):fallback,w=valid(area.width,1100),h=valid(area.height,900),width=Math.min(1000,Math.max(Math.min(320,w),w-48)),height=Math.min(780,Math.max(Math.min(420,h),h-48));return {width,height,minWidth:Math.min(780,width),minHeight:Math.min(620,height)}}
 function installUpdates({app,BrowserWindow,Menu,ipcMain,net,dialog,info,runtimeRoot,testHome,getSettings,saveSettings,stopServices,getComputerState,hasPendingCalls,onQuit,getWorkArea=()=>({width:1100,height:900})}){
  let window,applying=false
  const ui=require('node:url').pathToFileURL(path.join(__dirname,'ui/updates.html')).href
- const core=createUpdater({currentVersion:info.version,publicKey:trust.publicKey,history:require('./release-history.json'),directory:path.join(runtimeRoot||app.getPath('temp'),'temp/desktop-update-cache'),feed:()=>getSettings().updateFeed||new URL('/desktop-updates/stable/latest.json',getSettings().server).href,fetcher:(url,options)=>net.fetch(url,options),onChange:state=>{if(window&&!window.isDestroyed())window.webContents.send('desktop:update-state',state)}})
+ const core=createUpdater({currentVersion:info.version,publicKey:trust.publicKey,history:require('./release-history.json'),directory:path.join(runtimeRoot||app.getPath('temp'),'temp/desktop-update-cache'),feed:()=>getSettings().updateFeed||new URL('/desktop-updates/stable/latest.json',getSettings().server).href,fetcher:createCompanyFetch({fallback:(url,options)=>net.fetch(url,options)}),onChange:state=>{if(window&&!window.isDestroyed())window.webContents.send('desktop:update-state',state)}})
  function guard(event){if(!window||window.isDestroyed()||event.sender!==window.webContents||event.senderFrame!==window.webContents.mainFrame||event.senderFrame?.url!==ui)throw Error('invalid_update_sender')}
  async function open(){
   if(window&&!window.isDestroyed()){window.show();window.focus();return}

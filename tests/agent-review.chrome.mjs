@@ -109,7 +109,21 @@ async function launchChrome(profile){
   return {child,client,sessionId:attachment.sessionId}
 }
 
-test("real Chrome: review, auto tools, global editing, routing and plugin navigation", {timeout:350000},async()=>{
+async function stopOwnedTestChild(child){
+  if(!child||child.exitCode!==null)return
+  if(process.platform==='win32'){
+    const stop=spawn(path.join(process.env.SystemRoot,'System32/taskkill.exe'),['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore',timeout:10000})
+    await new Promise(resolve=>{stop.once('error',resolve);stop.once('close',resolve)})
+  }else child.kill()
+}
+async function removeOwnedTestDirectory(directory,parent,prefix){
+  if(!fs.existsSync(directory))return
+  const real=fs.realpathSync(directory)
+  if(fs.lstatSync(directory).isSymbolicLink()||path.dirname(real)!==fs.realpathSync(parent)||!path.basename(real).startsWith(prefix))throw Error('unsafe_browser_test_cleanup')
+  await fs.promises.rm(real,{recursive:true,force:true,maxRetries:2,retryDelay:250})
+}
+
+test("real Chrome: review, auto tools, global editing, routing and plugin navigation", {timeout:350000},async t=>{
   const pbBinary=process.env.POCKETBASE_BIN||path.join(root,"vibex-local/bin/windows/pocketbase.exe")
   const vite=path.join(root,"node_modules/vite/bin/vite.js")
   assert.ok(fs.existsSync(pbBinary)&&fs.existsSync(vite),"Local PocketBase/Vite required")
@@ -124,6 +138,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
   const password="Ui-"+randomBytes(18).toString("hex")+"!"
   const email="review-"+randomBytes(5).toString("hex")+"@example.test"
   let pb, frontend, chrome, mock
+  t.signal.addEventListener('abort',()=>{try{chrome?.client.close()}catch{}},{once:true})
   let pbLogs="",viteLogs="",agentModelCalls=0,optimizeModelCalls=0,optimizeSource=""
   let v17PlanCalls=0,v17McpCalls=0,v17ModelToolCalls=0,v17ApprovalQuestions=0
   let userToken=""
@@ -315,7 +330,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
     frontend.stderr.on("data",chunk=>{viteLogs=(viteLogs+chunk).slice(-5000)})
     await ready(webOrigin+"/login",frontend,()=>viteLogs)
     chrome=await launchChrome(chromeDir)
-    const cmd=(name,params)=>chrome.client.command(name,params,chrome.sessionId)
+    const cmd=(name,params)=>{t.signal.throwIfAborted();return chrome.client.command(name,params,chrome.sessionId)}
     const evaluate=async expression=>{
       const out=await cmd("Runtime.evaluate",{expression,returnByValue:true,awaitPromise:true})
       if(out.exceptionDetails)throw new Error("Browser evaluation: "+String(out.exceptionDetails.exception?.description||out.exceptionDetails.text).slice(0,380))
@@ -325,6 +340,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
       let last=""
       const waitAttempts=process.env.AGENT_STUDIO_UX_RETRY_ONLY==="1"?60:180
       for(let i=0;i<waitAttempts;i++){
+        t.signal.throwIfAborted()
         try{if(await evaluate(expression))return}catch(error){
           last=String(error.message).slice(0,100)
           if(process.env.AGENT_STUDIO_UX_RETRY_ONLY==="1"&&/CDP .* timed out|CDP closed/.test(last))throw error
@@ -1494,8 +1510,8 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
     assert.equal(await evaluate('document.querySelector("#agent-input-review")?.textContent?.includes("需求方案草案")'),true)
     assert.equal(await evaluate('location.search.includes("run=")'),true)
     await clickText('资源与设置')
-    assert.equal(await evaluate("Boolean(document.querySelector('a[href^=\"/plugin-market?tool=\"]'))"),true,
-      "Unavailable tool should link into the plugin marketplace")
+    await wait("Boolean(document.querySelector('[role=dialog] a[href^=\"/plugin-market?tool=\"]'))",
+      "resource settings renders the unavailable-tool marketplace link")
     await cmd('Input.dispatchKeyEvent',{type:'rawKeyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27})
 
     await cmd("Page.reload",{ignoreCache:true})
@@ -1950,16 +1966,15 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
   } finally {
     if(chrome){
       try{chrome.client.close()}catch{}
-      try{chrome.child.kill()}catch{}
-      await sleep(450)
+      await stopOwnedTestChild(chrome.child)
     }
-    if(frontend) {try{frontend.kill()}catch{}}
+    await stopOwnedTestChild(frontend)
     if(pb) {try{await stopHeadlessPocketBase(pb)}catch{}}
     if(mock){
       try{mock.closeAllConnections()}catch{}
       await new Promise(resolve=>mock.close(resolve))
     }
-    try{fs.rmSync(chromeDir,{recursive:true,force:true,maxRetries:2,retryDelay:250})}catch{}
-    try{fs.rmSync(testDir,{recursive:true,force:true,maxRetries:3,retryDelay:250})}catch{}
+    try{await removeOwnedTestDirectory(chromeDir,tmp,'agentstudio-review-chrome-')}catch{}
+    try{await removeOwnedTestDirectory(testDir,os.tmpdir(),'agentstudio-review-browser-')}catch{}
   }
 })

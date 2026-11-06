@@ -3,6 +3,7 @@ import {fileURLToPath} from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import {verifyDesktopReleaseBaseline} from '../ops/verify-desktop-release-baseline.mjs'
+import companyHttps from './company-https.cjs'
 const desktop=path.dirname(fileURLToPath(import.meta.url)),root=path.dirname(desktop)
 async function run(file,args,cwd=root){
   const child=spawn(file,args,{cwd,stdio:'inherit',windowsHide:true,env:process.env})
@@ -10,6 +11,8 @@ async function run(file,args,cwd=root){
   if(code!==0)throw Error('desktop_build_step_failed:'+path.basename(file)+':'+code)
 }
 console.log('DESKTOP_BASELINE '+JSON.stringify(await verifyDesktopReleaseBaseline(root)))
+for(const authority of companyHttps.companyTrust().summary)for(const origin of authority.origins)companyHttps.companyTlsOptions(origin)
+console.log('DESKTOP_COMPANY_HTTPS '+JSON.stringify(companyHttps.companyTrust().summary))
 await fs.access(path.join(desktop,'node_modules/electron/dist/electron.exe'))
 await run(process.execPath,[path.join(desktop,'prepare.mjs')])
 await run(process.execPath,[path.join(root,'node_modules/typescript/bin/tsc'),'-b'])

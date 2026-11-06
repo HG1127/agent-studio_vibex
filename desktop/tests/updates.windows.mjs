@@ -145,6 +145,18 @@ try{
  if(client)await bounded(client.close(),10000,'test client close').catch(()=>{})
  await stopOwnedDesktop(oldPid);await stopOwnedDesktop(launchedPid)
  for(const socket of sockets)socket.destroy();await new Promise(resolve=>server.close(resolve))
+ // Keep only the small receipt/screenshots/log. Installations, synthetic account
+ // profiles and duplicate packages are rebuildable and must not accumulate.
+ for(const directory of [installation,home,output]){
+  try{
+   assert.equal(path.dirname(directory),base)
+   const stat=await fs.lstat(directory).catch(error=>{if(error.code==='ENOENT')return null;throw error})
+   if(!stat)continue
+   assert.equal(stat.isSymbolicLink(),false,'never recurse through a cleanup link')
+   assert.equal(await fs.realpath(directory),directory)
+   await fs.rm(directory,{recursive:true,force:true,maxRetries:10,retryDelay:300})
+  }catch(error){log('CLEANUP_RETAINED',{directory,reason:error.message.slice(0,200),condition:'Remove this isolated fixture after its test-owned process releases file handles.'})}
+ }
  log('UPDATE_TEST_DATA',{base})
 }
 process.exit(process.exitCode||0)
