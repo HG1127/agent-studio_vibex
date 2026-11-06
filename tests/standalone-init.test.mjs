@@ -41,7 +41,7 @@ test("standalone init creates fresh isolated local DB/secrets once and refuses o
   assert.equal(fs.readFileSync(path.join(temp,".env.local"),"utf8"),env)
   assert.equal(fs.readFileSync(path.join(temp,"standalone/operator-credentials.local"),"utf8"),creds)
  }finally{
-  assert.equal(path.dirname(temp),os.tmpdir())
+  assert.equal(path.resolve(path.dirname(temp)),path.resolve(os.tmpdir()))
   fs.rmSync(temp,{recursive:true,force:true})
  }
 })

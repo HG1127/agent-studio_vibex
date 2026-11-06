@@ -3904,12 +3904,13 @@ routerAdd("POST", "/api/agent-runs/{id}/evaluate", function (e) {
     if (evalStr) {
       try {
         var evalOld = JSON.parse(evalStr)
-        // A newly created/retried JSON field can be {}. Only a complete score
-        // is cached; an empty object must not suppress the first evaluation.
+        // Empty JSON ({}) is the unevaluated collection default. Only a full,
+        // previously persisted evaluation can be reused as a cached answer.
         if (evalOld && typeof evalOld === "object" && !Array.isArray(evalOld) &&
-            typeof evalOld.score === "number" && isFinite(evalOld.score) &&
-            Array.isArray(evalOld.dimensions) && evalOld.dimensions.length > 0 &&
-            Array.isArray(evalOld.suggestions)) {
+            typeof evalOld.score === "number" && Number.isFinite(evalOld.score) &&
+            Array.isArray(evalOld.dimensions) && evalOld.dimensions.length === 5 &&
+            Array.isArray(evalOld.suggestions) &&
+            typeof evalOld.evaluated_at === "string" && evalOld.evaluated_at.length > 0) {
           return e.json(200, { ok: true, run_id: id, evaluation: evalOld, cached: true })
         }
       } catch (_) {}

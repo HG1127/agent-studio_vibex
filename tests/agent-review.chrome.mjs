@@ -324,6 +324,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
       "--host","127.0.0.1","--port",String(vitePort),"--strictPort"],
       {cwd:root,windowsHide:true,stdio:["ignore","pipe","pipe"],
         env:{...process.env,AGENT_STUDIO_PB_ORIGIN:apiOrigin,
+          AGENT_STUDIO_VITE_CACHE_DIR:path.join(testDir,'vite-cache'),
           VITE_AGENT_STUDIO_PG_PILOT_UI_ENABLED:"false",
         }})
     frontend.stdout.on("data",chunk=>{viteLogs=(viteLogs+chunk).slice(-5000)})
@@ -955,6 +956,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
         await cmd('Input.insertText',{text:'V30_DENY_RESOURCES：禁止使用 doc_search，也不要联网；只对我提供的文字做文本摘要。'})
         await selectPlanningModel()
         await clickText('预览要求与能力依赖')
+        await selectPlanningModel()
         await wait('[...document.querySelectorAll("button")].some(b=>b.textContent?.includes("确认要求并生成方案")&&!b.disabled)','saved requirements and verified model available for negative-scope generation')
         await clickText('确认要求并生成方案');await wait('document.body.innerText.includes("已生成可编辑方案")','model-proposed conflicting resource plan')
         await clickText('进入方案编辑');await wait('document.querySelector("input[aria-label=助手名称]")?.value==="禁止资源冲突验收"','conflicting draft rendered')
@@ -1001,6 +1003,7 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
         "real user requirement typed")
       await selectPlanningModel()
       await clickText('预览要求与能力依赖')
+      await selectPlanningModel()
       await wait('[...document.querySelectorAll("button")].some(b=>b.textContent?.includes("确认要求并生成方案")&&!b.disabled)','saved requirements and verified model before generating the positive plan')
       await clickText('确认要求并生成方案')
       await wait('document.body.innerText.includes("已生成可编辑方案")',
@@ -1136,7 +1139,18 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
 
       // Quality loop with a real scoring and feedback persisted to this run.
       await clickText("生成评估")
-      await wait('document.body.innerText.includes("总分")',"completed run evaluated")
+      try {
+        await wait('document.body.innerText.includes("总分")',"completed run evaluated")
+      } catch (error) {
+        const serverRun=await api("GET","/api/agent_runs/"+firstRunId)
+        const serverDetail=await api("GET","/api/agent-runs/"+firstRunId+"/detail")
+        const view=await evaluate('({visible:document.body.innerText.slice(-1700),dialogs:[...document.querySelectorAll("[role=alert]")].map(e=>e.textContent),buttons:[...document.querySelectorAll("button")].filter(b=>b.textContent?.includes("评估")).map(b=>({text:b.textContent,disabled:b.disabled}))})')
+        console.log("V17_EVALUATION_DIAGNOSTIC",JSON.stringify({
+          runId:firstRunId,status:serverRun.status,evalFromList:serverRun.evaluation,
+          evalFromDetail:serverDetail.run.evaluation,view,
+        }).slice(0,5600))
+        throw error
+      }
       await clickText("结果不理想")
       await evaluate('document.querySelector("textarea[placeholder^=\\"补充一句话\\"]").focus()')
       await cmd("Input.insertText",{text:"需要明确里程碑日期，知识库引用应更具体，并补充质量验收负责人"})

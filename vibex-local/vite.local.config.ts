@@ -24,6 +24,10 @@ const pgPilotProxy = {
 }
 
 export default defineConfig(({command,isPreview})=>({
+  // Parallel acceptance uses separate dependency caches even when worktrees
+  // intentionally share node_modules. Another dev server must not invalidate
+  // this page's optimized modules during lazy navigation.
+  cacheDir: process.env.AGENT_STUDIO_VITE_CACHE_DIR || undefined,
   // Dev-only loopback guidance: never ship the developer's disk path in dist.
   define:{__STUDIO_LOCAL_CONNECTOR_DIRECTORY__:JSON.stringify(command==='serve'&&!isPreview&&['start-connect.cmd','connect.mjs','setup.mjs','profiles.mjs'].every(file=>existsSync(path.resolve(__dirname,'../local-executor',file)))?path.resolve(__dirname,'../local-executor'):'')},
   plugins: [react()],

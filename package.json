@@ -46,6 +46,7 @@
     "test:concurrency": "node tests/concurrency.integration.mjs",
     "test:agent-effects": "node tests/agent-effects.integration.mjs",
     "test:agent-run-lifecycle": "node tests/agent-run-lifecycle.integration.mjs",
+    "test:authoring-errors": "node tests/authoring-error-diagnostics.test.mjs",
     "test:agent-local-result": "node tests/agent-local-result.integration.mjs",
     "test:agent-run-retry-ui": "node tests/agent-run-retry.chrome.mjs",
     "test:schedules": "node tests/schedules.integration.mjs",
@@ -59,7 +60,7 @@
     "go-live:preflight": "node ops/standalone-preflight.mjs",
     "go-live:legacy-preflight": "node ops/internal-readiness.mjs",
     "go-live:gateway": "node ops/verify-gateway.mjs",
-    "test:e2e": "pnpm test:integration && pnpm test:worker && pnpm test:worker-crash && pnpm test:model-provider && pnpm test:tool-executor && pnpm test:tool-debug && pnpm test:internal-overview && pnpm test:internal-templates && pnpm test:gateway-boundary && pnpm test:concurrency && pnpm test:agent-effects && pnpm test:schedules && pnpm test:knowledge && pnpm test:semantic && pnpm test:migrations && pnpm test:standalone && pnpm test:company && pnpm test:team-knowledge && pnpm test:agent-collaboration && pnpm test:smithery-integration && pnpm test:v19-integration && pnpm test:agent-role-stages && pnpm test:local-executor && pnpm test:agent-local-result && pnpm test:office-flow && pnpm test:skill-role && pnpm test:task-planning && pnpm test:browser-navigation && pnpm test:agent-review && pnpm test:agent-create-acceptance && pnpm test:research-core && pnpm test:research-vertical && pnpm test:application-feedback",
+    "test:e2e": "pnpm test:integration && pnpm test:worker && pnpm test:worker-crash && pnpm test:model-provider && pnpm test:tool-executor && pnpm test:tool-debug && pnpm test:internal-overview && pnpm test:internal-templates && pnpm test:gateway-boundary && pnpm test:concurrency && pnpm test:agent-effects && pnpm test:schedules && pnpm test:knowledge && pnpm test:semantic && pnpm test:migrations && pnpm test:standalone && pnpm test:company && pnpm test:team-knowledge && pnpm test:agent-collaboration && pnpm test:smithery-integration && pnpm test:v19-integration && pnpm test:agent-role-stages && pnpm test:local-executor && pnpm test:authoring-errors && pnpm test:agent-local-result && pnpm test:office-flow && pnpm test:skill-role && pnpm test:task-planning && pnpm test:browser-navigation && pnpm test:agent-review && pnpm test:agent-create-acceptance && pnpm test:research-core && pnpm test:research-vertical && pnpm test:application-feedback",
     "test:e2e:parallel": "node ops/e2e-parallel.mjs",
     "test:e2e:fast": "node ops/e2e-parallel.mjs",
     "worker": "node worker/run.mjs",
@@ -97,7 +98,7 @@
     "test:research-vertical": "node tests/research-vertical.integration.mjs",
     "test:research-ui": "node tests/authoring-requirements.integration.mjs --browser && node tests/tool-results.integration.mjs --browser && node tests/research-workflow.integration.mjs --browser",
     "test:application-feedback": "node tests/application-feedback.chrome.mjs && node tests/application-vision.chrome.mjs",
-    "test:authoring-errors": "node --experimental-strip-types --test tests/authoring-error-diagnostics.test.mjs"
+    "test:authoring-errors": "node tests/authoring-error-diagnostics.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

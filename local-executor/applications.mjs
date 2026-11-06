@@ -101,28 +101,28 @@ export function registerApplications({add,config,native=applicationNative,native
 
 
  if(desktop.length){
-  addTool('apps.launch','启动已授权应用并等待窗口就绪。ready 才能开始观察；waiting_window 只说明启动已受理，须继续刷新窗口，不能宣称任务完成。',{app:appSchema(desktop)},async(args,signal)=>{
+   addTool('apps.launch','启动已授权应用并等待窗口就绪。返回 app 授权ID和 windows 窗口ID，下一步用它们调用 apps.observe；ready 只代表窗口就绪，不代表任务完成。',{app:appSchema(desktop)},async(args,signal)=>{
    exact(args,['app']);const g=await checked(args.app);signal?.throwIfAborted()
    if(isQoderHelper(g.path))throw Error('application_launcher_needs_review')
    const existing=await windows(g,signal,true)
-   if(existing.length)return JSON.stringify({app:g.id,application:g.name,accepted:true,status:'ready',alreadyRunning:true,windows:existing.map(({path,...w})=>w)})
+    if(existing.length)return JSON.stringify({app:g.id,application:g.name,accepted:true,status:'ready',alreadyRunning:true,windows:existing.map(({path,...w})=>w)})
    // Window discovery starts a native helper. Cancellation or an application
    // update during that await must be checked before any launch side effect.
    await checked(args.app);signal?.throwIfAborted()
    let exitCode=null,launchError=false
    await new Promise((resolve,reject)=>{const child=launch(g.path,g.accessibility==='electron'?['--force-renderer-accessibility']:[],{shell:false,windowsHide:false,stdio:'ignore',cwd:path.dirname(g.path),env:applicationEnvironment()});child.on('error',error=>{launchError=true;reject(Error(error.code==='ENOENT'?'application_binary_missing':['EACCES','EPERM'].includes(error.code)?'application_launch_denied':'application_launch_failed'))});child.once('exit',code=>{exitCode=code});child.once('spawn',()=>{child.unref();resolve()})})
    const deadline=Date.now()+launchWaitMs
-   do{signal?.throwIfAborted();if(launchError)throw Error('application_launch_failed');const list=await windows(g,signal,true);if(list.length){await checked(args.app);signal?.throwIfAborted();return JSON.stringify({app:g.id,application:g.name,accepted:true,status:'ready',alreadyRunning:false,windows:list.map(({path,...w})=>w)})}if(Date.now()>=deadline)break;await delay(pollMs,undefined,{signal})}while(true)
+    do{signal?.throwIfAborted();if(launchError)throw Error('application_launch_failed');const list=await windows(g,signal,true);if(list.length){await checked(args.app);signal?.throwIfAborted();return JSON.stringify({app:g.id,application:g.name,accepted:true,status:'ready',alreadyRunning:false,windows:list.map(({path,...w})=>w)})}if(Date.now()>=deadline)break;await delay(pollMs,undefined,{signal})}while(true)
    // Single-instance apps/version launchers can exit before the real window
    // appears. Only a window with the pinned identity proves readiness; wait
    // for the bounded discovery period without ever launching a second time.
    if(exitCode!==null&&exitCode!==0)throw Error('application_launch_failed')
-   return JSON.stringify({app:g.id,application:g.name,accepted:true,status:'waiting_window',windows:[],retryLaunch:false,message:'启动请求已受理，但尚未发现可操作窗口。请刷新窗口检查启动弹窗；不会重复启动。'})
+    return JSON.stringify({app:g.id,application:g.name,accepted:true,status:'waiting_window',windows:[],retryLaunch:false,message:'启动请求已受理，但尚未发现可操作窗口。请刷新窗口检查启动弹窗；不会重复启动。'})
   })
-  addTool('apps.windows','列出已授权应用的可见窗口。只返回该应用的窗口，不枚举其他应用的数据。',{app:appSchema(desktop)},async(args,signal)=>{exact(args,['app']);const g=await checked(args.app);return JSON.stringify({app:g.id,application:g.name,windows:(await windows(g,signal)).map(({path,...w})=>w)})})
-  addTool('apps.observe','只读观察已授权窗口；后台窗口不会盲读 Electron 控件。需要在同一次操作中激活并观察时，明确传 activate:true，须本机确认后才切换前台。凭据30秒有效。',{app:appSchema(desktop),window:str,activate:{type:'boolean'}},async(args,signal)=>{
+   addTool('apps.windows','列出已授权应用的可见窗口，返回 app 授权ID和每个窗口的 id；下一步 apps.observe 必须同时传 app 与 window。',{app:appSchema(desktop)},async(args,signal)=>{exact(args,['app']);const g=await checked(args.app);return JSON.stringify({app:g.id,application:g.name,windows:(await windows(g,signal)).map(({path,...w})=>w)})})
+   addTool('apps.observe','只读观察已授权窗口，必须传 app 授权ID与 window 窗口ID。窗口已经在前台时直接只读观察，不重复激活、不弹确认；后台窗口需 activate:true 和本机确认才切换前台。凭据30秒有效。',{app:appSchema(desktop),window:str,activate:{type:'boolean'}},async(args,signal)=>{
    vision?.invalidate(args.app)
-   exact(args,['app','window','activate'],['app','window']);const g=await checked(args.app);if(typeof args.window!=='string'||!/^\d{1,20}$/.test(args.window))throw Error('application_window_changed');if(args.activate!==undefined&&typeof args.activate!=='boolean')throw Error('invalid_application_arguments');if(args.activate===true&&!g.control)throw Error('application_control_denied')
+    exact(args,['app','window','activate'],['app','window']);const g=await checked(args.app);if(typeof args.window!=='string'||!/^\d{1,20}$/.test(args.window))throw Error('application_window_changed');if(args.activate!==undefined&&typeof args.activate!=='boolean')throw Error('invalid_application_arguments');if(args.activate===true&&!g.control)throw Error('application_control_denied')
    observations.delete(g.id)
    const changed=async list=>JSON.stringify({application:g.name,status:list.length?'window_changed':'waiting_window',requestedWindow:args.window,windows:list.map(({path,...w})=>w),actionable:false,retryAction:false,message:'原窗口已关闭或重建。请使用刷新后的窗口编号重新观察；未重新启动、点击或输入。'})
    const current=await windows(g,signal);const selected=current.find(w=>w.id===args.window);if(!selected)return changed(current)
@@ -136,7 +136,7 @@ export function registerApplications({add,config,native=applicationNative,native
    // The native observer revalidates the window's current executable identity.
    // A known handle saves a redundant helper spawn, never an authorization check.
    let view
-   try{view=await native({action:shouldActivate?'activate_observe':'observe',path:g.windowPath||g.path,window:args.window,images:permission.images},{signal})}
+    try{view=await native({action:shouldActivate?'activate_observe':'observe',path:g.windowPath||g.path,window:args.window,images:permission.images},{signal})}
    catch(error){if(error.message==='application_window_changed')return changed(await windows(g,signal));throw error}
        if(view.window?.foreground===false){
      // A background Chromium surface is not a safe input source. Keep its

@@ -95,7 +95,7 @@ async function run(){
   const name=path.basename(file)
   const dir=path.join(session,name.replace(/[^A-Za-z0-9._-]/g,"_"))
   fs.mkdirSync(dir,{recursive:false,mode:0o700})
-  const env={...process.env,TMP:dir,TEMP:dir,TMPDIR:dir}
+  const env={...process.env,TMP:dir,TEMP:dir,TMPDIR:dir,AGENT_STUDIO_VITE_CACHE_DIR:path.join(dir,'vite-cache')}
   const started=performance.now()
   const child=spawn(process.execPath,[path.join(root,file)],{
    cwd:root,env,stdio:["ignore","pipe","pipe"],windowsHide:true,
