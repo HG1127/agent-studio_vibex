@@ -11,21 +11,22 @@ import {randomUUID,createHash} from 'node:crypto'
 import assert from 'node:assert/strict'
 import {_electron as electron,expect} from 'playwright/test'
 import {publishDesktopUpdate} from '../../ops/publish-desktop-update.mjs'
+import companyHttps from '../company-https.cjs'
 
 const require=createRequire(import.meta.url),execFileAsync=promisify(execFile)
 const root=process.cwd(),reuse=process.argv.find(a=>a.startsWith('--reuse='))?.slice(8)
-const base=reuse||await fs.mkdtemp(path.join(root,'.tmp/update acceptance '))
-assert.equal(path.dirname(base),path.join(root,'.tmp'))
-assert.ok(path.basename(base).startsWith('update acceptance '))
-const installation=path.join(base,'Agent Studio'),home=path.join(base,'account'),output=path.join(base,'feed-'+randomUUID())
 const oldInstaller=path.resolve(process.argv[2]||''),newInstaller=path.resolve(process.argv[3]||'')
 assert.ok(process.argv[2]&&process.argv[3],'Pass bootstrap and newer installer paths')
 const fromVersion=process.argv.find(a=>a.startsWith('--from='))?.slice(7)||'0.1.0-preview.10'
 const toVersion=process.argv.find(a=>a.startsWith('--to='))?.slice(5)||require('../build-info.json').version
+const externalFeed=process.argv.find(a=>a.startsWith('--feed-url='))?.slice(11)
+if(externalFeed){const feed=new URL(externalFeed);assert.ok(companyHttps.companyTrust().summary.some(ca=>ca.origins.includes(feed.origin)),'external acceptance feed must use a bundled company HTTPS origin');assert.ok(!feed.username&&!feed.password&&!feed.search&&!feed.hash&&feed.pathname.endsWith('/latest.json'))}
 assert.equal(require('../update-core.cjs').compare(toVersion,fromVersion),1,'target must be a newer version')
-await fs.mkdir(installation,{recursive:true});await fs.mkdir(home,{recursive:true});await fs.mkdir(output,{recursive:true})
-const privateKey=await fs.readFile(path.join(root,'.tmp/update-signing/private.pem'),'utf8')
-const checks=[],sockets=new Set(),startedAt=Date.now()
+await fs.access(oldInstaller);await fs.access(newInstaller)
+if(reuse){assert.equal(path.dirname(reuse),path.join(root,'.tmp'));assert.ok(path.basename(reuse).startsWith('update acceptance '));assert.equal((await fs.lstat(reuse)).isSymbolicLink(),false)}
+const base=reuse||await fs.mkdtemp(path.join(root,'.tmp/update acceptance '))
+const installation=path.join(base,'Agent Studio'),home=path.join(base,'account'),output=path.join(base,'feed-'+randomUUID())
+const checks=[],sockets=new Set(),installers=new Set(),startedAt=Date.now()
 const log=(stage,details={})=>console.log(JSON.stringify({stage,elapsedSeconds:Math.round((Date.now()-startedAt)/1000),...details}))
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms))
 async function bounded(promise,ms,label){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('timeout '+label)),ms)})])}finally{clearTimeout(timer)}}
@@ -45,12 +46,12 @@ const server=http.createServer(async(req,res)=>{
  }catch{res.writeHead(404);res.end()}
 })
 server.on('connection',socket=>{sockets.add(socket);socket.on('close',()=>sockets.delete(socket))})
-await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve))
-const origin='http://127.0.0.1:'+server.address().port
+let origin,privateKey
 function run(file,args,timeout=600000){return new Promise((resolve,reject)=>{
  const verbatim=process.platform==='win32'&&args.some(arg=>arg.startsWith('/D='))
  const child=spawn(file,args,{windowsHide:true,stdio:'ignore',windowsVerbatimArguments:verbatim,...(verbatim?{argv0:'"'+file+'"'}:{})})
- const timer=setTimeout(()=>{child.kill();reject(Error('process timeout '+path.basename(file)))},timeout)
+ installers.add(child);child.once('close',()=>installers.delete(child))
+ const timer=setTimeout(()=>reject(Error('process timeout '+path.basename(file))),timeout)
  child.once('error',error=>{clearTimeout(timer);reject(error)});child.once('exit',code=>{clearTimeout(timer);code===0?resolve():reject(Error('process exit '+code))})
 })}
 let client,page,clientProcess,oldPid,launchedPid,transactionId,diagnosticLog='',beforeSettings,acceptance
@@ -68,15 +69,25 @@ async function stopOwnedDesktop(pid){
  await execFileAsync('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{timeout:20000,windowsHide:true}).catch(error=>log('CLEANUP_WARNING',{message:error.message.slice(0,200)}))
 }
 try{
+ await fs.mkdir(installation,{recursive:true});await fs.mkdir(home,{recursive:true});await fs.mkdir(output,{recursive:true})
+ privateKey=externalFeed?null:await fs.readFile(path.join(root,'.tmp/update-signing/private.pem'),'utf8')
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));origin='http://127.0.0.1:'+server.address().port
  const bootstrapId=randomUUID(),bootstrapDir=path.join(installation,'temp/desktop-updates',bootstrapId)
  await fs.mkdir(bootstrapDir,{recursive:true})
  await fs.writeFile(path.join(bootstrapDir,'job.json'),JSON.stringify({id:bootstrapId,root:installation}))
  await fs.writeFile(path.join(bootstrapDir,'result.json'),JSON.stringify({phase:'starting',version:fromVersion}))
  if(!reuse)await run(oldInstaller,['/S','--desktop-update','--desktop-update-id="'+bootstrapId+'"','/D='+installation])
  assert.equal(await readVersion(),fromVersion);log('BOOTSTRAP_INSTALLED',{version:fromVersion,base})
- await fs.writeFile(path.join(home,'desktop.json'),JSON.stringify({server:origin,port:0,updateFeed:origin+'/stable/latest.json'}))
+ const updateFeed=externalFeed||origin+'/stable/latest.json'
+ if(externalFeed){
+  const response=await companyHttps.createCompanyFetch()(externalFeed,{redirect:'error',signal:AbortSignal.timeout(15000)});assert.equal(response.status,200)
+  const manifest=require('../update-core.cjs').verifyManifest(await response.json(),require('../update-trust.json').publicKey)
+  assert.equal(manifest.version,toVersion);assert.equal(manifest.sha256,await sha256(newInstaller));assert.equal(manifest.size,(await fs.stat(newInstaller)).size)
+  checks.push('real company HTTPS feed signature and immutable installer identity match the candidate');log('COMPANY_FEED_VERIFIED',{version:manifest.version})
+ }
+ await fs.writeFile(path.join(home,'desktop.json'),JSON.stringify({server:origin,port:0,updateFeed}))
  await fs.writeFile(path.join(home,'employee-sentinel'),'EMPLOYEE_AND_DEVICE_SETTINGS_PRESERVED')
- await publishDesktopUpdate({installer:newInstaller,baseUrl:origin,output,key:privateKey,releaseVersion:toVersion,notes:'专用隔离更新验收，不发布到公司服务器'})
+ if(!externalFeed)await publishDesktopUpdate({installer:newInstaller,baseUrl:origin,output,key:privateKey,releaseVersion:toVersion,notes:'专用隔离更新验收，不发布到公司服务器'})
  client=await electron.launch({executablePath:path.join(installation,'Agent Studio.exe'),args:['--desktop-test-home='+home,'--desktop-updated='+bootstrapId],timeout:60000})
  clientProcess=client.process();clientProcess.stdout?.on('data',retainLog);clientProcess.stderr?.on('data',retainLog)
  oldPid=await bounded(client.evaluate(()=>process.pid),10000,'old process identity')
@@ -87,7 +98,7 @@ try{
  const workbench=await wait(async()=>{for(const candidate of client.windows())if(/^http:\/\/127\.0\.0\.1:\d+/.test(candidate.url()))return candidate},'rendered local workbench')
  await expect(workbench.locator('#root')).not.toBeEmpty({timeout:45000})
  const localSettings=await wait(async()=>{const value=await json(path.join(home,'desktop.json'));return value?.port>0?value:null},'bundled connector port')
- assert.equal(localSettings.updateFeed,origin+'/stable/latest.json')
+ assert.equal(localSettings.updateFeed,updateFeed)
  beforeSettings=await fs.readFile(path.join(home,'desktop.json'),'utf8')
  checks.push('old unmodified package starts its actual bundled connector and renders the workbench')
  log('WORKBENCH_READY',{version:fromVersion,port:localSettings.port,oldPid})
@@ -97,12 +108,15 @@ try{
  await clickMenu('版本更新')
  page=await wait(async()=>{for(const candidate of client.windows())if(candidate.url().endsWith('/ui/updates.html'))return candidate},'update window')
  await expect(page.locator('#current')).toContainText(fromVersion,{timeout:15000})
+ if(!externalFeed){
  const manifestFile=path.join(output,'stable/latest.json'),original=await fs.readFile(manifestFile,'utf8'),tampered=JSON.parse(original)
  tampered.payload=Buffer.from('{"version":"999.0.0"}').toString('base64')
  await fs.writeFile(manifestFile,JSON.stringify(tampered));await page.locator('#check').click()
  await expect(page.locator('#status')).toContainText('签名验证失败',{timeout:30000});await expect(page.locator('#download')).toBeHidden()
  checks.push('packaged update UI refuses a tampered signed manifest without downloading');log('TAMPER_REJECTED')
- await fs.writeFile(manifestFile,original);await page.locator('#check').click()
+ await fs.writeFile(manifestFile,original)
+ }
+ await page.locator('#check').click()
  await expect(page.locator('#status')).toContainText('发现新版本 '+toVersion,{timeout:30000})
  await page.locator('#download').click();await expect(page.locator('#install')).toBeVisible({timeout:120000});await expect(page.locator('#install')).toBeEnabled({timeout:15000})
  await page.screenshot({path:path.join(base,'ready.png'),timeout:15000})
@@ -131,7 +145,7 @@ try{
   assert.equal(await fs.readFile(path.join(home,'desktop.json'),'utf8'),beforeSettings)
   checks.push('old updater exits, same-directory installer with spaces runs, new app renders and acknowledges health')
   checks.push('isolated account marker and entire desktop configuration remain byte-for-byte unchanged')
-  acceptance={status:'PASS',checks,versionBefore:fromVersion,versionAfter:health.version,productionData:false,installation,health,transactionId,installerSha256:await sha256(newInstaller)}
+  acceptance={status:'PASS',checks,versionBefore:fromVersion,versionAfter:health.version,productionData:false,updateFeed,installation,health,transactionId,installerSha256:await sha256(newInstaller)}
   log('PACKAGED_UPDATE_ACCEPTANCE',{versionAfter:health.version,base})
  }
  await fs.writeFile(path.join(base,'acceptance.json'),JSON.stringify(acceptance,null,2))
@@ -141,10 +155,13 @@ try{
  if(page&&!page.isClosed())await page.screenshot({path:path.join(base,'failure.png'),timeout:5000}).catch(()=>{})
  log('ACCEPTANCE_FAILED',{message:error.message,state,base})
 }finally{
- await fs.writeFile(path.join(base,'electron.log'),diagnosticLog)
+ await fs.writeFile(path.join(base,'electron.log'),diagnosticLog).catch(error=>log('EVIDENCE_WRITE_WARNING',{message:error.message.slice(0,200)}))
+ for(const installer of installers)if(installer.exitCode===null&&installer.signalCode===null){
+  await execFileAsync(path.join(process.env.SystemRoot,'System32/taskkill.exe'),['/PID',String(installer.pid),'/T','/F'],{timeout:20000,windowsHide:true}).catch(error=>log('CLEANUP_WARNING',{message:error.message.slice(0,200)}))
+ }
  if(client)await bounded(client.close(),10000,'test client close').catch(()=>{})
  await stopOwnedDesktop(oldPid);await stopOwnedDesktop(launchedPid)
- for(const socket of sockets)socket.destroy();await new Promise(resolve=>server.close(resolve))
+ for(const socket of sockets)socket.destroy();if(server.listening)await new Promise(resolve=>server.close(resolve))
  // Keep only the small receipt/screenshots/log. Installations, synthetic account
  // profiles and duplicate packages are rebuildable and must not accumulate.
  for(const directory of [installation,home,output]){
