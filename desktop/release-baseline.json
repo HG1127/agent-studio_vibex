@@ -18,7 +18,8 @@
     "36a8d00af2e2b62859c51bd41fae837090356f27",
     "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11",
     "581d5bf113e5c8e2f0a986f47327170fe838c979",
-    "25591acd367f2428bcc05bd1f8f8539ccef87f59"
+    "25591acd367f2428bcc05bd1f8f8539ccef87f59",
+    "3ca99850d4530bc0c958258584c0d002395fc970"
   ],
   "requiredFiles": [
     "desktop/update-controller.cjs",
