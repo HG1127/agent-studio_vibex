@@ -112,7 +112,20 @@ try {
       assert.equal(result.data.status,'succeeded',tool+': '+result.data.result)
       const value=JSON.parse(result.data.result)
       if(tool==='apps.windows')assert.deepEqual(value.windows,[],'fixture must begin with no window')
-      else {assert.equal(value.status,'ready');assert.ok(value.windows.length);assert.equal(value.windows[0].minimized,false,'launch must return a shown window');assert.equal(value.alreadyRunning,electronColdStart);electronColdStart=true;fixtureWindow=value.windows[0].id}
+      else {
+        if(value.status==='waiting_window'){
+          assert.equal(value.retryLaunch,false,'waiting must never relaunch the fixture')
+          for(let n=0;n<12&&!value.windows?.length;n++){
+            await sleep(500)
+            const pending=await request('POST',jobRoute,{tool:'apps.windows',arguments:{app:applicationGrant.id},confirm:true,request_id:randomBytes(16).toString('hex')},{Authorization:login.data.token});assert.equal(pending.status,201)
+            let check;for(let i=0;i<120;i++){check=await request('GET','/__pb/api/local-jobs/'+pending.data.id,null,{Authorization:login.data.token});if(['succeeded','failed','expired','unknown'].includes(check.data.status))break;await sleep(250)}
+            assert.equal(check.data.status,'succeeded','window discovery after launch: '+check.data.result);value.windows=JSON.parse(check.data.result).windows
+          }
+          let diagnostic;try{diagnostic=JSON.parse(await fs.readFile(electronFixture.receipt,'utf8'))}catch{}
+          assert.ok(value.windows?.length,'fixture window not ready: '+JSON.stringify(diagnostic||{phase:'no_receipt'}))
+        }else assert.equal(value.status,'ready')
+        assert.ok(value.windows.length);assert.equal(value.windows[0].minimized,false,'launch must return a shown window');assert.equal(value.alreadyRunning,electronColdStart);electronColdStart=true;fixtureWindow=value.windows[0].id
+      }
     }
     let receipt
     for(let i=0;i<100&&!receipt;i++){try{receipt=JSON.parse(await fs.readFile(electronFixture.receipt,'utf8'))}catch(error){if(error.code!=='ENOENT')throw error}if(!receipt)await sleep(50)}
@@ -155,6 +168,9 @@ try {
     for(let i=0;i<1800;i++){try{await fs.access(path.join(dir,'finish'));break}catch{}await sleep(1000)}
   }
 } finally {
+  // Ask only this synthetic application to quit before the desktop tree is
+  // stopped. Unrelated employee applications are never test cleanup targets.
+  if(electronFixture){await fs.writeFile(electronFixture.finish,'finish').catch(()=>{});await sleep(500)}
   if(client&&client.exitCode===null){
     if(process.platform==='win32'){
       const stop=spawn(path.join(process.env.SystemRoot,'System32','taskkill.exe'),['/PID',String(client.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'})
