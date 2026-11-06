@@ -9,6 +9,7 @@ const {randomUUID}=require('node:crypto')
 const info = require('./build-info.json')
 const {installUpdates}=require('./update-controller.cjs')
 const {blockedUpdate,waitForWorkbench}=require('./startup-health.cjs')
+const {instanceData,instanceConflict}=require('./single-instance.cjs')
 const option = name => process.argv.find(x=>x.startsWith(name+'='))?.slice(name.length+1)
 const testHome = option('--desktop-test-home')
 if(testHome)app.setPath('userData',path.resolve(testHome))
@@ -27,11 +28,16 @@ function reveal(window){if(!window||window.isDestroyed())return;if(window.isMini
 const settingsUrl=pathToFileURL(path.join(__dirname,'ui','settings.html')).href
 const webPreferences={nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true,partition:'persist:agent-studio'}
 const updateBlocked=runtimeRoot&&blockedUpdate(runtimeRoot,{updated:option('--desktop-updated'),failed:option('--desktop-update-failed'),version:info.version})
-const lock=!updateBlocked&&app.requestSingleInstanceLock()
+const identity=instanceData({version:info.version,executablePath:process.execPath,applicationPath:app.getAppPath()})
+const lock=!updateBlocked&&app.requestSingleInstanceLock(identity)
 if(updateBlocked)void app.whenReady().then(()=>dialog.showMessageBox({type:'info',title:'程序正在更新或恢复',message:'安装文件尚未确认完整，暂时不打开工作台。',detail:'更新完成后会自动打开。请勿重复启动；如果更新已停止，请使用最新版安装程序修复，原账号与授权会保留。'})).finally(()=>app.exit(0))
-else if(!lock)void app.whenReady().then(()=>dialog.showMessageBox({type:'info',title:'Agent Studio 已在运行',message:'新版 '+info.version+' 尚未启动，已有旧工作台正在运行。',detail:'如果刚换了新版 EXE，请先从旧版菜单选择“退出并停止本机连接”，再打开新版。关闭工作台窗口会保留托盘进程。'})).finally(()=>app.quit())
+else if(!lock)app.quit()
 else {
-app.on('second-instance',()=>{void app.whenReady().then(()=>{if(main&&!main.isDestroyed())reveal(main);else showSettings()})})
+app.on('second-instance',(_event,_argv,_cwd,additionalData)=>{void app.whenReady().then(()=>{
+  if(main&&!main.isDestroyed())reveal(main);else void showSettings()
+  const conflict=instanceConflict(identity,additionalData)
+  if(conflict)void dialog.showMessageBox(conflict)
+})})
 app.on('window-all-closed',()=>{})
 app.on('before-quit',event=>{if(!quitting){event.preventDefault();quitting=true;void stopServices().finally(()=>app.exit())}})
 app.whenReady().then(async()=>{

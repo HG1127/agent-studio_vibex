@@ -15,10 +15,12 @@ const freePort=async()=>{const s=netServer();await new Promise(r=>s.listen(0,'12
 const port=await freePort(),origin='http://127.0.0.1:'+port
 let pb,ui,browser,runtime,token='',foreign='',logs='',writes=0,checks=0,modelCalls=0,planningCalls=0,cancelEntered=false
 const counters=new Map(),pass=message=>{checks++;console.log('PASS '+message)}
+const visualApp='a'.repeat(24),freshVisualObservation='fresh-observation-fixture'
 const baseNode=(id,tools,depends=[])=>({id,title:id==='analysis'?'计算核验':'保存交付',objective:id==='analysis'?'计算 6*7 并核验':'把已核验的42写入隔离测试端点',source_role:'',depends_on:depends,tools,required_tools:tools.slice(),local_tools:[],inputs:['任务及前序结果'],outputs:['可核验交付'],acceptance:['所需工具有成功回执']})
 function plan(context){
  const p={version:1,summary:'先计算核验，再审批保存；只使用隔离资源',nodes:[baseNode('analysis',['calculate']),baseNode('delivery',['fixture_write'],['analysis'])],missing_capabilities:[]}
  if(context.instruction.includes('CASE_LOCAL'))p.nodes=[{...baseNode('local_copy',['local_computer']),title:'本机读取并新建副本',objective:'读取source.txt并新建copy.txt',local_tools:['files.read','files.write']}]
+ if(context.instruction.includes('CASE_VISUAL'))p.nodes=[{...baseNode('visual_input',['local_computer']),title:'隔离视觉动作回执',objective:'过期回执不能充当动作成功证据，重新观察并审批新动作',local_tools:['apps.observe_visual','apps.act_visual'],acceptance:['必须有重新观察和新动作的真实队列回执；不宣称业务结果完成']}]
  if(context.instruction.includes('CASE_INVALID'))p.nodes[0].tools=p.nodes[0].required_tools=['ungranted_shell']
  if(context.instruction.includes('CASE_GAP')&&!context.revision_feedback)p.missing_capabilities=['没有获准的真实邮件服务，不能对外发送']
  return p
@@ -39,7 +41,7 @@ const local=createServer(async(req,res)=>{
   if(context.instruction.includes('CASE_CANCEL')){cancelEntered=true;await sleep(600)}
   content=JSON.stringify(plan(context))
  }else if(system.includes('助手执行引擎')){
-  const scenario=user.match(/CASE_[A-Z]+/)?.[0]||'CASE_UNKNOWN',stage=system.includes('（analysis）')?'analysis':system.includes('（delivery）')?'delivery':system.includes('（local_copy）')?'local_copy':'unknown'
+  const scenario=user.match(/CASE_[A-Z]+/)?.[0]||'CASE_UNKNOWN',stage=system.includes('（analysis）')?'analysis':system.includes('（delivery）')?'delivery':system.includes('（local_copy）')?'local_copy':system.includes('（visual_input）')?'visual_input':'unknown'
   const key=scenario+':'+stage,n=(counters.get(key)||0)+1;counters.set(key,n)
   if(stage==='analysis'){
    if(scenario==='CASE_MAIN'&&n===1)content=JSON.stringify({action:'final',final_answer:'UNPROVEN_COMPLETE'})
@@ -53,6 +55,12 @@ const local=createServer(async(req,res)=>{
    if(n===1)content=JSON.stringify({action:'tool',tool:'local_computer',tool_input:{tool:'files.read',arguments:{root:'work',path:'source.txt'}}})
    else if(n===2){assert.match(user,/SOURCE_FROM_DISK: 42/);content=JSON.stringify({action:'tool',tool:'local_computer',tool_input:{tool:'files.write',arguments:{root:'work',path:'copy.txt',text:'SOURCE_FROM_DISK: 42'}}})}
    else content=JSON.stringify({action:'final',final_answer:'LOCAL_PLAN_DONE: copy.txt created from the observed source'})
+  }else if(stage==='visual_input'){
+   if(n===1)content=JSON.stringify({action:'tool',tool:'local_computer',tool_input:{tool:'apps.act_visual',arguments:{app:visualApp,observation:'expired-observation-fixture',x:1,y:1,action:'type',text:'Isolated fixture draft'}}})
+   else if(n===2){assert.match(user,/not_started/);content=JSON.stringify({action:'final',final_answer:'UNPROVEN_VISUAL_COMPLETE'})}
+   else if(n===3)content=JSON.stringify({action:'tool',tool:'local_computer',tool_input:{tool:'apps.observe_visual',arguments:{app:visualApp,window:'123'}}})
+   else if(n===4){assert.match(user,new RegExp(freshVisualObservation));content=JSON.stringify({action:'tool',tool:'local_computer',tool_input:{tool:'apps.act_visual',arguments:{app:visualApp,observation:freshVisualObservation,x:2,y:3,action:'type',text:'Isolated fixture draft'}}})}
+   else content=JSON.stringify({action:'final',final_answer:'VISUAL_TOOL_RECEIPTS_VERIFIED: isolated input receipt accepted; business outcome remains unverified'})
   }else content=JSON.stringify({action:'final',final_answer:'UNEXPECTED_STAGE'})
  }
  res.end(JSON.stringify({choices:[{message:{role:'assistant',content}}],usage:{prompt_tokens:10,completion_tokens:20}}))
@@ -143,6 +151,45 @@ try{
  await tick(localRun);const localDone=await state(localRun);assert.equal(localDone.status,'succeeded',JSON.stringify(localDone));assert.equal(await fs.readFile(path.join(work,'copy.txt'),'utf8'),'SOURCE_FROM_DISK: 42')
  assert.deepEqual(localDone.checkpoint.plan_evidence.local_copy.map(e=>e.local_tool),['files.read','files.write'])
  pass('model-planned local read and file creation execute through real device queue/runtime with separate approvals and node-level receipts')
+ // Synthetic app receipts travel through a real isolated device queue. No
+ // application runtime, native input, screenshots or real desktop is invoked.
+ const visualTools=[
+  {name:'apps.observe_visual',description:'Deterministic isolated observation receipt',inputSchema:{type:'object',properties:{app:{type:'string',enum:[visualApp]},window:{type:'string'}},required:['app','window'],additionalProperties:false}},
+  {name:'apps.act_visual',description:'Deterministic isolated action receipt',inputSchema:{type:'object',properties:{app:{type:'string',enum:[visualApp]},observation:{type:'string'},x:{type:'integer'},y:{type:'integer'},action:{type:'string',enum:['type']},text:{type:'string'}},required:['app','observation','x','y','action','text'],additionalProperties:false}}
+ ]
+ const visualDevice=await ok('POST','/api/local-devices',{name:'隔离视觉回执电脑'},token,201),visualCredentials=await ok('POST','/api/public/local-executor/pair',{code:visualDevice.pairing_code},'')
+ const visualApi=async(route,body)=>{const r=await fetch(origin+'/api/public/local-executor'+route,{method:'POST',headers:{'Content-Type':'application/json','X-Studio-Device-Token':visualCredentials.token},body:JSON.stringify(body),signal:AbortSignal.timeout(12000)});const data=await r.json();assert.ok(r.ok,route+' '+r.status+' '+JSON.stringify(data));return data}
+ await visualApi('/poll',{tools:visualTools})
+ const visualRun=(await ok('POST','/api/agent-runs/start',{spec_id:localSpec.id,instruction:'CASE_VISUAL Verify only deterministic visual input receipts, never real desktop or business completion.',model:'plan-fixture',config:{task_planning:'reviewed_v1',local_device_id:visualDevice.id,max_steps:20,max_model_calls:20,tools:{},custom_model:{connection_id:model.item.id,model_id:'plan-fixture'}}})).run_id
+ await tick(visualRun);assert.equal((await state(visualRun)).status,'awaiting_input');await review(visualRun)
+ const visualJob=async(expected,observation)=>{
+  await tick(visualRun);const pending=await state(visualRun);assert.equal(pending.status,'awaiting_approval')
+  assert.equal(pending.checkpoint.pending_approval.input.tool,expected)
+  assert.equal((await visualApi('/poll',{tools:visualTools})).job,null,'each visual request remains unqueued until separately approved')
+  await ok('POST','/api/agent-runs/'+visualRun+'/approve',{decision:'approve'});await tick(visualRun)
+  const {job}=await visualApi('/poll',{tools:visualTools});assert.ok(job);assert.equal(job.input.tool,expected);assert.equal(job.input.arguments.app,visualApp)
+  if(observation)assert.equal(job.input.arguments.observation,observation)
+  return job
+ }
+ const expiredVisualJob=await visualJob('apps.act_visual','expired-observation-fixture')
+ await visualApi('/jobs/'+expiredVisualJob.id+'/complete',{claim:expiredVisualJob.claim,ok:true,result:JSON.stringify({application:'Isolated app fixture',mode:'vision',receiptVersion:1,action:'type',accepted:false,effectState:'not_started',status:'needs_observation',diagnostic:'application_observation_expired',observation:null})})
+ await tick(visualRun);const afterExpiry=await state(visualRun)
+ assert.equal(afterExpiry.status,'running');assert.deepEqual(afterExpiry.checkpoint.plan_evidence.visual_input||[],[],'a successful job transport carrying not_started is not successful action evidence')
+ await tick(visualRun);const preventedFinal=await state(visualRun)
+ assert.equal(preventedFinal.status,'running');assert.equal(preventedFinal.result,'');assert.ok(!preventedFinal.checkpoint.role_state.completed.length)
+ const missingVisual=await ok('GET','/api/agent-runs/'+visualRun+'/detail')
+ assert.ok(missingVisual.events.some(e=>e.event_type==='error'&&String(e.content?.message).includes('apps.act_visual')),'premature model final must be blocked by missing local action evidence')
+ pass('visual accepted:false/not_started keeps the current Agent running but cannot satisfy plan evidence or an early model final')
+ const observedVisualJob=await visualJob('apps.observe_visual')
+ await visualApi('/jobs/'+observedVisualJob.id+'/complete',{claim:observedVisualJob.claim,ok:true,result:JSON.stringify({application:'Isolated app fixture',mode:'vision',window:{id:'123'},observation:freshVisualObservation,actionable:true})});await tick(visualRun)
+ assert.deepEqual((await state(visualRun)).checkpoint.plan_evidence.visual_input.map(e=>e.local_tool),['apps.observe_visual'])
+ const acceptedVisualJob=await visualJob('apps.act_visual',freshVisualObservation)
+ assert.notEqual(acceptedVisualJob.id,expiredVisualJob.id,'recovery uses a newly approved job rather than replaying the expired job')
+ await visualApi('/jobs/'+acceptedVisualJob.id+'/complete',{claim:acceptedVisualJob.claim,ok:true,result:JSON.stringify({application:'Isolated app fixture',mode:'vision',receiptVersion:1,action:'type',accepted:true,effectState:'accepted',contentsVerified:false})});await tick(visualRun)
+ assert.deepEqual((await state(visualRun)).checkpoint.plan_evidence.visual_input.map(e=>e.local_tool),['apps.observe_visual','apps.act_visual'])
+ await tick(visualRun);const visualDone=await state(visualRun);assert.equal(visualDone.status,'succeeded',JSON.stringify(visualDone));assert.match(visualDone.result,/VISUAL_TOOL_RECEIPTS_VERIFIED/);assert.doesNotMatch(visualDone.result,/UNPROVEN_VISUAL_COMPLETE/)
+ assert.equal((await visualApi('/poll',{tools:visualTools})).job,null)
+ pass('fresh observation and a separately approved accepted:true action create real node-correlated receipts without repeating or executing native input')
  if(process.argv.includes('--browser')){
   const {createServer:createVite}=await import('vite'),{chromium,expect}=await import('playwright/test')
   process.env.AGENT_STUDIO_PB_ORIGIN=origin;const empty=path.join(db,'empty-env');await fs.mkdir(empty)

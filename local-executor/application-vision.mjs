@@ -8,6 +8,11 @@ export function registerApplicationVision({permission,addTool,checked,windows,co
  const observations=new Map(),desktop=permission.grants.filter(g=>g.adapter==='desktop'),controlled=desktop.filter(g=>g.control),allowed=new Set(desktop.map(g=>g.id)),writeAllowed=new Set(controlled.map(g=>g.id))
  if(!permission.images||!desktop.length)return {close(){},invalidate(){}}
  const app=list=>({type:'string',enum:list.map(g=>g.id)}),str={type:'string'}
+ function expiredAction(g,action){
+  // This receipt is produced only before dispatching native input. A native
+  // exception may follow a partial effect and must never take this path.
+  return JSON.stringify({application:g.name,mode:'vision',receiptVersion:1,effectState:'not_started',accepted:false,status:'needs_observation',action,actionable:false,observation:null,reobserveOnly:true,diagnostic:'application_observation_expired',message:'截图凭据已失效，本次点击、输入或发送尚未执行。请先重新观察同一授权窗口，再依据新截图和实际内容决定下一步；新动作仍须审批。'})
+ }
  function observation(g,view,receipt={}){
   const w=view?.window,iw=view?.imageWidth,ih=view?.imageHeight
   if(!view?.image||view.imageError)throw Error(view?.imageError||'application_capture_failed')
@@ -37,20 +42,20 @@ export function registerApplicationVision({permission,addTool,checked,windows,co
   if(!writeAllowed.has(args.app))throw Error('application_control_denied')
   const g=await checked(args.app),prior=observations.get(g.id);observations.delete(g.id);invalidateControls(g.id)
   if(!g.control)throw Error('application_control_denied')
-  if(!prior||prior.token!==args.observation||clock()-prior.created>30000)throw Error('application_observation_expired')
+  if(!prior||prior.token!==args.observation||clock()-prior.created>30000)return expiredAction(g,args.action)
   if(!['click','type','key','scroll'].includes(args.action)||!Number.isInteger(args.x)||!Number.isInteger(args.y)||args.x<0||args.y<0||args.x>=prior.iw||args.y>=prior.ih)throw Error('application_coordinate_denied')
   if(args.action==='type'?(typeof args.text!=='string'||!args.text||args.text.length>4000||/[\x00-\x1f\x7f]/.test(args.text)):args.text!==undefined)throw Error('invalid_application_arguments')
   if(args.action==='key'?!keys.includes(args.key):args.key!==undefined)throw Error('invalid_application_arguments')
   if(args.action==='scroll'?(!Number.isInteger(args.scrollY)||!args.scrollY||Math.abs(args.scrollY)>10):args.scrollY!==undefined)throw Error('invalid_application_arguments')
   const started=clock(),receiptId=randomBytes(16).toString('hex'),message='应用：'+g.name+'\n操作：'+args.action+'\n截图坐标：'+args.x+', '+args.y+(args.action==='type'?'\n追加输入：'+args.text:'')+(args.action==='key'?'\n按键：'+args.key:'')+(args.action==='scroll'?'\n滚动格数（正数向下）：'+args.scrollY:'')+'\n只操作本次截图中的授权窗口。请核对目标、内容及可能的发送效果；拒绝不会自动重试。'
   if(!await confirm({kind:'application',message},signal))throw Error('application_action_declined')
-  if(clock()-started>90000)throw Error('application_observation_expired')
+  if(clock()-started>90000)return expiredAction(g,args.action)
   await checked(g.id);signal?.throwIfAborted()
   const w=prior.window,result=await native({action:'act',path:g.windowPath||g.path,window:w.id,title:w.title,pid:w.pid,windowX:w.x,windowY:w.y,width:w.width,height:w.height,x:Math.floor(args.x*w.width/prior.iw),y:Math.floor(args.y*w.height/prior.ih),kind:args.action,text:args.text||'',key:args.key||'',scrollY:args.scrollY||0},{signal})
   if(result?.accepted!==true)throw Error('application_action_unconfirmed')
-  const receipt={receiptId,accepted:true,action:args.action,contentsVerified:false}
+  const receipt={receiptId,receiptVersion:1,effectState:'accepted',accepted:true,action:args.action,contentsVerified:false}
   try{return observation(g,await native({action:'observe',path:g.windowPath||g.path,window:w.id,activate:false},{signal}),receipt)}
-  catch(error){return JSON.stringify({application:g.name,...receipt,actionable:false,observation:null,reobserveOnly:true,message:'动作已执行，但后续截图未确认。请重新观察核对结果，禁止重复提交或发送。',diagnostic:/^application_[a-z_]+$/.test(error.message)?error.message:'application_capture_failed'})}
+  catch(error){return JSON.stringify({application:g.name,mode:'vision',...receipt,actionable:false,observation:null,reobserveOnly:true,message:'动作已执行，但后续截图未确认。请重新观察核对结果，禁止重复提交或发送。',diagnostic:/^application_[a-z_]+$/.test(error.message)?error.message:'application_capture_failed'})}
  },['app','observation','x','y','action'])
  return {close(){observations.clear()},invalidate(id){observations.delete(id)}}
 }

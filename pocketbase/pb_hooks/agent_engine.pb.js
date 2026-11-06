@@ -1150,7 +1150,7 @@ routerAdd("POST", "/api/llm/agent-engine/{id}/tick", function (e) {
             coverage:{kind:"local_execution_text",stored_complete:true,upstream_completeness:"unknown",offset_unit:"utf16_code_unit"}
           },{},sanitizeFinalSecrets)
         } catch (_) {localOk=false;localOutput="result_store_failed：本地任务已执行，但完整结果保存失败，已停止自动重放。"}
-        if (structuredPlanning && localOk)
+        if (structuredPlanning && localOk && taskPlanService.localReceiptSucceeded(localPending.local_tool,String(localResult.result || "")))
           cp.plan_evidence=taskPlanService.recordSuccess(cp.plan_evidence,activeRole.id,"local_computer",localPending.local_tool,stepIndex)
         localOutput=sanitizeFinalSecrets(localOutput)
         seq++

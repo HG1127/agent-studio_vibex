@@ -13,6 +13,7 @@ import { V28_UNSEEN_TASKS } from "../tests/fixtures/agent-v28-unseen-tasks.mjs"
 import { AGENT_DESIGN_SYSTEM_PROMPT, agentDesignTokenBudget } from "../src/lib/agentDesignProtocol.ts"
 import { evaluateBlindAgentPlan } from "../src/lib/agentDesignEvaluation.ts"
 
+async function main() {
 const args = new Set(process.argv.slice(2))
 const live = args.has("--live")
 const smoke = args.has("--smoke")
@@ -39,11 +40,11 @@ if (check) {
     warnings:["No fixed fixture counts as real-model evidence","All tasks use synthetic data",
       "No external tools or emails are invoked","Actual USD cost is not inferred"],
   }))
-  process.exit(0)
+  return
 }
 if (!live || !configReady) {
   console.error("V28_REAL_MODEL_UNAVAILABLE: explicit LIVE flag, configured provider/model and credential required.")
-  process.exit(3)
+  process.exitCode=3;return
 }
 
 const official = {
@@ -57,11 +58,11 @@ if (url.protocol !== "https:" ||
   ((url.hostname === "localhost" || url.hostname.endsWith(".local") || url.hostname.startsWith("127.")) &&
     process.env.AGENT_STUDIO_V28_ALLOW_CUSTOM_BASE_URL !== "YES")) {
   console.error("V28_PROVIDER_BASE_REJECTED: HTTPS required; private base must be explicitly allowlisted.")
-  process.exit(3)
+  process.exitCode=3;return
 }
 if (base !== official[provider] && process.env.AGENT_STUDIO_V28_ALLOW_CUSTOM_BASE_URL !== "YES") {
   console.error("V28_CUSTOM_BASE_REQUIRES_OPT_IN")
-  process.exit(3)
+  process.exitCode=3;return
 }
 
 const report = {
@@ -137,7 +138,7 @@ for(const task of tasks){
           report.completion="stopped_auth_or_rate_limit"
           store()
           console.error("V28_ABORT_PROVIDER_STATUS_"+result.httpStatus)
-          process.exit(4)
+          process.exitCode=4;return
         }
       }else{
         const evaluated=evaluateBlindAgentPlan(task,result.text)
@@ -150,7 +151,7 @@ for(const task of tasks){
           report.completion="stopped_missing_usage_metering"
           store()
           console.error("V28_ABORT_UNMETERED_PROVIDER_USAGE")
-          process.exit(4)
+          process.exitCode=4;return
         }
         report.checks.push({
           id:task.id,attempt,providerStatus:"ok",elapsedMs:result.elapsedMs,
@@ -186,3 +187,7 @@ report.summary={
 }
 store()
 console.log(JSON.stringify({completion:report.completion,summary:report.summary,reportPath}))
+}
+// Let Node finish its TypeScript loader and drain output. Immediate process.exit
+// can crash libuv on Windows before the offline check's output is acknowledged.
+await main()

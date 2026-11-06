@@ -1,6 +1,6 @@
 {
   "sourceCommit": "f18954bc1960eae8d6d9bc37d913f52bd341d28e",
-  "version": "0.1.0-preview.29",
+  "version": "0.1.0-preview.30",
   "platform": "win32-x64",
   "codeSigned": false,
   "integratedSources": {
@@ -30,7 +30,9 @@
     "windowScopedVision": "5f43271cf8dbd059e5134ead0b0355965ccdfbb7",
     "companyHttps": "scoped-bundled-company-ca-business-connector-and-signed-updates",
     "unifiedReliability": "captured-followups-and-isolated-vite-acceptance-cache",
-    "boundedWindowCapture": "foreground-identity-occlusion-checked-fallback-native-pixels-verified"
+    "boundedWindowCapture": "foreground-identity-occlusion-checked-fallback-native-pixels-verified",
+    "visualActionRecovery": "pre-dispatch-expiry-reobserve-without-input-or-success-evidence",
+    "singleInstance": "same-installation-silent-reveal-version-aware-conflict"
   },
   "sourceState": "committed-unified-source-with-release-metadata"
 }

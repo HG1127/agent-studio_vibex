@@ -17,10 +17,12 @@
     "8a8f1fac621043ab36f48f0965a149a8d2c7e104",
     "36a8d00af2e2b62859c51bd41fae837090356f27",
     "4b2afd32ad2a25d4049affe7f484ffe8b2f41a11",
-    "581d5bf113e5c8e2f0a986f47327170fe838c979"
+    "581d5bf113e5c8e2f0a986f47327170fe838c979",
+    "25591acd367f2428bcc05bd1f8f8539ccef87f59"
   ],
   "requiredFiles": [
     "desktop/update-controller.cjs",
+    "desktop/single-instance.cjs",
     "desktop/update-helper.cjs",
     "local-executor/application-target.mjs",
     "src/lib/localApplicationTask.ts",

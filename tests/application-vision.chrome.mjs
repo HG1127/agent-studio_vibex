@@ -18,11 +18,13 @@ test('visual panel separates point selection from actions and invalidates old co
   await fs.writeFile(path.join(fixture,'fixture.tsx'),`
 import React,{useState} from 'react';import{createRoot}from'react-dom/client';
 import{ApplicationVisionPanel}from'/src/components/tool-hub/ApplicationVisionPanel.tsx';
+import{AgentToolExecutionTrace}from'/src/components/agent-run/AgentToolExecutionTrace.tsx';
 const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#eff6ff"/><text x="20" y="40">Synthetic authorized app window</text></svg>');
+const traceEvents=[{event_type:'tool_call',step_index:1,content:{tool:'local_computer'}},{event_type:'tool_result',step_index:1,content:{tool:'local_computer',output:JSON.stringify({mode:'vision',receiptVersion:1,action:'click',effectState:'not_started',accepted:false,status:'needs_observation',diagnostic:'application_observation_expired'})}},{event_type:'tool_call',step_index:2,content:{tool:'local_computer'}},{event_type:'tool_result',step_index:2,content:{tool:'local_computer',output:JSON.stringify({mode:'vision',receiptVersion:1,action:'key',effectState:'accepted',accepted:true,contentsVerified:false})}}];
 function Fixture(){const[revision,setRevision]=useState(1),[text,setText]=useState(''),[readOnly,setReadOnly]=useState(false),[expired,setExpired]=useState(false),[calls,setCalls]=useState([]);
-return <><button onClick={()=>setRevision(n=>n+1)}>新的窗口截图</button><button onClick={()=>setReadOnly(true)}>只读授权</button><button onClick={()=>setExpired(true)}>观察到期</button><output aria-label="操作回执">{JSON.stringify(calls)}</output><ApplicationVisionPanel image={image} observation={{observation:readOnly?null:'token-'+revision,mode:'vision',imageSize:{width:400,height:300},actionable:!readOnly,window:{id:'fixture-only'}}} text={text} onTextChange={setText} disabled={false} expired={expired} canControl={!readOnly} onAction={(point,action)=>setCalls(rows=>[...rows,{point,...action}])}/></>}
+return <><button onClick={()=>setRevision(n=>n+1)}>新的窗口截图</button><button onClick={()=>setReadOnly(true)}>只读授权</button><button onClick={()=>setExpired(true)}>观察到期</button><output aria-label="操作回执">{JSON.stringify(calls)}</output><ApplicationVisionPanel image={image} observation={{observation:readOnly?null:'token-'+revision,mode:'vision',imageSize:{width:400,height:300},actionable:!readOnly,window:{id:'fixture-only'}}} text={text} onTextChange={setText} disabled={false} expired={expired} canControl={!readOnly} onAction={(point,action)=>setCalls(rows=>[...rows,{point,...action}])}/><AgentToolExecutionTrace events={traceEvents} status="running"/></>}
 createRoot(document.getElementById('root')).render(<Fixture/>);`)
-  server=await createServer({root,cacheDir:path.join(fixture,'cache'),configFile:false,plugins:[react()],optimizeDeps:{entries:[path.join(fixture,'index.html')],include:['react','react-dom/client']},server:{host:'127.0.0.1',port:0}})
+  server=await createServer({root,cacheDir:path.join(fixture,'cache'),configFile:false,resolve:{alias:{'@':path.join(root,'src')}},plugins:[react()],optimizeDeps:{entries:[path.join(fixture,'index.html')],include:['react','react-dom/client']},server:{host:'127.0.0.1',port:0}})
   await server.listen()
   const address=server.httpServer.address(),origin='http://127.0.0.1:'+address.port
   const executablePath=process.env.AGENT_STUDIO_UI_CHROME_BIN||(process.platform==='win32'?'C:/Program Files/Google/Chrome/Application/chrome.exe':undefined)
@@ -55,6 +57,11 @@ createRoot(document.getElementById('root')).render(<Fixture/>);`)
   await expect(page.getByText('当前只允许查看窗口截图。',{exact:true})).toBeVisible()
   await expect(click).toHaveCount(0)
   assert.equal((await receipts()).length,1,'expired or read-only observations cannot issue another action')
+  const trace=page.getByRole('region',{name:'自动调度实际调用'})
+  await expect(trace.getByText('未执行 · 需重新观察',{exact:true})).toBeVisible()
+  await expect(trace.getByText('已执行 · 待核对',{exact:true})).toBeVisible()
+  await expect(trace.getByText('已返回',{exact:true})).toHaveCount(0)
+  await expect(trace.getByText(/该回执不代表业务任务完成/)).toBeVisible()
   assert.deepEqual(errors,[])
   console.log('VISION_PANEL_BROWSER_PASS '+JSON.stringify({selectionHasNoSideEffect:true,newScreenshotInvalidatesPoint:true,draftPreserved:true,expiredBlocked:true,readOnlyBlocked:true}))
  }finally{
