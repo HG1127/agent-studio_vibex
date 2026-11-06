@@ -258,7 +258,9 @@ test('restore cannot borrow another root or follow a replaced parent; vault data
   await assert.rejects(fs.stat(path.join(other.root,'item.txt')),{code:'ENOENT'})
   // Remove the directory link itself on both POSIX and Windows, never its target.
   assert.equal((await fs.lstat(path.join(f.root,'nested'))).isSymbolicLink(),true)
-  await fs.rm(path.join(f.root,'nested'));await fs.mkdir(path.join(f.root,'nested'))
+  if(process.platform==='win32')await fs.rm(path.join(f.root,'nested'))
+  else await fs.unlink(path.join(f.root,'nested'))
+  await fs.mkdir(path.join(f.root,'nested'))
   await fs.link(path.join(f.root,VAULT,trashed.trash_id,'data'),path.join(f.root,'hard-data.txt'))
   await assert.rejects(f.call('restore',{trash_id:trashed.trash_id}),/file_size_or_type_denied/)
  }finally{await f.close();await other.close()}
