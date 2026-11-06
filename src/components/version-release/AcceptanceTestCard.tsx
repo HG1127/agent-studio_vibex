@@ -1,9 +1,11 @@
+import {originalRunDetailHref} from '@/lib/originalRunDetailRoute'
 import { CheckCircle2, ExternalLink, FlaskConical, Loader2, XCircle } from "lucide-react"
 import { Link } from "react-router-dom"
 import { RUN_STATE_META, type AgentRunRow } from "@/pages/AgentRun/useAgentRun"
 import type { CustomModelOption } from "@/pages/VersionRelease/useVersionRelease"
 
 type AcceptanceTestCardProps = {
+  nativeMode?:boolean;blocked?:boolean;acceptanceConfirmed?:boolean;onAcceptanceConfirmed?:(v:boolean)=>void
   hasSpec: boolean
   specId: string
   testInstruction: string
@@ -14,14 +16,17 @@ type AcceptanceTestCardProps = {
   isCustomTestModel: boolean
   isStartingTest: boolean
   isTestLive: boolean
-  testRun: AgentRunRow | null
+  testRun: Pick<AgentRunRow,"id"|"status"|"current_step"|"max_steps"|"error"> | null
   testPassed: boolean
+  isTestCurrentVersion: boolean
   testMaxSteps: number
   onRunTest: () => void
 }
 
 export function AcceptanceTestCard({
+  nativeMode=false,blocked=false,acceptanceConfirmed=false,onAcceptanceConfirmed,
   hasSpec,
+  specId,
   testInstruction,
   onInstructionChange,
   testModel,
@@ -32,7 +37,8 @@ export function AcceptanceTestCard({
   isTestLive,
   testRun,
   testPassed,
-  testMaxSteps,
+  testMaxSteps,  isTestCurrentVersion,
+
   onRunTest,
 }: AcceptanceTestCardProps) {
   const stepDone = testRun ? Math.min(testRun.current_step, testRun.max_steps) : 0
@@ -53,11 +59,14 @@ export function AcceptanceTestCard({
         <FlaskConical className="ml-auto h-4 w-4 text-muted-foreground" />
       </div>
 
+      <label htmlFor="vr-test-instruction" className="sr-only">本次 Agent 验收测试指令</label>
       <textarea
         value={testInstruction}
+        id="vr-test-instruction"
         onChange={(ev) => onInstructionChange(ev.target.value)}
-        disabled={!hasSpec || isTestLive}
+        disabled={!hasSpec || blocked || isTestLive}
         rows={3}
+        maxLength={nativeMode ? 2000 : undefined}
         placeholder={hasSpec ? "例：帮我算一下 (128+256)*3，并把结果整理成一句话结论" : "请先在上方选择助手方案"}
         className="mt-3 w-full resize-none rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-card-foreground shadow-sm transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
       />
@@ -70,10 +79,11 @@ export function AcceptanceTestCard({
           id="vr-test-model"
           value={testModel}
           onChange={(ev) => onModelChange(ev.target.value)}
-          disabled={!hasSpec || isTestLive}
+          disabled={!hasSpec || blocked || isTestLive}
           className="w-full appearance-none rounded-lg border border-border bg-background px-3 py-2 text-xs text-card-foreground shadow-sm transition focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {customModels.length === 0 && <option value="">暂无模型连接，请先到「模型连接」页添加</option>}
+          {customModels.length === 0 && <option value={nativeMode?testModel:""}>{nativeMode?"当前没有已核实的可选模型，请刷新核实":"暂无模型连接，请先到「模型连接」页添加"}</option>}
+          {nativeMode && customModels.length>0 && !customModels.some(item=>item.value===testModel) && <option value={testModel} disabled>请选择已核实的本人模型</option>}
           {customModels.map((item) => (
             <option key={item.value} value={item.value}>
               {item.label} · {item.hint}
@@ -83,34 +93,55 @@ export function AcceptanceTestCard({
       </div>
       <p className="mt-1.5 text-xs text-muted-foreground">
         {isCustomTestModel
-          ? "使用你自己的密钥，费用由你的服务商计"
-          : `按实际 token 用量扣费 · 最多 ${testMaxSteps} 步`}
+          ? "使用你自己的密钥，费用由模型服务商计"
+          : nativeMode ? "当前模型尚未核实，请刷新后重新选择本人可用模型" : "尚未选择可用模型，先添加模型连接再进行验收测试"}
       </p>
 
+      {nativeMode && <label className="mt-3 flex items-start gap-2 text-xs leading-relaxed text-muted-foreground"><input type="checkbox" checked={acceptanceConfirmed} disabled={blocked || isTestLive || isStartingTest} onChange={ev=>onAcceptanceConfirmed?.(ev.target.checked)} />我确认创建验收任务；后续模型和工具调用仍需逐步审批，并可能产生服务商费用。</label>}
+
+      {hasSpec && !isCustomTestModel && <p role="status"
+        className="mt-2 rounded-lg border border-border bg-secondary/50 px-3 py-2 text-xs text-muted-foreground">
+        需要已启用的模型才能运行真实测试。
+        <Link to="/model-connections" className="ml-1 font-semibold text-primary hover:underline">前往连接模型 →</Link>
+      </p>}
       <button
         type="button"
         onClick={onRunTest}
-        disabled={!hasSpec || isStartingTest || isTestLive || !testInstruction.trim()}
+        disabled={!hasSpec || !isCustomTestModel || blocked || isStartingTest || isTestLive || !testInstruction.trim() || nativeMode && !acceptanceConfirmed}
         className="mt-3 inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-md transition hover:bg-primary/90 hover:shadow-lg focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isStartingTest || isTestLive ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
         {isTestLive ? "测试运行中…" : "运行测试"}
       </button>
 
+      {testRun && isTestLive && ["awaiting_input","awaiting_approval"].includes(testRun.status) &&
+        <section role="status" className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-3.5">
+          <h4 className="text-sm font-semibold">
+            {testRun.status==="awaiting_input"?"验收测试等待你的补充／确认":"验收测试等待工具调用审批"}
+          </h4>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            测试尚未结束，不能计为通过或失败。处理审批后回到此页面会继续读取本次运行状态。
+          </p>
+          <Link to={nativeMode ? originalRunDetailHref({id:testRun.id,kind:"agent_autonomous"}) : `/agent-run?spec=${encodeURIComponent(specId)}&run=${encodeURIComponent(testRun.id)}`}
+            className="mt-3 inline-flex min-h-10 items-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground">
+            处理待确认操作并继续 →
+          </Link>
+        </section>}
       {isTestLive && testRun && runMeta && (
         <div className="mt-4 rounded-xl bg-muted p-3.5">
           <div className="flex items-center justify-between text-xs">
             <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-medium ${runMeta.badge}`}>
-              <Loader2 className="h-3 w-3 animate-spin" />
+              {!["awaiting_input","awaiting_approval","paused"].includes(testRun.status) && <Loader2 className="h-3 w-3 animate-spin" />}
               {runMeta.label}
             </span>
             <span className="text-muted-foreground">
-              第 {stepDone} / {stepTotal} 步
+              {nativeMode ? `最多 ${testMaxSteps} 轮，进度见完整过程` : `第 ${stepDone} / ${stepTotal} 步`}
             </span>
           </div>
-          <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-background">
+          {!nativeMode && <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-background">
             <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${stepPct}%` }} />
-          </div>
+          </div>}
+          {nativeMode && <Link className="mt-2 inline-block rounded text-xs text-primary underline focus-visible:ring-2 focus-visible:ring-primary" to={originalRunDetailHref({id:testRun.id,kind:"agent_autonomous"})}>查看完整过程与逐步审批</Link>}
         </div>
       )}
 
@@ -130,14 +161,16 @@ export function AcceptanceTestCard({
               <>
                 <XCircle className="h-4 w-4 shrink-0 text-destructive" />
                 <span className="text-destructive">
-                  {testRun.status === "cancelled" ? "测试已取消" : "验收测试未通过"}
+                  {testRun.status === "cancelled" ? "测试已取消" :
+                    testRun.status === "succeeded" && !isTestCurrentVersion ? nativeMode ? "曾完成验收，当前配置或资源需复核" : "旧版本测试不能证明当前方案通过" :
+                    "验收测试未通过"}
                 </span>
               </>
             )}
           </div>
           {testRun.error && <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{testRun.error}</p>}
           <Link
-            to={`/run-detail?run=${encodeURIComponent(testRun.id)}`}
+            to={nativeMode ? originalRunDetailHref({id:testRun.id,kind:"agent_autonomous"}) : `/run-detail?run=${encodeURIComponent(testRun.id)}`}
             className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary underline-offset-4 transition hover:underline"
           >
             查看完整过程
@@ -148,7 +181,7 @@ export function AcceptanceTestCard({
 
       <div className="mt-auto pt-4">
         <p className="text-xs leading-relaxed text-muted-foreground">
-          测试运行会真实调用模型逐步执行，与普通试跑同一引擎；通过后再保存版本更稳妥。
+          {nativeMode ? '验收由服务端 Worker 执行；等待审批或本人回复时，请打开完整过程处理。仅当前有效验收可关联版本。' : '验收使用与试跑相同的真实执行引擎。更改方案后需重新测试；等待人工确认时先完成审批，避免把未结束的任务误报为失败。'}
         </p>
       </div>
     </div>

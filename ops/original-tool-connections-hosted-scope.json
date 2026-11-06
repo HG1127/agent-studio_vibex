@@ -1,0 +1,38 @@
+{
+  "format": "agentstudio.original-tool-connections.hosted-scope.v1",
+  "baseline": "frozen metadata f3bc8cc707267fb970b1bd512231491a3cabd69594c34d6e9961230402a60f46; no edits to its17 targets",
+  "scope": "new independent hosted source only; original HTTP metadata page, no full-page or migration acceptance",
+  "inherited_F01": {
+    "synthetic_model_readiness_callbacks": 2,
+    "source_bound_model_credential_reads": 2,
+    "external_network_calls_for_these_callbacks": 0,
+    "private_runtime": "unchanged F01 private Worker/Broker exists but no claim or provider request is authorized by this Tool purpose",
+    "page_provider_requests": 0,
+    "page_credential_reads": 0
+  },
+  "actual_069": [
+    "verifyApprovalDelegationCredentials",
+    "verifyNativeLocalDeviceSchema",
+    "verifyAgentCallerCredentials",
+    "verifyOwnerToolTrialCredentials"
+  ],
+  "business_baseline": "count all captured069 tables; exact Tool/header/audit deltas, no unrelated table count changes; Native session row growth disclosed; repeat after Native/proof drain before Pool close. Row-content immutability not claimed.",
+  "scope_gaps": [
+    "original direct draft/card/retest contract absent: all three refuse honestly without implicit write, queue or external call",
+    "GET max50 remains incomplete; initial/refresh notice tested, successful action notice can temporarily replace it in the frozen adapter; story refreshes before safe Alice image",
+    "original http/query/URL placeholders not supported by existing PG contract",
+    "no exact Tool request receipt; unknown state persists and metadata matching/absence never proves original completion",
+    "MCP/Smithery PluginMarket original UI not delivered",
+    "no complete069 initializer or deployed Native process acceptance claimed"
+  ],
+  "artifact_gate": "two fixed images retained privately until complete core story, business/legacy/provider/identity/payment zero gates and full cleanup all pass; failure writes bounded secret-free observation only",
+  "Root_required": [
+    "Rebase only own workflow exact hunks onto actual final LF, preserving all existing purposes and approval gates; no GITHUB_JOB override.",
+    "Reseal current committed LF global source DAG for required-sources list and all literal imports; do not copy old global pins.",
+    "Run actual serial compiler/build plus fresh independent hosted synthetic service later; local work only terminal callbacks/AST/Node parser."
+  ],
+  "actual_genuine_acceptance": 0,
+  "actual_SQL_Pool_Worker_server_browser_network_compile_Git_H": 0,
+  "all_original_pages_complete": false,
+  "production_GO": false
+}

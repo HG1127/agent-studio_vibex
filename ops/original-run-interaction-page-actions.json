@@ -1,0 +1,65 @@
+{
+  "page": "/run-detail",
+  "delivery_baseline": "src/main.tsx -> src/App.tsx -> original RunDetailPage",
+  "original_UI_preserved": true,
+  "api_protocol": "native_original_run_interaction_v1",
+  "root_identity": "Actual Native Cookie verification, then withActor studio user mapping and expected employee check before business SQL",
+  "scope": "Current verified owner and exact autonomous run; no client-supplied identity credential",
+  "actions": [
+    {
+      "ui": "Read current step / fee and data-sending scope",
+      "method": "GET",
+      "path": "/api/v2/original-ui/run-interactions/:run",
+      "backend": "OriginalRunInteractionRepository.stateOriginal -> real V2 snapshot/resource and knowledge-observation checks",
+      "fees": "Possible charges explicit; no monetary estimate invented; preview fingerprint includes current source, model/step/configuration and resource metadata",
+      "worker_started_by_api": false
+    },
+    {
+      "ui": "Approve or reject the displayed current step",
+      "method": "POST",
+      "path": "/api/v2/original-ui/run-interactions/:run/decision",
+      "backend": "Same owner transaction -> exact preview/fee confirmation -> actual decideOwned -> immutable owner audit receipt before commit",
+      "request": "Fresh UUID + preview fingerprint + decision + explicit confirmation; no execution result supplied",
+      "unknown": "Persist only owner/run/action/request UUID/fingerprint at actual transport handoff; never replay POST"
+    },
+    {
+      "ui": "Clarification reply / plan approval / revision",
+      "method": "POST",
+      "path": "/api/v2/original-ui/run-interactions/:run/respond",
+      "backend": "Actual AgentHumanInputRepository.change and048 journal; current source, pending question and resource checks retained",
+      "request": "Original normalized response choice with explicit human consent; does not approve later model/tool steps",
+      "private_text": "Reply body stays out of browser recovery storage and artifact output"
+    },
+    {
+      "ui": "Recover unknown approval",
+      "method": "GET",
+      "path": "/api/v2/original-ui/run-interactions/:run/receipts/:request",
+      "backend": "Read exact immutable original decision audit by actual owner/request/run; duplicate or conflicting records fail closed",
+      "fresh_gates_closed": "GET remains available; no decision, Worker or DML invoked"
+    },
+    {
+      "ui": "Recover unknown reply",
+      "method": "GET",
+      "path": "/api/v2/original-ui/run-interactions/:run/human-receipts/:request",
+      "backend": "Read exact048 owner response row and request fingerprint; return only minimal receipt metadata",
+      "fresh_gates_closed": "GET remains available; no reply, Worker or DML invoked"
+    },
+    {
+      "ui": "Return to original version acceptance",
+      "method": "GET",
+      "path": "/version-release?spec=:spec&testRun=:run",
+      "backend": "Existing original VersionRelease controller/API and actual046 currentAcceptance; preserve Root/A current model/source/fee/epoch/recovery fixes"
+    }
+  ],
+  "initialization": "Use parsed URL target on first original RunDetail resume; pending original controls retain priority; no unrelated recent-history probe for a targeted link",
+  "approval_human_state": "Source, owner or step changes revoke local consent; verified identity loss hides private body and rejects late responses",
+  "source_only": true,
+  "local_SQL_Worker_browser_or_full_compiler_executed": false,
+  "guarded_hosted_story": "original-version-release-completion",
+  "genuine_story_executed": false,
+  "current_worker_pass": false,
+  "provider_network_acceptance": false,
+  "full_page_complete": false,
+  "production_GO": false,
+  "availability": "Authenticated Native capabilities advertise original_run_interactions_protocol only when the actual original repository instance and046 schema are composed; old harnesses and default PB remain unchanged."
+}

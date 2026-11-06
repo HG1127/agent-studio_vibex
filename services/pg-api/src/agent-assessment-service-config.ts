@@ -2,6 +2,7 @@
 // independent review/operator gates. Import/plan/help never touch files.
 import {lstatSync,realpathSync,accessSync,openSync,fstatSync,readFileSync,closeSync,constants} from "node:fs"
 import {X509Certificate,createPrivateKey,timingSafeEqual} from "node:crypto"
+import {selectAgentDesignServiceOptIn} from "./agent-design-runtime-policy.ts"
 import {agentAssessmentApproval} from "./agent-assessment-contract.ts"
 import {selectPgRuntimeTarget} from "./pg-runtime-target.ts"
 import {boundCertificateFingerprint} from "./bound-worker-mtls.ts"
@@ -34,6 +35,7 @@ export function agentAssessmentServiceConfig(env:NodeJS.ProcessEnv,kind:AgentAss
   // constructing a Pool/executor or creating a listener without exact consent.
   if(env.AGENT_STUDIO_PG18_REVIEW_EXECUTION_ENABLED!=="true"||env.AGENT_STUDIO_PG18_REVIEW_EXECUTION_APPROVED!==agentAssessmentApproval)throw Error("agent_assessment_service_not_approved")
   if(kind!=="worker"&&kind!=="broker"||mode!=="preflight"&&mode!=="serve"||platform!=="linux"||!Number.isSafeInteger(uid)||uid===undefined||uid<=0||env.AGENT_STUDIO_PG_REVIEW_SERVICE_REVIEWED!=="true"||env.CREDENTIALS_DIRECTORY!==agentAssessmentCredentialDirectory(kind)||env.AGENT_STUDIO_PG_REVIEW_ORIGIN!==agentAssessmentServiceOrigin||env.NODE_TLS_REJECT_UNAUTHORIZED!==undefined||env.NODE_EXTRA_CA_CERTS!==undefined)return refuse()
+  const design=selectAgentDesignServiceOptIn(env)
   const target=selectPgRuntimeTarget(env,"api",platform)
   if(target.mode!=="baota_pg18")return refuse()
   let server:Buffer,client:Buffer
@@ -41,13 +43,16 @@ export function agentAssessmentServiceConfig(env:NodeJS.ProcessEnv,kind:AgentAss
   if(timingSafeEqual(server,client))return refuse()
   const workerLogin=loginName(env.AGENT_STUDIO_PG_REVIEW_WORKER_LOGIN,"agentstudio_review_worker_login"),dispatchLogin=loginName(env.AGENT_STUDIO_PG_REVIEW_DISPATCH_LOGIN,"agentstudio_review_dispatch_login")
   if(workerLogin===dispatchLogin)return refuse()
-  return {kind,mode,target,directory:agentAssessmentCredentialDirectory(kind),uid,origin:agentAssessmentServiceOrigin,port:7459 as const,workerLogin,dispatchLogin,serverFingerprint:server.toString("hex"),clientFingerprint:client.toString("hex"),knowledgeSharing:selectKnowledgeSharing(env),knowledgeTools:selectKnowledgeToolRuntime(env)}
+  const designWorkerLogin="agentstudio_design_worker_login",designDispatchLogin="agentstudio_design_dispatch_login"
+  if(design&&[workerLogin,dispatchLogin].some(login=>login===designWorkerLogin||login===designDispatchLogin))return refuse()
+  return {kind,mode,target,design,designWorkerLogin,designDispatchLogin,directory:agentAssessmentCredentialDirectory(kind),uid,origin:agentAssessmentServiceOrigin,port:7459 as const,workerLogin,dispatchLogin,serverFingerprint:server.toString("hex"),clientFingerprint:client.toString("hex"),knowledgeSharing:selectKnowledgeSharing(env),knowledgeTools:selectKnowledgeToolRuntime(env)}
 }
 export type AgentAssessmentServiceConfig=ReturnType<typeof agentAssessmentServiceConfig>
 export type AgentAssessmentCredentialFileSystem=Pick<typeof import("node:fs"),"lstatSync"|"realpathSync"|"accessSync"|"openSync"|"fstatSync"|"readFileSync"|"closeSync">
 const credentialFiles:AgentAssessmentCredentialFileSystem={lstatSync,realpathSync,accessSync,openSync,fstatSync,readFileSync,closeSync}
 export function inspectAgentAssessmentCredential(config:AgentAssessmentServiceConfig,name:string,files:AgentAssessmentCredentialFileSystem=credentialFiles){
-  if(!(names[config.kind] as readonly string[]).includes(name)||config.directory!==agentAssessmentCredentialDirectory(config.kind)||config.uid<=0)return refuse()
+  const allowed:readonly string[]=[...names[config.kind],...(config.design?[config.kind==="worker"?"design-worker.secret":"design-dispatch.secret"]:[])]
+  if(!allowed.includes(name)||config.directory!==agentAssessmentCredentialDirectory(config.kind)||config.uid<=0)return refuse()
   const file=config.directory+"/"+name
   try{
     const folder=files.lstatSync(config.directory),stat=files.lstatSync(file),mode=stat.mode&0o7777

@@ -1,0 +1,13 @@
+import {requireOriginalAgentCreateFreshCi} from './pg-original-agent-create-guard.mjs'
+export async function verifyOriginalAgentCreateSources(env=process.env){
+ const permit=requireOriginalAgentCreateFreshCi(env)
+ const [fs,path,url,crypto,cp]=await Promise.all([import('node:fs'),import('node:path'),import('node:url'),import('node:crypto'),import('node:child_process')])
+ const repo=path.resolve(url.fileURLToPath(new URL('../../',import.meta.url))),sha=b=>crypto.createHash('sha256').update(b).digest('hex'),raw=fs.readFileSync(new URL('./pg-original-agent-create-source-bindings.json',import.meta.url))
+ if(sha(raw)!==permit.source_sha256)throw Error('original_agent_create_index_hash_refused')
+ const index=JSON.parse(raw.toString('utf8'))
+ if(index.protocol!=='original_agent_create_fresh_leaf_v1'||index.story!=='original-agent-create-fresh'||index.parent_source_maps_replaced!==false||index.frozen_SQL_changed!==false||!Array.isArray(index.files)||index.files.length<30||index.files.length>120)throw Error('original_agent_create_source_index_refused')
+ const paths=new Set();for(const pin of index.files){if(!pin||Object.keys(pin).sort().join(',')!=='path,sha256'||typeof pin.path!=='string'||paths.has(pin.path)||!/^[A-Za-z0-9._/-]+$/.test(pin.path)||pin.path.includes('..')||path.isAbsolute(pin.path)||!/^[a-f0-9]{64}$/.test(pin.sha256)||pin.sha256==='0'.repeat(64))throw Error('original_agent_create_source_index_refused');paths.add(pin.path)}
+ for(const p of ['src/main.tsx','src/App.tsx','src/pages/AgentCreate/AgentCreatePage.tsx','src/pages/Home/useHome.ts','shared/original-agent-create-read-contract.ts','src/lib/originalAgentCreateReader.ts','services/pg-api/src/autonomous-agent-run-repository.ts','services/pg-api/src/http.ts','services/pg-api/src/native-config-uat-policy.ts','ops/build-pg18-native-api-preflight-bundle.mjs'])if(!paths.has(p))throw Error('original_agent_create_required_source_missing')
+ const check=()=>{if(cp.execFileSync('git',['rev-parse','HEAD'],{cwd:repo,encoding:'utf8',windowsHide:true,timeout:8000}).trim()!==permit.head)throw Error('original_agent_create_head_changed');for(const pin of index.files){let current=repo;for(const segment of pin.path.split('/')){current=path.join(current,segment);if(fs.lstatSync(current).isSymbolicLink())throw Error('original_agent_create_source_link')}const stat=fs.statSync(current);if(!stat.isFile()||stat.size>4*1024*1024||sha(fs.readFileSync(current))!==pin.sha256)throw Error('original_agent_create_reviewed_source_changed')}}
+ check();return Object.freeze({repo,permit,sources:Object.freeze(index.files.map(pin=>Object.freeze({...pin}))),check})
+}

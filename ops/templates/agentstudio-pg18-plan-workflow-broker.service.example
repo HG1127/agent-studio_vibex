@@ -1,0 +1,33 @@
+# SOURCE EXAMPLE ONLY. NO [Install]. No install/enable/start command is supplied.
+# Review model-provider egress separately; loopback-only egress cannot run models.
+[Unit]
+Description=Agent Studio isolated PlanWorkflow Broker (three original LOGIN pools)
+After=network.target
+
+[Service]
+Type=simple
+User=agentstudio-plan-workflow-broker
+Group=agentstudio-plan-workflow-broker
+WorkingDirectory=/opt/agentstudio-pg18/services/pg-api
+EnvironmentFile=/etc/agentstudio/plan-workflow/broker.conf
+LoadCredential=api.secret:/etc/agentstudio/secrets/api.secret
+LoadCredential=dispatch.secret:/etc/agentstudio/secrets/plan-workflow-dispatch.secret
+LoadCredential=broker.secret:/etc/agentstudio/secrets/model-broker.secret
+LoadCredential=model-encryption.secret:/etc/agentstudio/secrets/model-encryption.secret
+LoadCredential=plan-workflow-ca.pem:/etc/agentstudio/plan-workflow/ca.pem
+LoadCredential=plan-workflow-server.pem:/etc/agentstudio/plan-workflow/server.pem
+LoadCredential=plan-workflow-server.key:/etc/agentstudio/plan-workflow/server.key
+ExecStartPre=/usr/local/bin/node --experimental-strip-types /opt/agentstudio-pg18/services/pg-api/src/agent-plan-workflow-service.ts --preflight broker
+ExecStart=/usr/local/bin/node --experimental-strip-types /opt/agentstudio-pg18/services/pg-api/src/agent-plan-workflow-service.ts --serve broker
+Restart=no
+TimeoutStopSec=70
+UMask=0077
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

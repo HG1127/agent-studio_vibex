@@ -1,0 +1,71 @@
+{
+  "format": "pg18_full069_worker_path_validation_wiring_plan_v1",
+  "status": "EXECUTABLE_PATH_RUNNER_SOURCE_AUTHORED_PREPARED_INPUT_AND_REMOTE_ADAPTER_PENDING",
+  "actual_short_validation_executed": false,
+  "actual_24h_started": false,
+  "qualifies_run": false,
+  "production_cutover_allowed": false,
+  "source_scope": "Four new source modules, one new pure test, one exact collector export and one source-closure extension. Original --run body, trust guards, budgets and 86400000ms minimum remain unchanged.",
+  "entry": "node --experimental-strip-types services/pg-api/src/pg18-full069-worker-path-validation-cli.mjs --run-short",
+  "offline_entry": "node services/pg-api/src/pg18-full069-worker-path-validation-cli.mjs --plan",
+  "authorization": {
+    "reuse_is_explicit": "The original signed live profile authorizes warm launch before BEGIN. The short runner uses that genuine warm capability plus a second, more restrictive signed short-validation permit. It never changes an environment value to spoof another purpose or creates a BEGIN/END acknowledgement.",
+    "required_environment": {
+      "AGENT_STUDIO_FULL069_WORKER_LIVE_ENABLED": "true",
+      "AGENT_STUDIO_FULL069_WORKER_LIVE_APPROVED": "RUN_DISPOSABLE_FULL069_WORKER_QUALIFICATION_ONLY",
+      "AGENT_STUDIO_FULL069_WORKER_PATH_VALIDATION_ENABLED": "true",
+      "AGENT_STUDIO_FULL069_WORKER_PATH_VALIDATION_APPROVED": "VALIDATE_DISPOSABLE_FULL069_WORKER_PATHS_ONLY"
+    },
+    "existing_profile": "/etc/agentstudio/full069-worker-live/profile.json",
+    "new_permit": "/etc/agentstudio/full069-worker-live/path-validation-permit.json",
+    "public_key": "/etc/agentstudio/full069-worker-live/operator-public.pem",
+    "new_permit_format": "pg18_full069_worker_path_validation_permit_v1",
+    "new_permit_purpose": "VALIDATE_OWNED_PATHS_WITHOUT_QUALIFYING_WINDOW",
+    "signature": "Ed25519 over UTF-8 JSON.stringify(payload); envelope exactly {payload,signature}. Actual source/profile hashes, both physical targets, operator and run UUID are bound.",
+    "permit_bound": "Issued within 120 seconds, expires within 10 minutes, independently enforced with the actual monotonic clock and wall clock. No caller clock/duration/Pool/auditor injection.",
+    "fresh_process": "Spawn this CLI as a fresh Root Node process, after staging. Do not import it into an already-running fixture that has loaded pg or claimed the original verified-runtime singleton. Keep its Node/PG/proxy environment clean."
+  },
+  "required_setup_order": [
+    "Use a new isolated synthetic PostgreSQL18 complete069 target at 127.0.0.1:5333/agent_studio. Capture the actual deployed complete source, not an old offline379/383/386 hash.",
+    "Run all original C eight preparations. Preserve external Root-only intent/result records. Run the final original read-only index-broker inspection while the old strict C catalog still permits the cluster. Preserve its actual JSON stdout, raw SHA and completion timestamp.",
+    "Run the separate C Review preparation for agentstudio_review_worker_login, then its new positive observation and original nonroot agent-assessment-service.ts --preflight worker. Preserve actual operation/result/observation and actual original preflight report files under protected Root paths.",
+    "Only after C inspection and Review preparation/preflight, create the separate telemetry database/schema/global telemetry roles and start the original Root Controller. Never replay old C fresh-only catalog/zero-session checks after adding Review/telemetry roles or running Native login/logout.",
+    "Assemble a dedicated readable read-only deployment tree under /opt (or equivalent traversable Root path) containing the independent live closure, new short modules, complete069 SQL and original verified14-package runtime. A /var/lib staging directory protected as0700 is not directly executable by the nonroot business entries.",
+    "Supply protected Root credential originals and the original UID-owned0400 mount copies, exact Worker/Native configuration and genuine original staged boot files. Use seven new never-reused UIDs, with both Knowledge generations sharing their one original process/UID. Do not reset or expand the128-UID pool.",
+    "Prepare the original Root Controller's serving instance/epoch/policy, fixed Native UID/GID, eight fresh active generations and source/runtime manifests. Keep the original4MiB journal cap and initial zero telemetry backend condition.",
+    "Provide a valid CA/certificate/key for127.0.0.1 and fixed ports17403/17443. The unchanged warm capability retains its conservative certificate validity requirement of at least24h plus10min even for this short caller; generate an appropriate certificate in the isolated fixture rather than weakening the check or reusing the one-day smoke certificate.",
+    "Generate the actual signed live profile and separate short permit after the exact deployment and evidence files exist. If the isolated CI setup owns an ephemeral signer, keep the private key outside the worker tree and sign only after source/target/real setup checks. Do not fabricate positive stdout, a Pool, audit capability or receipt.",
+    "Spawn --run-short with both explicit approvals. Keep the isolated fixture and staged inputs alive until the CLI's owned cleanup and private record verification finish. Root owns the remote workflow invocation and final real evidence."
+  ],
+  "permit_evidence": {
+    "C_inspection": "Protected raw JSON from original final --inspect-operation for index-broker; exact operation/source/target; enabled/verifier/login/API-catalog flags true. Its first_admin_verified may historically be false; prior_commit_acknowledged must remain false. Signed completion time must follow all eight preparation results and precede Review intent.",
+    "review": "Exact C Review v2 operation/result/observation formats. Bind raw file SHA, fixed review LOGIN/group, operation UUID, complete source and physical target. Preserve result commit_acknowledged verbatim; the observation's prior ACK remains false.",
+    "preflight": "Actual original nonroot --preflight worker stdout: mode preflight, service worker, ready/read_only/tls true, verified_roles1, all Worker/write/port/model flags false. This is historical provenance, not current live readiness or a runtime authority.",
+    "continued_verification": "Pinned evidence, permit, source and signed profile remain checked. Actual complete069/service/review preflight and current Native admin checks run again through the original live runtime and the real original Worker startup paths."
+  },
+  "actual_validation_path": {
+    "same_collector": "Uses an alias export of the exact original live sample function; no replacement Reader, supplied snapshot or direct Root Reader path.",
+    "processes": "Original worker-loop/model/workflow-safe/workflow-v2/autonomous/Knowledge/assessment --serve entries, seven genuine owned nonroot processes, eight kinds, Knowledge index/query in one original process.",
+    "readiness": "All eight actual Native HTTPS heartbeats fresh-ready together, actual Root journal claims and PID/backend_start bindings, current physical targets/roles/ledger/source/epoch and four empty queues.",
+    "hold": "After simultaneous ready, hold actual monotonic and wall time for at least30000ms and require each actual generation's sequence to increase through its original30s reporter. No lower --run minimum, synthetic reporter or failure retry.",
+    "stop": "Original owned SIGTERM paths; original12s/5s stop/forced-cleanup budgets. Any forced kill, uncertain identity or missing matching ended record fails this validation. Verify zero scoped Writer/Reader backends and original jobs/runs/reviews/queries all0; close owned proxy/Native and audit pools.",
+    "records": "Only validation-warm.json and validation-result.json under a fresh original Root run directory, plus original child-launch records. New format pg18_full069_worker_path_validation_result_v1; every output fixes qualifies_run=false, qualifying_window_started=false, BEGIN_or_END_receipt_issued=false, production_cutover_allowed=false.",
+    "native_sessions": "Keep legitimate login/logout session rows. No fresh-only zero-session snapshot is reused and no cleanup DELETE is performed."
+  },
+  "unchanged_boundaries": {
+    "Reader_ms": 5000,
+    "Native_ms": 8000,
+    "Worker_interval_ms": 30000,
+    "Worker_send_ms": 5000,
+    "uid_pool": 128,
+    "qualifying_run_minimum_ms": 86400000,
+    "runtime_packages": 14,
+    "original_050_059_060_and_role_auditors_edited": false,
+    "production_or_real_company_data_used": false
+  },
+  "remaining_CI_glue": [
+    "The new runner is executable against correctly prepared signed inputs; this candidate does not yet add an automated workflow/setup adapter that creates the telemetry topology, deploys all source/runtime/credential copies and signs both profiles.",
+    "Extend the isolated C+Review fixture at its owned lifecycle boundary: retain inputs; save the actual inspection/preflight reports; construct original telemetry topology and Root boot artifacts only afterward; assemble and sign the dedicated deployment; spawn a fresh CLI; verify its validation_completed field and all fixed false qualification flags; then close only fixture-owned resources.",
+    "Root must review and wire that adapter or prepare the inputs explicitly before invoking the new CLI remotely. No local SQL/business Worker/browser run has occurred, and no short or24h execution result is claimed by the source tests."
+  ]
+}

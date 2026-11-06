@@ -3,7 +3,7 @@
 // The caller handles lstat/accessSync, then reads the secret AFTER acceptance.
 // Never relax the independent root-vault preflight policy.
 export type NativePg18SecretName="api.secret"|"native-auth.secret"|
-  "model-encryption.secret"|"model-broker.secret"
+  "model-encryption.secret"|"model-broker.secret"|"local-executor.secret"
 export type NativeSecretMetadata={
   isFile():boolean
   isSymbolicLink():boolean
@@ -17,7 +17,7 @@ export const nativePg18CredentialDirectory=
 
 export function expectedNativePg18Secret(name:NativePg18SecretName):string{
   if(name!=="api.secret"&&name!=="native-auth.secret"&&
-     name!=="model-encryption.secret"&&name!=="model-broker.secret")
+     name!=="model-encryption.secret"&&name!=="model-broker.secret"&&name!=="local-executor.secret")
     throw Error("unsafe_native_pg18_credential")
   return nativePg18CredentialDirectory+"/"+name
 }
@@ -32,7 +32,7 @@ export function acceptsNativePg18Credential(input:{
 }):boolean {
   const {name,file,env,uid,stat,canRead}=input
   if(name!=="api.secret"&&name!=="native-auth.secret"&&
-     name!=="model-encryption.secret"&&name!=="model-broker.secret"||
+     name!=="model-encryption.secret"&&name!=="model-broker.secret"&&name!=="local-executor.secret"||
      !Number.isSafeInteger(uid)||uid===undefined||uid<=0||
      !canRead||!stat.isFile()||stat.isSymbolicLink()||
      !Number.isSafeInteger(stat.mode)||
@@ -43,6 +43,7 @@ export function acceptsNativePg18Credential(input:{
   const envKey=name==="api.secret"?"AGENT_STUDIO_PG_PASSWORD_FILE":
     name==="native-auth.secret"?"AGENT_STUDIO_PG_NATIVE_AUTH_PASSWORD_FILE":
     name==="model-encryption.secret"?"AGENT_STUDIO_PG_MODEL_ENCRYPTION_KEY_FILE":
+    name==="local-executor.secret"?"AGENT_STUDIO_PG18_LOCAL_EXECUTOR_PASSWORD_FILE":
       "AGENT_STUDIO_PG_MODEL_BROKER_PASSWORD_FILE"
   if(file!==expected||
      env.CREDENTIALS_DIRECTORY!==nativePg18CredentialDirectory||

@@ -14,8 +14,8 @@ const states:Record<string,string>={queued:"排队中",running:"处理中",await
 const providerBases={openai:"https://api.openai.com/v1",anthropic:"https://api.anthropic.com/v1",
   gemini:"https://generativelanguage.googleapis.com/v1beta"}
 /** Kept mounted across workspace tabs; logout/account change destroys its key. */
-export default function PgNativeAgentRunPanel({api,agents,connections,active,enabled,onExpired,runTarget,onTargetSettled}:{
-  api:Api;agents:PgNativeAgent[];connections:PgNativeModelConnection[];active:boolean;enabled:boolean;onExpired?:()=>void;runTarget?:OwnTaskRunTarget|null;onTargetSettled?:(selection:number,opened:boolean)=>void
+export default function PgNativeAgentRunPanel({api,agents,connections,active,enabled,onExpired,runTarget,onTargetSettled,agentSelectionRequest}:{
+  api:Api;agents:PgNativeAgent[];connections:PgNativeModelConnection[];active:boolean;enabled:boolean;onExpired?:()=>void;runTarget?:OwnTaskRunTarget|null;onTargetSettled?:(selection:number,opened:boolean)=>void;agentSelectionRequest?:{id:string;selection:number}|null
 }){
   const [snapshot,setSnapshot]=useState<{api:Api;view:ReturnType<Controller["snapshot"]>}>({api,view:emptyAgentRunView()})
   // A changed API/session cannot render the previous employee's snapshot,
@@ -50,6 +50,13 @@ export default function PgNativeAgentRunPanel({api,agents,connections,active,ena
       Array.isArray(c.models)&&c.models.includes(binding.model_id)):undefined
   }
   const eligible=agents.filter(agent=>readyConnection(agent))
+  const deliveredAgent=useRef("")
+  useEffect(()=>{
+    if(!active||!agentSelectionRequest||runTarget||busy||loading||pending||decision||view.detail||instruction||costAccepted||agentId&&agentId!==agentSelectionRequest.id||!eligible.some(a=>a.id===agentSelectionRequest.id))return
+    const key=agentSelectionRequest.id+":"+agentSelectionRequest.selection
+    if(deliveredAgent.current===key)return
+    deliveredAgent.current=key;setAgentId(agentSelectionRequest.id);setCostAccepted(false)
+  },[active,agentSelectionRequest,runTarget,busy,loading,pending,decision,view.detail,instruction,costAccepted,agentId,eligible])
   const chosen=eligible.find(agent=>agent.id===agentId)
   const approvalAgent=agents.find(agent=>agent.id===detail?.run.agent_spec_id)
   const approvalConnection=readyConnection(approvalAgent)

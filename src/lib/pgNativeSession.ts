@@ -27,6 +27,7 @@ export class PgNativeSessionError extends Error {
 
 const routes={
   login:"/api/native-auth/login",
+  loginStatus:"/api/native-auth/login-status",
   me:"/api/native-auth/me",
   logout:"/api/native-auth/logout",
 } as const
@@ -39,6 +40,21 @@ function validProfile(value:unknown):value is PgEmployeeProfile{
     typeof user.display_name==="string"&&user.display_name.length<=80&&
     typeof user.is_admin==="boolean"
 }
+const nativeLoginStatusProtocol="native_employee_login_status_v1"
+function parseLoginStatus(value:Record<string,unknown>):PgSessionState{
+  if(![Object.prototype,null].includes(Object.getPrototypeOf(value)))throw new PgNativeSessionError(0,"native_login_status_invalid")
+  const keys=Reflect.ownKeys(value),descriptors=Object.getOwnPropertyDescriptors(value)
+  if(keys.length!==3||!["protocol","authenticated","user"].every(key=>descriptors[key]?.enumerable&&Object.hasOwn(descriptors[key],"value"))||value.protocol!==nativeLoginStatusProtocol)
+    throw new PgNativeSessionError(0,"native_login_status_invalid")
+  if(value.authenticated===false&&value.user===null)return {status:"signed_out"}
+  const user=value.user
+  if(value.authenticated!==true||!user||typeof user!=="object"||Array.isArray(user)||![Object.prototype,null].includes(Object.getPrototypeOf(user)))
+    throw new PgNativeSessionError(0,"native_login_status_invalid")
+  const fields=Object.getOwnPropertyDescriptors(user),required=["id","email","display_name","is_admin"],allowed=[...required,"share_enabled"]
+  if(Reflect.ownKeys(user).some(key=>typeof key!=="string"||!allowed.includes(key))||required.some(key=>!fields[key]?.enumerable||!Object.hasOwn(fields[key],"value"))||Object.values(fields).some(field=>!field.enumerable||!Object.hasOwn(field,"value"))||!validProfile(user)||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(user.id)||Object.hasOwn(fields,"share_enabled")&&typeof (user as Record<string,unknown>).share_enabled!=="boolean")
+    throw new PgNativeSessionError(0,"native_login_status_invalid")
+  return {status:"authenticated",profile:user}
+}
 function errorCode(value:unknown):string {
   if(typeof value==="string"&&/^[a-z_]{1,80}$/.test(value))return value
   return "native_auth_request_failed"
@@ -46,6 +62,7 @@ function errorCode(value:unknown):string {
 export function createPgEmployeeSession(transport:typeof fetch=fetch){
   let epoch=0
   let verifying:Promise<PgSessionState>|null=null
+  let loginVerifying:Promise<PgSessionState>|null=null
   async function request(route:SessionRoute,method:"GET"|"POST"="GET",
       body?:Record<string,unknown>):Promise<Record<string,unknown>>{
     let response:Response
@@ -70,6 +87,8 @@ export function createPgEmployeeSession(transport:typeof fetch=fetch){
     if(!response.ok)
       throw new PgNativeSessionError(response.status,
         errorCode((payload as Record<string,unknown>|null)?.error))
+    if(route===routes.loginStatus&&response.status!==200)
+      throw new PgNativeSessionError(response.status,"native_login_status_invalid")
     if(!payload||typeof payload!=="object"||Array.isArray(payload))
       throw new PgNativeSessionError(response.status,"invalid_native_response")
     return payload as Record<string,unknown>
@@ -90,7 +109,7 @@ export function createPgEmployeeSession(transport:typeof fetch=fetch){
           :{status:"unavailable"}
       }catch(err){
         if(localEpoch!==epoch)return {status:"unavailable"}
-        if(err instanceof PgNativeSessionError&&err.status===401)
+        if(err instanceof PgNativeSessionError&&(err.status===401||err.status===403))
           return {status:"signed_out"}
         return {status:"unavailable"}
       }
@@ -99,11 +118,25 @@ export function createPgEmployeeSession(transport:typeof fetch=fetch){
     void pending.finally(()=>{if(verifying===pending)verifying=null})
     return pending
   }
+  // No status result is cached after completion. Errors, including401/403,
+  // never become signed_out without the explicit200 status contract.
+  function sessionForLogin():Promise<PgSessionState>{
+    if(loginVerifying)return loginVerifying
+    const localEpoch=epoch
+    const pending:Promise<PgSessionState>=(async()=>{
+      try{const state=parseLoginStatus(await request(routes.loginStatus));return localEpoch===epoch?state:{status:"unavailable"}}
+      catch{return {status:"unavailable"}}
+    })()
+    loginVerifying=pending
+    void pending.then(()=>{if(loginVerifying===pending)loginVerifying=null},()=>{if(loginVerifying===pending)loginVerifying=null})
+    return pending
+  }
   async function signIn(email:string,password:string):Promise<PgEmployeeProfile>{
     if(typeof email!=="string"||!email.trim()||email.length>254||
        typeof password!=="string"||!password||password.length>256)
       throw new PgNativeSessionError(400,"invalid_login_input")
     ++epoch
+    loginVerifying=null
     const login=await request(routes.login,"POST",{
       email:email.trim(),password
     })
@@ -116,6 +149,7 @@ export function createPgEmployeeSession(transport:typeof fetch=fetch){
     if(result.ok!==true)
       throw new PgNativeSessionError(0,"invalid_native_response")
     ++epoch
+    loginVerifying=null
   }
-  return {session,signIn,signOut}
+  return {session,sessionForLogin,signIn,signOut}
 }

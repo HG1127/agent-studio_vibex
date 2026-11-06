@@ -1,0 +1,45 @@
+// Synthetic Native transport and scheduling comparisons. No actual employee,
+// browser, SQL, provider, approval or tool execution is claimed by these tests.
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {createHash} from 'node:crypto'
+import {createPgNativePilotApi,PgNativePilotError} from '../../../src/lib/pgNativePilotApi.ts'
+import {createPgNativeToolHubApi,freezeToolHubIntent,toolHubIntentHash,toolHubReceipt,toolHubStats,toolHubHarness} from '../../../src/lib/pgNativeToolHub.ts'
+import {createPgNativeToolHubSession} from '../../../src/lib/pgNativeToolHubSession.ts'
+import {canonicalMcpJson} from '../src/mcp-catalog.ts'
+const id='00000000-0000-4000-8000-000000000001',workflow='00000000-0000-4000-8000-000000000002',run='00000000-0000-4000-8000-000000000003',graph='a'.repeat(64),body=()=>({purpose:'tool',request_id:id,target:{kind:'builtin',tool:'calculate'},arguments_json:'{"expression":"1+2"}',effect_consent:'APPROVE_ONE_OWNER_TOOL_TRIAL_EFFECT'})
+const sha=value=>createHash('sha256').update(canonicalMcpJson(value)).digest('hex'),receipt=request=>({request_id:request.request_id,purpose:'tool',source_kind:'builtin',target:{kind:'builtin',tool:'calculate'},request_sha256:sha(freezeToolHubIntent(request)),arguments_sha256:'b'.repeat(64),graph_sha256:graph,workflow_id:workflow,run_id:run,fee_confirmed:false,created_at:'2026-10-29T00:00:00.000Z',execution_mode:'workflow_native_v2',worker_started_by_api:false})
+function transportModel(options={}){const calls=[];let original=null,ackLost=options.ackLost??false,found=false,writes=true,expired=0
+ const transport={async get(route){calls.push({method:'GET',route});if(!route.startsWith('/api/v2/tool-hub/trials/'+id+'/confirm?'))throw Error('unexpected transport');return {confirmed:found,receipt:found?receipt(original):null,worker_started_by_api:false}},async post(route,value){calls.push({method:'POST',route,value:structuredClone(value)});if(route.endsWith('/preview'))return {request_id:value.request_id,purpose:value.purpose,request_sha256:sha(value),arguments_sha256:'b'.repeat(64),graph_sha256:graph,input_sha256:'c'.repeat(64),kind:'tool',requires_original_step_approval:true,possible_charges:false,worker_started_by_api:false};original=structuredClone(value);if(options.submitError)throw options.submitError;if(ackLost)throw new PgNativePilotError(0,'pg_native_connection_unavailable');return {receipt:receipt(value),replayed:false,worker_started_by_api:false}}}
+ const api=createPgNativeToolHubApi(transport),session=createPgNativeToolHubSession(api,{canWrite:()=>writes,onExpired:()=>{expired++}});session.setActive(true)
+ return {session,api,calls,setFound:value=>{found=value},setWrites:value=>{writes=value},setAckLost:value=>{ackLost=value},expired:()=>expired}
+}
+test('actual Native SDK uses original fixed cookie transport, error/CSRF headers and GET-only original receipt confirmation',async()=>{
+ const calls=[],api=createPgNativePilotApi(async(url,options)=>{calls.push({url,options});return new Response(JSON.stringify({confirmed:false,receipt:null,worker_started_by_api:false}),{headers:{'content-type':'application/json'}})},'')
+ assert.deepEqual(await api.toolHub.confirm(id,'a'.repeat(64)),{confirmed:false,receipt:null});assert.equal(calls[0].url,'/api/v2/tool-hub/trials/'+id+'/confirm?request_sha256='+'a'.repeat(64));assert.equal(calls[0].options.method,'GET');assert.equal(calls[0].options.credentials,'same-origin');assert.equal(calls[0].options.redirect,'error');assert.equal(calls[0].options.body,undefined);assert.equal(calls[0].options.headers.Authorization,undefined)
+ assert.throws(()=>createPgNativePilotApi(fetch,'https://arbitrary.example'));await assert.rejects(api.toolHub.confirm('../owner','a'.repeat(64)));assert.equal(calls.length,1)
+})
+test('browser canonical hash equals actual server canonical grammar and deep-frozen intent cannot drift before asynchronous preview',async()=>{
+ const value=body(),frozen=freezeToolHubIntent(value);assert.ok(Object.isFrozen(frozen));assert.ok(Object.isFrozen(frozen.target));assert.equal(await toolHubIntentHash(value),sha(frozen))
+ const m=transportModel(),first=m.session.preview(value),second=m.session.preview({...body(),request_id:run});value.arguments_json='{"expression":"99"}';assert.equal(first,second);await first;assert.equal(m.calls.length,1);assert.equal(m.calls[0].value.arguments_json,'{"expression":"1+2"}');assert.equal(m.session.snapshot().prepared.body.request_id,id)
+})
+test('lost submit ACK keeps one original immutable intent; disabled writes still allow read-only confirmation and never allocate or submit another UUID',async()=>{
+ const m=transportModel({ackLost:true});await m.session.preview(body());await m.session.submit();assert.equal(m.session.navigationBlocked(),true);assert.equal(m.session.snapshot().uncertain,true);const pending=m.session.snapshot().pending
+ await m.session.preview({...body(),request_id:run});assert.equal(m.calls.filter(c=>c.route.endsWith('/preview')).length,1);m.setWrites(false);m.session.setActive(false);assert.equal(m.session.navigationBlocked(),true);m.session.setActive(true);await m.session.confirm();assert.equal(m.session.snapshot().absent,true);assert.equal(m.session.snapshot().pending,pending);await m.session.retryOriginal();assert.equal(m.calls.filter(c=>c.method==='POST').length,2)
+ m.setFound(true);await m.session.confirm();assert.equal(m.session.snapshot().pending,null);assert.equal(m.session.snapshot().receipt.run_id,run);assert.equal(m.session.navigationBlocked(),false);assert.ok(m.calls.filter(c=>c.method==='GET').every(c=>c.route.includes(id+'/confirm?')))
+})
+test('explicit retry after confirmed absence sends byte-equivalent original intent; a prior uncertain result cannot be cleared by later definite refusal',async()=>{
+ const m=transportModel({ackLost:true});await m.session.preview(body());await m.session.submit();await m.session.confirm();m.setAckLost(false);await m.session.retryOriginal();const submissions=m.calls.filter(c=>c.route==='/api/v2/tool-hub/trials');assert.equal(submissions.length,2);assert.deepEqual(submissions[0].value,submissions[1].value);assert.equal(m.session.snapshot().pending,null)
+ const definite=transportModel({submitError:new PgNativePilotError(403,'denied')});await definite.session.preview(body());await definite.session.submit();assert.equal(definite.session.snapshot().pending,null)
+ const options={ackLost:true},uncertain=transportModel(options);await uncertain.session.preview(body());await uncertain.session.submit();await uncertain.session.confirm();options.submitError=new PgNativePilotError(403,'denied');await uncertain.session.retryOriginal();assert.equal(uncertain.session.snapshot().pending.body.request_id,id);assert.equal(uncertain.session.snapshot().uncertain,true)
+})
+test('disposal and expiry erase private intent; a delayed old scope cannot publish a receipt or expire a replacement scope',async()=>{
+ const m=transportModel({submitError:new PgNativePilotError(401,'invalid_token')});await m.session.preview(body());await m.session.submit();assert.equal(m.expired(),1);assert.equal(m.session.snapshot().receipt,null);assert.equal(m.session.snapshot().pending,null)
+ let done;const pending=new Promise(resolve=>{done=resolve}),api={preview:async()=>{await pending;return {body:body(),graph_sha256:graph,request_sha256:sha(body())}}},old=createPgNativeToolHubSession(api,{canWrite:()=>true,onExpired:()=>{throw Error('must not expire')}});old.setActive(true);const work=old.preview(body());old.dispose();done();await work;assert.equal(old.snapshot().prepared,null);assert.equal(old.navigationBlocked(),false)
+})
+test('closed public DTO refuses wrong original hash/id/graph, private payload keys, unknown-to-failed coercion and invented retry/token metrics',()=>{
+ const good=receipt(body());assert.equal(toolHubReceipt(good,{id,hash:good.request_sha256,graph}).run_id,run)
+ for(const value of [{...good,cookie:'secret'},{...good,request_id:run},{...good,request_sha256:'d'.repeat(64)},{...good,graph_sha256:'d'.repeat(64)},{...good,worker_started_by_api:true}])assert.throws(()=>toolHubReceipt(value,{id,hash:good.request_sha256,graph}))
+ const stats={calls:1,started:0,succeeded:0,failed:0,unknown:1,tools:[],retry_count:null,scope:'owner_only',sample_limit:500,sampled:false,metrics:'recorded_external_effects_only',worker_liveness:'not_inferred'};assert.equal(toolHubStats(stats).unknown,1);for(const change of [{retry_count:0},{failed:1},{worker_liveness:'ready'},{arguments:'private'}])assert.throws(()=>toolHubStats({...stats,...change}))
+ const harness={totals:{runs:0,succeeded:0,failed:0,cancelled:0,average_recorded_steps:null,average_completed_duration_ms:null,stuck_loop_failures:0,estimated_tokens:null,compressions:null,truncations:null,retries:null},scope:'owner_only',run_sample_per_kind:100,unrecorded_metrics:'unavailable',worker_liveness:'not_inferred'};assert.equal(toolHubHarness(harness).totals.estimated_tokens,null);assert.throws(()=>toolHubHarness({...harness,totals:{...harness.totals,estimated_tokens:0}}))
+})

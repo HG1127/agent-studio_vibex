@@ -1,7 +1,14 @@
+import {originalOptimizationRetestSelection,originalOptimizationRetestProofMatches,type OriginalOptimizationRetestSelection} from './originalOptimizationRetestSelection.ts'
+import {parseOriginalRunOptions,originalRunOptionsProtocol,type OriginalRunOptions} from '../../shared/original-agent-run-options.ts'
+import {originalRolePlanningProjection} from './originalRolePlanningProjection.ts'
+import {parseOrdinaryCaseRunInput,type OrdinaryCaseRunInput,type OrdinaryCaseRunBinding} from '../../shared/ordinary-case-run-contract.ts'
+import {createPgNativeToolHubApi} from "./pgNativeToolHub.ts"
+import {localId} from '../../shared/native-local-device-contract.mjs'
 /** Separate, local-only PostgreSQL 18 native-auth test client.
  * Cookie is HttpOnly, sent by browser same-origin to the Vite dev proxy.
  * Never imports PocketBase, never stores a bearer token or session value. */
 import {safeWorkflowNodeDebugRequest,type WorkflowNodeDebugRequest} from "../../services/pg-api/src/workflow-v2-node-debug.ts"
+import {optimizationRetestId,optimizationRetestProof,type OptimizationRetestProof} from "../../shared/agent-optimization-retest-contract.ts"
 import {createPgNativeOwnOperationsApi} from "./pgNativeOwnOperations.ts"
 import {agentReviewId,agentReviewTarget,agentReviewChoice,agentReviewSubmission,agentReviewControl,agentReviewSource,agentReviewPreview,agentReviewReceipt,agentReviewControlReceipt,agentReviewView,type PgNativeAgentReviewTarget,type PgNativeAgentReviewChoice,type PgNativeAgentReviewSubmission,type PgNativeAgentReviewControl} from "./pgNativeAgentReview.ts"
 import {agentReviewHistoryQuery,agentReviewHistoryPage,type PgNativeAgentReviewHistoryQuery} from "./pgNativeAgentReviewHistory.ts"
@@ -13,6 +20,7 @@ import {agentHumanChoice,agentHumanReceipt,agentHumanProjection,agentHumanHistor
 import {agentMemoryChoice,agentMemoryReceipt,agentMemoryPage,type PgNativeMemoryChoice} from "./pgNativeAgentMemory.ts"
 import {agentDerivedMemoryChoice,agentDerivedMemoryReceipt,agentDerivedMemoryPreview,agentDerivedMemoryPage,type PgNativeDerivedMemoryChoice} from "./pgNativeAgentDerivedMemory.ts"
 export type {PgNativeDerivedMemoryChoice,PgNativeDerivedMemoryReceipt,PgNativeDerivedMemoryPreview,PgNativeDerivedMemoryItem,PgNativeDerivedMemoryPage} from "./pgNativeAgentDerivedMemory.ts"
+import {nativeAgentHistoryId,nativeAgentHistoryPageNumber,nativeAgentHistoryPage,type NativeAgentHistoryPage} from "../../shared/native-agent-history-contract.ts"
 import {optimizationDraft,optimizationChoice,optimizationPreview,optimizationReceipt,optimizationHistory,type PgNativeOptimizationDraft,type PgNativeOptimizationChoice} from "./pgNativeAgentOptimization.ts"
 export type {PgNativeOptimizationDraft,PgNativeOptimizationChoice,PgNativeOptimizationPreview,PgNativeOptimizationReceipt,PgNativeOptimizationHistory} from "./pgNativeAgentOptimization.ts"
 import {agentFeedbackChoice,agentFeedbackReceipt,agentFeedbackStatus,type PgNativeFeedbackChoice} from "./pgNativeAgentFeedback.ts"
@@ -50,8 +58,12 @@ export type {KnowledgeEmbeddingConsent,KnowledgeEmbeddingConsentChange,Knowledge
 export type {KnowledgeEmbeddingSettings,KnowledgeEmbeddingStatus,KnowledgeEmbeddingReceipt,KnowledgeEmbeddingChange} from "../../services/pg-api/src/knowledge-embedding-contracts.ts"
 export type PgNativeConfigCapabilities={
   mode:"native_pg18";config_writes_enabled:boolean;run_execution_enabled:false
+  local_devices_available?:boolean;local_device_writes_enabled?:boolean
+  owner_tool_hub_available?:boolean;owner_tool_trials_enabled?:boolean;public_mcp_registry_enabled?:boolean
   own_operations_available?:boolean
   company_overview_available?:boolean
+  company_worker_heartbeats_available?:boolean
+  original_agent_quality_protocol?:'native_original_agent_quality_v1'
   model_probe_enabled:boolean
   mcp_discovery_enabled?:boolean
   mcp_tool_runs_enabled?:boolean
@@ -82,6 +94,21 @@ export type PgNativeConfigCapabilities={
   agent_review_history_available?:boolean
   agent_generated_acceptance_available?:boolean
   agent_generated_acceptance_enabled?:boolean
+  agent_plan_workflow_available?:boolean
+  agent_plan_workflow_submissions_enabled?:boolean
+  agent_plan_workflow_saves_enabled?:boolean
+  agent_design_available?:boolean
+  agent_design_submissions_enabled?:boolean
+  agent_design_saves_enabled?:boolean
+  agent_callers_available?:boolean
+  agent_callers_writes_enabled?:boolean
+  agent_callers_runs_enabled?:boolean
+  approval_delegations_available?:boolean
+  approval_delegations_writes_enabled?:boolean
+  internal_share_available?:boolean
+  internal_share_writes_enabled?:boolean
+  agent_template_market_available?:boolean
+  agent_template_market_writes_enabled?:boolean
   agent_descriptive_patch_available?:boolean
   agent_descriptive_patch_enabled?:boolean
   agent_feedback_available?:boolean
@@ -93,6 +120,8 @@ export type PgNativeConfigCapabilities={
   employee_governance_available?:boolean
   employee_governance_enabled?:boolean
   agent_collaboration_available?:boolean
+  original_run_interactions_protocol?:"native_original_run_interaction_v1"
+  original_run_options_protocol?:typeof originalRunOptionsProtocol
   agent_releases_available?:boolean
   agent_release_acceptance_enabled?:boolean
 }
@@ -147,8 +176,15 @@ export type PgNativeWorkflowV2Result={
 }
 export type PgNativeWorkflowV2Summary={id:string;workflow_id:string;status:string;instruction_preview:string;result_preview:string;
   step_count:number;last_error_code:string;created_at:string;updated_at:string;finished_at:string|null;stage:string;debug_node_id?:string|null}
+import {nativeRunControlRequest,type NativeRunControlAction,type NativeRunControlRequest,type NativeRunControlView,type NativeRunControlReceipt} from "./pgNativeAgentRunControl.ts"
 export type PgNativeAutonomousAgentResult=Omit<PgNativeWorkflowV2Result,"run"|"execution_mode">&{
+  original_role?:unknown
+  ordinary_case_binding?:OrdinaryCaseRunBinding
+  local_device_id?:string|null
+  local_tasks?:{id:string;step_key:string;status:string;error:string}[]
+  run_control?:NativeRunControlView;run_control_confirmation?:NativeRunControlReceipt|null;control_confirmed?:boolean
   outcome_memory?:PgNativeOutcomeConsent
+  optimization_retest?:OptimizationRetestProof
   execution_mode:"agent_native_v2";run:Omit<PgNativeWorkflowV2Result["run"],"kind"|"workflow_id">&{kind:"agent";workflow_id:null;agent_spec_id:string}
 }
 export type PgNativeAutonomousAgentSummary={id:string;agent_spec_id:string;status:string;instruction_preview:string;result_preview:string;
@@ -281,7 +317,7 @@ const routes={
   toolConnections:"/api/v2/tool-connections",
   mcpConnections:"/api/v2/mcp-connections",
 } as const
-type Route=typeof routes[keyof typeof routes]|`/api/v2/agent-releases/${string}`|`/api/v2/agent-collaboration/${string}`|`/api/v2/workflow-v2-runs/${string}`|
+type Route="/api/v2/tool-hub"|`/api/v2/tool-hub/${string}`|typeof routes[keyof typeof routes]|`/api/v2/agent-releases/${string}`|`/api/v2/agent-collaboration/${string}`|`/api/v2/workflow-v2-runs/${string}`|
   `/api/v2/runs/${string}`|`/api/v2/agent-specs/${string}/runs`|
   `/api/v2/knowledge-bases/${string}/documents`|
   `/api/v2/knowledge-bases/${string}/search`|
@@ -443,6 +479,20 @@ function simpleAgentSpec(goal:string){
   return {goal:safeAgentGoal(goal),task_scope:"",deliverables:[],task_plan:[],
     done_criteria:[],tools:[]}
 }
+export type PgNativeAgentCreatePlan={task_scope:string;deliverables:string[];task_plan:string[];done_criteria:string[]}
+function manualAgentSpec(goal:string,plan?:PgNativeAgentCreatePlan){
+  const spec=simpleAgentSpec(goal)
+  if(plan===undefined)return spec
+  const keys=["task_scope","deliverables","task_plan","done_criteria"]
+  if(!plan||typeof plan!=="object"||Array.isArray(plan)||Object.keys(plan).length!==4||Object.keys(plan).some(key=>!keys.includes(key))||typeof plan.task_scope!=="string"||!plan.task_scope.trim()||plan.task_scope.length>4000)throw new PgNativePilotError(400,"invalid_pg_native_agent_create_plan")
+  for(const key of ["deliverables","task_plan","done_criteria"] as const){
+    const list=plan[key]
+    if(!Array.isArray(list)||list.length<1||list.length>30||list.some(value=>typeof value!=="string"||!value.trim()||value.length>500))throw new PgNativePilotError(400,"invalid_pg_native_agent_create_plan")
+  }
+  // Existing Native POST /agent-specs accepts these original descriptive
+  // fields. No tool/model/knowledge grants are accepted from this shortcut.
+  return {...spec,task_scope:plan.task_scope,deliverables:[...plan.deliverables],task_plan:[...plan.task_plan],done_criteria:[...plan.done_criteria]}
+}
 function planReviewSetting(spec:PgNativeAgent["spec"]):{require_plan_review?:boolean}{
   if(!Object.hasOwn(spec,"require_plan_review"))return {}
   if(typeof spec.require_plan_review!=="boolean")throw new PgNativePilotError(409,"unexpected_stored_spec")
@@ -573,6 +623,7 @@ export function createPgNativePilotApi(
   const smitheryId=(id:string)=>{if(!safeId.test(id))throw new PgNativePilotError(400,"invalid_smithery_id");return id.toLowerCase()}
   return {
     ...createPgNativeOwnOperationsApi({transport,rootPath}),
+    toolHub:createPgNativeToolHubApi({get,post}),
     previewAgentDescriptivePatch:async(raw:PgNativeDescriptivePatchPreviewInput)=>{
       const body=descriptiveInput(agentDescriptivePatchPreviewInput,raw),result=await post<unknown>("/api/v2/agent-descriptive-patches/preview",body)
       return descriptiveResponse(()=>agentDescriptivePatchPreview(result,{review_id:body.review_id,spec_id:body.spec_id,target_run_id:body.target_run_id}))
@@ -627,10 +678,10 @@ export function createPgNativePilotApi(
       const id=reviewInput(agentReviewId,raw),result=await get<unknown>(`/api/v2/agent-reviews/${id}`)
       return reviewResponse(()=>agentReviewView(result,id))
     },
-    getAgentOptimizations:async(specId:string)=>{
-      if(!safeId.test(specId))throw new PgNativePilotError(400,"invalid_agent_optimization_spec")
-      const spec=specId.toLowerCase(),result=await get<unknown>(`/api/v2/agent-optimizations?spec_id=${spec}`)
-      try{return optimizationHistory(result,spec)}catch{throw new PgNativePilotError(503,"invalid_agent_optimization_projection")}
+    getAgentOptimizations:async(specId:string,requestId?:string)=>{
+      if(!safeId.test(specId)||requestId!==undefined&&!safeId.test(requestId))throw new PgNativePilotError(400,"invalid_agent_optimization_spec")
+      const spec=specId.toLowerCase(),request=requestId?.toLowerCase(),result=await get<unknown>(("/api/v2/agent-optimizations?spec_id="+spec+(request===undefined?'':'&request_id='+request)) as Route)
+      try{const history=optimizationHistory(result,spec);if(request!==undefined&&(history.items.length>1||history.items.some(row=>row.request_id!==request)))throw Error('optimization_receipt_changed');return history}catch{throw new PgNativePilotError(503,"invalid_agent_optimization_projection")}
     },
     previewAgentOptimization:async(raw:PgNativeOptimizationDraft)=>{
       let draft:PgNativeOptimizationDraft;try{draft=optimizationDraft(raw)}catch{throw new PgNativePilotError(400,"invalid_agent_optimization_request")}
@@ -678,6 +729,7 @@ export function createPgNativePilotApi(
       if(value?.mode!=="native_pg18"||
          (value.own_operations_available!==undefined&&typeof value.own_operations_available!=="boolean")||
          (value.company_overview_available!==undefined&&typeof value.company_overview_available!=="boolean")||
+         (value.company_worker_heartbeats_available!==undefined&&typeof value.company_worker_heartbeats_available!=="boolean")||
          typeof value.config_writes_enabled!=="boolean"||
          typeof value.model_probe_enabled!=="boolean"||
           (value.mcp_discovery_enabled!==undefined&&typeof value.mcp_discovery_enabled!=="boolean")||
@@ -721,6 +773,24 @@ export function createPgNativePilotApi(
           (value.agent_generated_acceptance_available!==undefined&&typeof value.agent_generated_acceptance_available!=="boolean")||
           (value.agent_generated_acceptance_enabled!==undefined&&typeof value.agent_generated_acceptance_enabled!=="boolean")||
           (value.agent_generated_acceptance_enabled===true&&(value.agent_generated_acceptance_available!==true||value.config_writes_enabled!==true))||
+          (value.agent_design_available!==undefined&&typeof value.agent_design_available!=="boolean")||
+          (value.agent_design_submissions_enabled!==undefined&&typeof value.agent_design_submissions_enabled!=="boolean")||
+          (value.agent_design_saves_enabled!==undefined&&typeof value.agent_design_saves_enabled!=="boolean")||
+          ((value.agent_design_submissions_enabled===true||value.agent_design_saves_enabled===true)&&(value.agent_design_available!==true||value.config_writes_enabled!==true))||
+          (value.agent_callers_available!==undefined&&typeof value.agent_callers_available!=="boolean")||
+          (value.agent_callers_writes_enabled!==undefined&&typeof value.agent_callers_writes_enabled!=="boolean")||
+          (value.agent_callers_runs_enabled!==undefined&&typeof value.agent_callers_runs_enabled!=="boolean")||
+          (value.agent_callers_writes_enabled===true&&(value.agent_callers_available!==true||value.config_writes_enabled!==true))||
+          (value.agent_callers_runs_enabled===true&&(value.agent_callers_available!==true||value.config_writes_enabled!==true||value.autonomous_agent_submission_enabled!==true))||
+          (value.approval_delegations_available!==undefined&&typeof value.approval_delegations_available!=="boolean")||
+          (value.approval_delegations_writes_enabled!==undefined&&typeof value.approval_delegations_writes_enabled!=="boolean")||
+          (value.approval_delegations_writes_enabled===true&&(value.approval_delegations_available!==true||value.config_writes_enabled!==true))||
+          (value.internal_share_available!==undefined&&typeof value.internal_share_available!=="boolean")||
+          (value.internal_share_writes_enabled!==undefined&&typeof value.internal_share_writes_enabled!=="boolean")||
+          (value.internal_share_writes_enabled===true&&(value.internal_share_available!==true||value.config_writes_enabled!==true))||
+          (value.agent_template_market_available!==undefined&&typeof value.agent_template_market_available!=="boolean")||
+          (value.agent_template_market_writes_enabled!==undefined&&typeof value.agent_template_market_writes_enabled!=="boolean")||
+          (value.agent_template_market_writes_enabled===true&&(value.agent_template_market_available!==true||value.config_writes_enabled!==true))||
           (value.agent_descriptive_patch_available!==undefined&&typeof value.agent_descriptive_patch_available!=="boolean")||
           (value.agent_descriptive_patch_enabled!==undefined&&typeof value.agent_descriptive_patch_enabled!=="boolean")||
           (value.agent_descriptive_patch_enabled===true&&(value.agent_descriptive_patch_available!==true||value.config_writes_enabled!==true))||
@@ -745,6 +815,8 @@ export function createPgNativePilotApi(
           (value.employee_governance_enabled!==undefined&&typeof value.employee_governance_enabled!=="boolean")||
           (value.employee_governance_enabled===true&&(value.employee_governance_available!==true||value.config_writes_enabled!==true))||
           (value.agent_collaboration_available!==undefined&&typeof value.agent_collaboration_available!=="boolean")||
+          (value.original_run_options_protocol!==undefined&&(value.original_run_options_protocol!==originalRunOptionsProtocol||value.config_writes_enabled!==true||value.autonomous_agent_submission_enabled!==true))||
+          (value.original_run_interactions_protocol!==undefined&&(value.original_run_interactions_protocol!=='native_original_run_interaction_v1'||value.agent_releases_available!==true))||
           (value.agent_releases_available!==undefined&&typeof value.agent_releases_available!=="boolean")||
           (value.agent_release_acceptance_enabled!==undefined&&typeof value.agent_release_acceptance_enabled!=="boolean")||
           (value.agent_release_acceptance_enabled===true&&(value.agent_releases_available!==true||value.config_writes_enabled!==true||value.autonomous_agent_submission_enabled!==true))||
@@ -755,7 +827,11 @@ export function createPgNativePilotApi(
             typeof value.bound_model_runs_enabled!=="boolean")||
           (value.run_submission_enabled===true&&value.config_writes_enabled!==true)||
           (value.bound_model_runs_enabled===true&&value.run_submission_enabled!==true)||
-         value.run_execution_enabled!==false)
+          (value.local_devices_available!==undefined&&typeof value.local_devices_available!=="boolean")||
+          (value.local_device_writes_enabled!==undefined&&typeof value.local_device_writes_enabled!=="boolean")||
+          (value.local_device_writes_enabled===true&&(value.local_devices_available!==true||value.config_writes_enabled!==true))||
+         (value.original_agent_quality_protocol!==undefined&&value.original_agent_quality_protocol!=='native_original_agent_quality_v1')||
+          value.run_execution_enabled!==false)
         throw new PgNativePilotError(503,"invalid_native_capabilities")
       return {...value,own_operations_available:value.own_operations_available===true}
     },
@@ -813,9 +889,9 @@ export function createPgNativePilotApi(
         toolConnectionRoute(id),{
           ...input,expected_revision:safeRevision(expected_revision)
         })).item,
-    deleteToolConnection:async(id:string)=>
-      del<{ok:true;id:string;execution_enabled:false}>(
-        toolConnectionRoute(id)),
+    deleteToolConnection:async(id:string,expected_revision?:number)=>
+      expected_revision===undefined?del<{ok:true;id:string;execution_enabled:false}>(toolConnectionRoute(id)):
+      request<{ok:true;id:string;execution_enabled:false}>(toolConnectionRoute(id),'DELETE',{expected_revision:safeRevision(expected_revision)},transport,rootPath),
     getSmitheryKey:()=>smithery("key","GET",undefined,parsePgSmitheryKey),
     saveSmitheryKey:(api_key:string,expected_revision:number,request_id:string)=>{
       try{smitheryApiKey(api_key)}catch{throw new PgNativePilotError(400,"invalid_smithery_key")}
@@ -908,11 +984,11 @@ export function createPgNativePilotApi(
       return collaborationResponse(()=>collaborationResult(value.item,id,choice))
     },
     listAgents:async()=> (await get<{items:PgNativeAgent[]}>(routes.agents)).items,
-    createAgent:async(name:string,goal:string)=>(
-      await post<{item:PgNativeAgent}>(routes.agents,{name,spec:{
-        ...simpleAgentSpec(goal)
-      }})
-    ).item,
+    createAgent:async(name:string,goal:string,plan?:PgNativeAgentCreatePlan)=>{
+      const payload={name,spec:manualAgentSpec(goal,plan)}
+      if(plan!==undefined&&new TextEncoder().encode(JSON.stringify(payload)).length>32768)throw new PgNativePilotError(400,"invalid_pg_native_agent_create_plan")
+      return (await post<{item:PgNativeAgent}>(routes.agents,payload)).item
+    },
     getAgent:async(id:string)=>
       (await get<{item:PgNativeAgent}>(recordRoute(routes.agents,id))).item,
     updateAgent:async(id:string,expected_revision:number,name:string,goal:string)=>{
@@ -1113,29 +1189,68 @@ export function createPgNativePilotApi(
       return get<{items:Array<{step_key:string;status:string;metadata:Record<string,unknown>}>;next_after:string|null}>(
         (recordRoute(routes.workflowV2Runs,id)+"/steps?limit="+limit+"&after="+encodeURIComponent(after)) as Route)
     },
-    submitAutonomousAgentRun:async(id:string,expected_revision:number,instruction:string,idempotency_key:string,max_steps=3,require_plan_review?:boolean,remember_outcome?:boolean)=>{
+    submitOriginalAutonomousAgentRun:async(input:{agentId:string;revision:number;instruction:string;key:string;maxSteps:number;options:OriginalRunOptions;optimizationLineageId?:string;optimizationExpected?:OriginalOptimizationRetestSelection;businessCase?:OrdinaryCaseRunInput})=>{
+      const options=parseOriginalRunOptions(input.options),{agentId:id,revision,instruction,key,maxSteps}=input
+      if(!Number.isSafeInteger(maxSteps)||maxSteps<1||maxSteps>30)throw new PgNativePilotError(400,'invalid_agent_max_steps')
+      if(typeof instruction!=='string'||!instruction.trim()||instruction.length>2000||instruction.includes('\0')||!/^[A-Za-z0-9_-]{8,80}$/.test(key))throw new PgNativePilotError(400,'invalid_workflow_v2_request')
+      if(options.structured_planning&&input.businessCase)throw new PgNativePilotError(409,'original_role_business_launcher_not_supported')
+      let lineage:string|undefined;if(input.optimizationLineageId!==undefined)try{lineage=optimizationRetestId(input.optimizationLineageId)}catch{throw new PgNativePilotError(400,'invalid_optimization_retest')}
+      const expected=input.optimizationExpected===undefined?undefined:originalOptimizationRetestSelection(input.optimizationExpected);if(Boolean(lineage)!==Boolean(expected)||expected&&(expected.acceptance_request_id!==lineage||expected.spec_id!==id||expected.spec_revision!==revision))throw new PgNativePilotError(400,'invalid_original_optimization_selection')
+      if(lineage&&(options.structured_planning||input.businessCase))throw new PgNativePilotError(409,'agent_optimization_retest_disabled')
+      const result=agentHumanProjection(await post<PgNativeAutonomousAgentResult>((recordRoute(routes.agents,id)+'/autonomous-runs') as Route,{expected_revision:safeRevision(revision),instruction,idempotency_key:key,max_steps:maxSteps,original_run_options:options,...(lineage?{optimization_lineage_id:lineage}:{}),require_plan_review:options.require_plan_review,...(options.structured_planning?{task_planning:'reviewed_v1'}:{}),...(options.local_device_id?{local_device_id:localId(options.local_device_id)}:{}),...(input.businessCase?{business_case:parseOrdinaryCaseRunInput(input.businessCase)}:{})}))
+      if(Object.hasOwn(result,'outcome_memory'))throw new PgNativePilotError(503,'unconfirmed_original_budget_admission')
+      try{if(lineage){result.optimization_retest=optimizationRetestProof(result.optimization_retest,{run_id:result.run.id,spec_id:id,spec_revision:revision,acceptance_request_id:lineage});if(!expected||!originalOptimizationRetestProofMatches(result.optimization_retest,result.run.id,expected))throw Error('optimization_retest_selection_changed')}else if(Object.hasOwn(result,'optimization_retest'))throw Error('unexpected_optimization_retest')}catch{throw new PgNativePilotError(503,'unconfirmed_original_budget_admission')}
+      return originalRolePlanningProjection(result,{taskPlanning:options.structured_planning?'reviewed_v1':undefined})
+    },
+    submitAutonomousAgentRun:async(id:string,expected_revision:number,instruction:string,idempotency_key:string,max_steps=3,require_plan_review?:boolean,remember_outcome?:boolean,optimization_lineage_id?:string,local_device_id?:string,business_case?:OrdinaryCaseRunInput,task_planning?:'reviewed_v1')=>{
       if(!Number.isSafeInteger(max_steps)||max_steps<1||max_steps>30)throw new PgNativePilotError(400,"invalid_agent_max_steps")
       if(typeof instruction!=="string"||!instruction.trim()||instruction.length>2000||instruction.includes("\0")||
          !/^[A-Za-z0-9_-]{8,80}$/.test(idempotency_key))throw new PgNativePilotError(400,"invalid_workflow_v2_request")
       if(require_plan_review!==undefined&&typeof require_plan_review!=="boolean")throw new PgNativePilotError(400,"invalid_agent_plan_review")
       if(remember_outcome!==undefined&&typeof remember_outcome!=="boolean")throw new PgNativePilotError(400,"invalid_agent_memory_outcome_choice")
+      let lineage:string|undefined
+      if(optimization_lineage_id!==undefined)try{lineage=optimizationRetestId(optimization_lineage_id)}catch{throw new PgNativePilotError(400,"invalid_optimization_retest")}
+      if(task_planning!==undefined&&task_planning!=='reviewed_v1')throw new PgNativePilotError(400,'invalid_agent_task_planning')
+      if(task_planning&&require_plan_review===false)throw new PgNativePilotError(400,'invalid_agent_plan_review')
       const result=agentHumanProjection(await post<PgNativeAutonomousAgentResult>((recordRoute(routes.agents,id)+"/autonomous-runs") as Route,{
-        expected_revision:safeRevision(expected_revision),instruction,idempotency_key,max_steps,...(require_plan_review!==undefined?{require_plan_review}:{}),...(remember_outcome!==undefined?{remember_outcome}:{})}))
+        expected_revision:safeRevision(expected_revision),instruction,idempotency_key,max_steps,...(task_planning?{task_planning,require_plan_review:true}:{}),...(business_case!==undefined?{business_case:parseOrdinaryCaseRunInput(business_case)}:{}),...(require_plan_review!==undefined?{require_plan_review}:{}),...(remember_outcome!==undefined?{remember_outcome}:{}),...(lineage?{optimization_lineage_id:lineage}:{}),...(local_device_id!==undefined?{local_device_id:localId(local_device_id)}:{})}))
       try{
         if(remember_outcome===true)result.outcome_memory=agentOutcomeConsent(result.outcome_memory,result.run.id,id.toLowerCase(),expected_revision)
         else if(Object.hasOwn(result,"outcome_memory"))throw Error("unexpected_outcome_consent")
       }catch{throw new PgNativePilotError(503,"unconfirmed_agent_outcome_memory_admission")}
-      return result
+      try{
+        if(lineage)result.optimization_retest=optimizationRetestProof(result.optimization_retest,{run_id:result.run.id,spec_id:id,spec_revision:expected_revision,acceptance_request_id:lineage})
+        else if(Object.hasOwn(result,"optimization_retest"))throw Error("unexpected_optimization_retest")
+      }catch{throw new PgNativePilotError(503,"unconfirmed_optimization_retest_admission")}
+      return originalRolePlanningProjection(result,{taskPlanning:task_planning})
     },
-    getAutonomousAgentRun:async(id:string)=>agentHumanProjection(await get<PgNativeAutonomousAgentResult>(recordRoute(routes.autonomousAgentRuns,id))),
+    getAutonomousAgentRun:async(id:string)=>{
+      const result=agentHumanProjection(await get<PgNativeAutonomousAgentResult>(recordRoute(routes.autonomousAgentRuns,id)))
+      if(Object.hasOwn(result,"optimization_retest"))try{const revision=result.run.checkpoint.spec_revision;if(typeof revision!=="number")throw Error("invalid_optimization_retest_revision");result.optimization_retest=optimizationRetestProof(result.optimization_retest,{run_id:result.run.id,spec_id:result.run.agent_spec_id,spec_revision:revision})}catch{throw new PgNativePilotError(503,"unconfirmed_optimization_retest_source")}
+      return originalRolePlanningProjection(result)
+    },
     respondAutonomousAgent:async(id:string,choice:AgentHumanResponse)=>humanResponse(routes.autonomousAgentRuns,id,choice),
     confirmAutonomousAgentResponse:async(id:string,choice:AgentHumanResponse)=>humanResponse(routes.autonomousAgentRuns,id,choice,true),
     getAutonomousAgentHumanHistory:async(id:string,after="",limit=10)=>humanHistory(routes.autonomousAgentRuns,id,after,limit),
+    getAutonomousAgentHistory:async(specId:string,anchorRunId:string,page=1):Promise<NativeAgentHistoryPage>=>{
+      let spec:string,anchor:string,number:number
+      try{spec=nativeAgentHistoryId(specId.toLowerCase());anchor=nativeAgentHistoryId(anchorRunId.toLowerCase());number=nativeAgentHistoryPageNumber(page)}catch{throw new PgNativePilotError(400,"invalid_native_agent_history")}
+      const result=await get<unknown>((routes.autonomousAgentRuns+"/history?spec_id="+spec+"&anchor_run_id="+anchor+"&page="+number) as Route)
+      try{return nativeAgentHistoryPage(result,{specId:spec,anchorRunId:anchor,page:number})}catch{throw new PgNativePilotError(503,"invalid_native_agent_history_response")}
+    },
     listAutonomousAgentRuns:async()=> (await get<{items:PgNativeAutonomousAgentSummary[]}>(routes.autonomousAgentRuns)).items,
     decideAutonomousAgentNode:async(id:string,decision:"approved"|"rejected",step_key:string,input_sha256:string,knowledge_query_charge?:typeof KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT)=>{
       if(!["approved","rejected"].includes(decision)||!/^wf2_[0-9]{5}_[A-Za-z0-9_-]{1,100}$/.test(step_key)||
          !/^[a-f0-9]{64}$/.test(input_sha256)||knowledge_query_charge!==undefined&&(decision!=="approved"||knowledge_query_charge!==KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT))throw new PgNativePilotError(400,"invalid_workflow_v2_request")
       return post<PgNativeAutonomousAgentResult>((recordRoute(routes.autonomousAgentRuns,id)+"/decision") as Route,{decision,step_key,input_sha256,...(knowledge_query_charge?{knowledge_query_charge}:{})})
+    },
+    controlAutonomousAgentRun:async(id:string,action:NativeRunControlAction,request:NativeRunControlRequest)=>{
+      if(!['pause','resume'].includes(action))throw new PgNativePilotError(400,'invalid_agent_run_control')
+      return agentHumanProjection(await post<PgNativeAutonomousAgentResult>((recordRoute(routes.autonomousAgentRuns,id)+'/'+action) as Route,nativeRunControlRequest(request)))
+    },
+    confirmAutonomousAgentRunControl:async(id:string,action:NativeRunControlAction,request:NativeRunControlRequest)=>{
+      if(!['pause','resume'].includes(action))throw new PgNativePilotError(400,'invalid_agent_run_control')
+      return agentHumanProjection(await post<PgNativeAutonomousAgentResult>((recordRoute(routes.autonomousAgentRuns,id)+'/'+action+'-confirm') as Route,nativeRunControlRequest(request)))
     },
     cancelAutonomousAgentRun:async(id:string)=>post<PgNativeAutonomousAgentResult>((recordRoute(routes.autonomousAgentRuns,id)+"/cancel") as Route,{}),
     getAutonomousAgentSteps:async(id:string,after="",limit=100)=>{

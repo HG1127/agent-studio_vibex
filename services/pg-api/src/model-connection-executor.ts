@@ -1,3 +1,5 @@
+import {parseLocalResult,type LocalResult} from '../../../shared/native-local-device-contract.mjs'
+import {selectNativeLocalDeviceExecution} from './native-local-device-runtime-policy.ts'
 import {selectAutonomousAgentExecution} from "./durable-v2-root.ts"
 import {agentDescriptiveLimits as roleLimits} from "../../../shared/agent-role-limits.mjs"
 // Isolated, API-side provider transport for owner-bound Agent models.
@@ -294,4 +296,22 @@ export function createIsolatedAutonomousAgentModelExecutor(
   selectBoundGenerationUat(env,listen,origin,uid)
   if(!selectWorkflowV2ModelExecution(env)||!selectWorkflowV2ToolExecution(env)||!selectAutonomousAgentExecution(env))throw Error("autonomous_agent_not_approved")
   return selectedTransport(resolver,request,preparedWorkflowAgentModelRequest,25000)
+}
+
+// Images come only from the latest same-owner/run/device private SQL receipt.
+// Bytes are passed in memory to exactly this model request, never checkpointed.
+export function preparedNativeLocalVisionRequest(material:SelectedModelMaterial,input:{prompt:string;images:LocalResult['images']}):PreparedSelectedModelRequest{
+ const result=parseLocalResult({text:'',images:input.images}),prepared=preparedWorkflowAgentModelRequest(material,input.prompt)
+ const payload=JSON.parse(prepared.body.toString('utf8'))
+ if(material.provider==='openai')payload.messages[1].content=[{type:'text',text:input.prompt},...result.images.map(i=>({type:'image_url',image_url:{url:'data:'+i.mimeType+';base64,'+i.data}}))]
+ else if(material.provider==='anthropic')payload.messages[0].content=[{type:'text',text:input.prompt},...result.images.map(i=>({type:'image',source:{type:'base64',media_type:i.mimeType,data:i.data}}))]
+ else if(material.provider==='gemini')payload.contents[0].parts=[{text:input.prompt},...result.images.map(i=>({inlineData:{mimeType:i.mimeType,data:i.data}}))]
+ else throw Error('native_local_image_provider_unsupported')
+ const body=Buffer.from(JSON.stringify(payload));if(body.length>2000000)throw Error('native_local_vision_request_too_large')
+ return{...prepared,body,headers:{...prepared.headers,'Content-Length':String(body.length)}}
+}
+export function createIsolatedNativeLocalVisionExecutor(env:NodeJS.ProcessEnv,origin:string,listen:boolean,resolver:ProviderResolver={resolve4,resolve6},request:typeof httpsRequest=httpsRequest,uid=process.getuid?.()){
+ selectBoundGenerationUat(env,listen,origin,uid)
+ if(!selectNativeLocalDeviceExecution(env)||!selectWorkflowV2ModelExecution(env)||!selectAutonomousAgentExecution(env))throw Error('native_local_vision_not_approved')
+ return selectedTransport(resolver,request,preparedNativeLocalVisionRequest,25000)
 }

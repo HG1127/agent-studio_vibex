@@ -1,0 +1,128 @@
+name: Agent Studio F11 F12 Published Agent callers genuine PG18 isolated verification
+
+on:
+  push:
+    branches:
+      - 'codex/pg18-worker-heartbeat-*'
+      - 'codex/pg18-agent-callers-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pg18-agent-caller-genuine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pg18-agent-caller-genuine:
+    name: F11 F12 / real PG18 ${{ matrix.suite }}
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [flow, database]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    env:
+      AGENT_STUDIO_F11_F12_GENUINE_CI: YES_DISPOSABLE_F11_F12_CALLERS_ONLY
+      AGENT_STUDIO_F11_F12_GENUINE_SUITE: ${{ matrix.suite }}
+      AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+      AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+      AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+      AGENT_STUDIO_PG18_CI_PORT: '5432'
+      AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+      AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+      AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked API dependencies without lifecycle scripts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual compiler and pure boundary tests
+        run: |
+          pnpm --dir services/pg-api check
+          node --experimental-strip-types --test services/pg-api/tests/agent-caller-contract.test.mjs services/pg-api/tests/agent-caller-client.test.mjs services/pg-api/tests/agent-caller-owner-session.test.mjs services/pg-api/tests/agent-caller-genuine-guard.test.mjs services/pg-api/tests/agent-caller-http.test.mjs services/pg-api/tests/agent-caller-presentation.test.mjs services/pg-api/tests/agent-caller-capability-separation.test.mjs services/pg-api/tests/agent-caller-quota-recovery.test.mjs
+      - name: Actual public caller and original Worker mTLS Broker pipeline
+        if: matrix.suite == 'flow'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/agent-caller-genuine-pg18.test.mjs
+      - name: Actual catalog and original-client admission transaction boundaries
+        if: matrix.suite == 'database'
+        working-directory: services/pg-api
+        run: node --experimental-strip-types --test --test-concurrency=1 tests/agent-caller-database-pg18.test.mjs
+
+  pg18-agent-caller-browser:
+    name: F11 F12 / real Owner UI and external Origin embed and public SDK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    env:
+      AGENT_STUDIO_F11_F12_GENUINE_CI: YES_DISPOSABLE_F11_F12_CALLERS_ONLY
+      AGENT_STUDIO_F11_F12_GENUINE_SUITE: browser
+      AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+      AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+      AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+      AGENT_STUDIO_PG18_CI_PORT: '5432'
+      AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+      AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+      AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual API frontend compilers and browser build
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm exec tsc -p tsconfig.app.json --noEmit
+          pnpm build
+      - name: Install isolated Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Actual Owner UI and independent public Origin through original execution
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-native-agent-caller-genuine.config.mjs
+      - name: Retain actual failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f11-f12-caller-actual-browser-evidence
+          path: .tmp/pg-migration-completion/caller-browser-results
+          if-no-files-found: ignore

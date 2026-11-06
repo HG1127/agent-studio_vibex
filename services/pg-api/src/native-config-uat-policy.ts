@@ -205,9 +205,36 @@ export function permitNativePg18BusinessUatRequest(
   policy:NativePg18UatCapabilities,
 ):boolean {
   if(method==="GET"&&pathname==="/healthz")return true
+  // Optional069 owns its exact Native-only routes and independent gates.
+  // GET confirmations never inherit the fresh submission switch.
+  if(pathname==="/api/v2/tool-hub"||pathname.startsWith("/api/v2/tool-hub/")){
+    if(method==="GET")return true
+    return method==="POST"&&policy.configurationWrites===true&&policy.workflowV2ExecutionUat===true&&
+      (pathname==="/api/v2/tool-hub/trials"||pathname==="/api/v2/tool-hub/trials/preview"||new RegExp("^/api/v2/tool-hub/trials/"+uuid+"/(decision|cancel)$").test(pathname))
+  }
   // Read-only owner metadata never inherits a configuration/submission gate.
   // The Native handler still verifies Cookie identity and installed schema.
-  if(pathname==="/api/v2/own-overview"||pathname==="/api/v2/own-todos")return method==="GET"
+  if(pathname==="/api/v2/original-ui/harness-snapshot"||pathname==="/api/v2/original-ui/internal-overview"||pathname==="/api/v2/own-overview"||pathname==="/api/v2/own-todos"||pathname==="/api/v2/original-ui/agent-workspace"||pathname==="/api/v2/original-ui/agent-pending")return method==="GET"
+  // Original employee facades cross the same Native boundary as their older
+  // API counterparts. Their own handlers still require the actual Cookie,
+  // exact protocol header, employee precondition and transactional owner/CAS.
+  const originalId='[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'
+  const originalRelease=new RegExp('^/api/v2/original-ui/agent-releases/'+originalId+'(?:/(change|acceptance|versions|receipts)(?:/('+originalId+'))?)?$').exec(pathname)
+  if(originalRelease){
+    const action=originalRelease[1],selected=originalRelease[2]
+    if(method==='GET')return !action||!!selected&&(action==='versions'||action==='acceptance'||action==='receipts')
+    if(method!=='POST'||selected)return false
+    if(action==='acceptance')return policy.configurationWrites===true&&policy.autonomousAgentUat===true
+    return action==='change'&&policy.configurationWrites===true
+  }
+  const originalInteraction=new RegExp('^/api/v2/original-ui/run-interactions/'+originalId+'(?:/(decision|respond|receipts|human-receipts)(?:/('+originalId+'))?)?$').exec(pathname)
+  if(originalInteraction){const action=originalInteraction[1],selected=originalInteraction[2];if(method==='GET')return !action||!!selected&&(action==='receipts'||action==='human-receipts');return method==='POST'&&!selected&&(action==='decision'||action==='respond')&&policy.configurationWrites===true&&policy.autonomousAgentUat===true}
+  const originalSchedules='/api/v2/original-ui/schedules'
+  if(pathname===originalSchedules||pathname===originalSchedules+'/capabilities'||pathname===originalSchedules+'/history'||pathname===originalSchedules+'/workflow-targets'||new RegExp('^'+originalSchedules+'/(?:'+originalId+'|(?:operations|workflow-targets)/'+originalId+')$').test(pathname))return method==='GET'
+  // The parsed operation's fresh-write/execution gates live in the actual
+  // repository; this exact shared endpoint must also admit an owned pause
+  // after new submissions are disabled. It grants no general write scope.
+  if(pathname===originalSchedules+'/operations')return method==='POST'
   // Optional company metadata is read-only; the projection rechecks Native
   // active admin authority independently of every configuration/run switch.
   if(pathname==="/api/v2/company-overview"||pathname==="/api/v2/company-overview/employees")return method==="GET"
@@ -271,7 +298,7 @@ export function permitNativePg18BusinessUatRequest(
   if(/^\/api\/v2\/smithery\/(?:key|namespaces|catalog|connections)(?:\/[0-9a-fA-F-]{36}(?:\/(?:refresh|revoke|retry|pause))?)?$/.test(pathname))
     return policy.configurationWrites===true&&policy.smitheryManagementUat===true&&["GET","POST","DELETE"].includes(method)
   if(method==="POST"&&policy.configurationWrites===true&&policy.mcpDiscoveryUat===true&&
-    new RegExp("^/api/v2/mcp-connections/"+uuid+"/discover$").test(pathname))return true
+    (pathname==="/api/v2/original-ui/plugin-market/discover-preview"||new RegExp("^/api/v2/mcp-connections/"+uuid+"/discover$").test(pathname)))return true
   if(method==="DELETE"&&policy.configurationWrites===true&&
     new RegExp("^/api/v2/mcp-connections/"+uuid+"$").test(pathname))return true
   // Draft writes need config UAT. Background authority and occurrence actions
@@ -331,13 +358,13 @@ export function permitNativePg18BusinessUatRequest(
     if(method==="GET"&&new RegExp(
       "^/api/v2/workflow-validations/"+uuid+"$").test(pathname))return true
   }
-  if(method==="GET"&&(pathname==="/api/v2/agent-autonomous-runs"||new RegExp(
+  if(method==="GET"&&(pathname==="/api/v2/agent-autonomous-runs"||pathname==="/api/v2/agent-autonomous-runs/history"||pathname==="/api/v2/agent-autonomous-runs/latest"||new RegExp(
     "^/api/v2/agent-autonomous-runs/"+uuid+"(?:/(?:steps|human-history))?$").test(pathname)))return true
-  if(method==="POST"&&new RegExp("^/api/v2/agent-autonomous-runs/"+uuid+"/cancel$").test(pathname))return true
+  if(method==="POST"&&new RegExp("^/api/v2/agent-autonomous-runs/"+uuid+"/(?:cancel|pause-confirm|resume-confirm)$").test(pathname))return true
   if(method==="POST"&&new RegExp("^/api/v2/(?:agent-autonomous-runs|workflow-v2-runs)/"+uuid+"/respond-confirm$").test(pathname))return true
   if(policy.configurationWrites===true&&policy.autonomousAgentUat===true&&method==="POST"&&(
     new RegExp("^/api/v2/agent-specs/"+uuid+"/autonomous-runs$").test(pathname)||
-    new RegExp("^/api/v2/agent-autonomous-runs/"+uuid+"/(?:decision|respond)$").test(pathname)))return true
+    new RegExp("^/api/v2/agent-autonomous-runs/"+uuid+"/(?:decision|respond|pause|resume)$").test(pathname)))return true
   // Existing safe Start/End Workflow run history is owner-scoped READ ONLY.
   if(method==="GET"&&(pathname==="/api/v2/workflow-v2-runs"||new RegExp(
     "^/api/v2/workflow-v2-runs/"+uuid+"(?:/(?:steps|outputs|output-history|human-history))?$").test(pathname)))return true
@@ -356,10 +383,15 @@ export function permitNativePg18BusinessUatRequest(
   if(policy.configurationWrites===true&&policy.workflowExecutionUat===true&&
      method==="POST"&&new RegExp(
        "^/api/v2/workflows/"+uuid+"/runs$").test(pathname))return true
+  // Independent draft discovery retains both original outbound grants.
+  if(method==='POST'&&policy.configurationWrites===true&&policy.modelProbeUat===true&&pathname==='/api/v2/model-connections/draft-probe')return true
   // Provider probing is an external call and is NEVER config CRUD by default.
   if(method==="POST"&&policy.configurationWrites===true&&
      policy.modelProbeUat===true&&new RegExp(
        "^/api/v2/model-connections/"+uuid+"/probe$").test(pathname))return true
+  // Original HTTP tool metadata deletion retains the same explicit config
+  // scope; actual owner/CAS checks remain in its repository transaction.
+  if(method==='DELETE'&&policy.configurationWrites===true&&new RegExp('^/api/v2/tool-connections/'+uuid+'$').test(pathname))return true
   // Model connection deletion is permitted only under the same explicit
   // isolated configuration UAT gate; no other collection gains DELETE.
   if(method==="DELETE"&&policy.configurationWrites===true&&

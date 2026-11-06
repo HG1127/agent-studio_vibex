@@ -1,0 +1,7 @@
+import type {IncomingMessage} from 'node:http'
+import {HttpError,type Identity} from './contracts.ts'
+import {nativeSessionToken,verifyNativeOrigin} from './native-auth-http.mjs'
+import {optionalExpectedOriginalUiEmployee} from './native-original-ui-preconditions.ts'
+import {parseMcpInventoryQuery} from './mcp-inventory-pagination.ts'
+/** Called after the actual Native authenticator, inside existing global policy. */
+export async function requireMcpInventoryRead(req:IncomingMessage,identity:Identity,origin:string,nativeAuthenticator:boolean){if(!nativeAuthenticator||identity?.issuer!=='urn:agentstudio:local:v1'||typeof identity.subject!=='string'||!identity.subject)throw new HttpError(403,'native_employee_identity_required');verifyNativeOrigin(req,origin,false);if(!nativeSessionToken(req)||['authorization','x-rh-user-id','x-forwarded-user','x-agentstudio-identity'].some(k=>req.headers[k]!==undefined))throw new HttpError(401,'session_required');if(req.method!=='GET')throw new HttpError(405,'method_not_allowed');if(req.headers['transfer-encoding']!==undefined||req.headers['content-length']!==undefined&&req.headers['content-length']!=='0')throw new HttpError(400,'invalid_mcp_inventory_query');for await(const chunk of req)if(Buffer.byteLength(chunk)>0)throw new HttpError(400,'invalid_mcp_inventory_query');const expected=optionalExpectedOriginalUiEmployee(req);if(expected===undefined)throw new HttpError(400,'invalid_original_ui_employee_precondition');return{expectedEmployee:expected,query:parseMcpInventoryQuery(req.url??'')}}

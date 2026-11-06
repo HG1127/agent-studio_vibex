@@ -235,9 +235,9 @@ export function DebugConsole(p: DebugConsoleProps) {
             {result.ok ? "调用成功" : "调用失败"}
           </span>
           <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
-            耗时 {result.latency_ms} ms
+            {result.latency_ms === null ? '耗时未记录' : `耗时 ${result.latency_ms} ms`}
           </span>
-          {result.status_code > 0 && (
+          {result.status_code !== null && result.status_code > 0 && (
             <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
               状态码 {result.status_code}
             </span>

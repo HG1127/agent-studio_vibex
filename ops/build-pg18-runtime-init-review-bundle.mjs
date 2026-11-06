@@ -7,6 +7,7 @@ import {spawnSync} from "node:child_process"
 import {fileURLToPath} from "node:url"
 import {captureFreshRuntimeSources,freshRuntimePlan} from "../services/pg-api/src/pg18-fresh-runtime-source.mjs"
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),".."),entry="services/pg-api/src/baota-pg18-runtime-init.mjs"
+const sharedDependencies=new Set(["shared/agent-role-limits.mjs","shared/original-account-contract.ts"])
 const sha=data=>createHash("sha256").update(data).digest("hex")
 function refuse(code){throw Error("PG18_RUNTIME_REVIEW_REFUSED:"+code)}
 function run(command,args,options={}){const r=spawnSync(command,args,{encoding:"utf8",timeout:30000,windowsHide:true,...options});if(r.status!==0)refuse("command_failed");return r.stdout}
@@ -15,7 +16,7 @@ function removeOwnDirectory(output,dir){const resolved=path.resolve(dir),relativ
   fs.rmSync(resolved,{recursive:true,force:true})
 }
 export function collectRuntimeInitReviewSources(){
-  const snapshot=captureFreshRuntimeSources(),files=new Set([...snapshot.sources.map(s=>s.path),"services/pg-api/package.json","services/pg-api/pnpm-lock.yaml","docs/PG18_FRESH_RUNTIME_INITIALIZATION.md","docs/PG18_SERVICE_LOGIN_PREPARATION.md","docs/PG18_RUNTIME_PREPARATION_POSTCHECK.md",
+  const snapshot=captureFreshRuntimeSources(),files=new Set([...snapshot.sources.map(s=>s.path),"services/pg-api/package.json","services/pg-api/pnpm-lock.yaml","docs/PG18_FRESH_RUNTIME_INITIALIZATION.md","docs/PG18_SERVICE_LOGIN_PREPARATION.md","docs/PG18_RUNTIME_PREPARATION_POSTCHECK.md","docs/PG18_COMPLETE_069_PREPARATION.md",
     "ops/baota-pg18-native-readonly-preflight.sql","ops/baota-pg18-native-postcheck.sql","ops/baota-pg18-first-admin-postcheck.sql"]),visited=new Set()
   const visit=rel=>{
     if(visited.has(rel))return;visited.add(rel);files.add(rel)
@@ -24,7 +25,7 @@ export function collectRuntimeInitReviewSources(){
     const text=fs.readFileSync(file,"utf8")
     for(const regex of [/\bfrom\s+["'](\.[^"']+)["']/g,/\bimport\s*\(\s*["'](\.[^"']+)["']\s*\)/g])for(const match of text.matchAll(regex)){
       const dep=path.posix.normalize(path.posix.join(path.posix.dirname(rel),match[1]))
-      if((!dep.startsWith("services/pg-api/src/")&&dep!=="shared/agent-role-limits.mjs")||dep.includes("..")||!/\.(ts|mjs|mts)$/.test(dep))refuse("outside_dependency")
+      if((!dep.startsWith("services/pg-api/src/")&&!sharedDependencies.has(dep))||dep.includes("..")||!/\.(ts|mjs|mts)$/.test(dep))refuse("outside_dependency")
       visit(dep)
     }
     if(rel.endsWith(".mjs")){const declaration=rel.slice(0,-4)+".d.mts";if(fs.existsSync(path.join(root,declaration)))files.add(declaration)}
@@ -52,7 +53,7 @@ export function buildRuntimeInitReview(output){
       const dest=path.join(stage,rel);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,bytes)
     }
     fs.writeFileSync(path.join(stage,"INITIALIZATION_PLAN.json"),JSON.stringify(planned,null,2)+"\n")
-    fs.writeFileSync(path.join(stage,"README_REVIEW_ONLY.txt"),"Source review only. Production remains NO-GO. No credentials or database data.\nVerify SHA256SUMS, then run offline plans:\nnode "+entry+" --plan\nnode services/pg-api/src/native-activation-cli.mjs --plan\nnode services/pg-api/src/native-first-admin-cli.mjs --plan\nRead docs/PG18_FRESH_RUNTIME_INITIALIZATION.md before proposing any target action.\nRun the six service plans using node services/pg-api/src/pg18-service-login-cli.mjs --plan --service <api|worker|identity|broker|index-worker|index-broker>.\nRun the four stage plans using node services/pg-api/src/pg18-runtime-postcheck-cli.mjs --plan --stage <initialized|native-login|first-admin|service-logins>.\nRead docs/PG18_RUNTIME_PREPARATION_POSTCHECK.md for stage boundaries and baseline-only SQL scope.\nThe package includes the service lockfile. Plans need no dependency installation; any separately approved dependency preparation must use pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts.\nThe package installs nothing, enables no login and starts no service.\n")
+    fs.writeFileSync(path.join(stage,"README_REVIEW_ONLY.txt"),"Source review only. Production remains NO-GO. No credentials or database data.\nDEFAULT050 ONLY. Read docs/PG18_COMPLETE_069_PREPARATION.md for the separate complete069 source-review builder, API-first prepare sequence and new external root records. Do not use these legacy activation/six-account/postcheck commands on full069 or filter its ledger to fake a pass.\nVerify SHA256SUMS, then run offline plans:\nnode "+entry+" --plan\nnode services/pg-api/src/native-activation-cli.mjs --plan\nnode services/pg-api/src/native-first-admin-cli.mjs --plan\nRead docs/PG18_FRESH_RUNTIME_INITIALIZATION.md before proposing any target action.\nRun the six service plans using node services/pg-api/src/pg18-service-login-cli.mjs --plan --service <api|worker|identity|broker|index-worker|index-broker>.\nRun the four stage plans using node services/pg-api/src/pg18-runtime-postcheck-cli.mjs --plan --stage <initialized|native-login|first-admin|service-logins>.\nRead docs/PG18_RUNTIME_PREPARATION_POSTCHECK.md for stage boundaries and baseline-only SQL scope.\nThe package includes the service lockfile. Plans need no dependency installation; any separately approved dependency preparation must use pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts.\nThe package installs nothing, enables no login and starts no service.\n")
     const packed=[...files,"INITIALIZATION_PLAN.json","README_REVIEW_ONLY.txt"].sort()
     const manifest=packed.map(rel=>sha(fs.readFileSync(path.join(stage,rel)))+"  "+rel).join("\n")+"\n"
     fs.writeFileSync(path.join(stage,"SHA256SUMS"),manifest)

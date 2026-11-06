@@ -8,12 +8,15 @@ import {createServer} from "node:https"
 import {createIsolatedBoundModelInternalHandler} from "../../src/bound-model-internal-handler.ts"
 import {assertBoundDispatchTlsMaterial} from "../../src/bound-dispatch-server.ts"
 
-export async function withDisposableBoundModelTls(dispatch,run,{handlerFactory=createIsolatedBoundModelInternalHandler}={}){
+export async function withDisposableBoundModelTls(dispatch,run,{handlerFactory=createIsolatedBoundModelInternalHandler,listenPort=0,includeServerTls=false}={}){
+  // Optional F01 genuine fixture only; existing callers retain random port and
+  // receive no server private material. Product TLS/client checks are unchanged.
+  if(![0,7459].includes(listenPort)||typeof includeServerTls!=="boolean")throw Error("unsafe_disposable_tls_options")
   const parent=realpathSync(tmpdir())
   const temp=mkdtempSync(path.join(parent,"agentstudio-bound-flow-"))
   if(path.dirname(realpathSync(temp))!==parent||!path.basename(temp).startsWith("agentstudio-bound-flow-"))
     throw Error("unsafe_disposable_tls_directory")
-  let server
+  let server,serverTls
   try{
     const openssl=process.platform==="win32"&&existsSync("C:/Program Files/Git/usr/bin/openssl.exe")
       ?"C:/Program Files/Git/usr/bin/openssl.exe":"openssl"
@@ -39,13 +42,15 @@ export async function withDisposableBoundModelTls(dispatch,run,{handlerFactory=c
       reviewedClientFingerprint256:new X509Certificate(workerCert).fingerprint256,dispatch})
     server=createServer({ca,cert,key,requestCert:true,rejectUnauthorized:true,minVersion:"TLSv1.2"},
       (req,res)=>{void handler(req,res).catch(()=>res.destroy())})
-    await new Promise((resolve,reject)=>{server.once("error",reject);server.listen(0,"127.0.0.1",resolve)})
+    await new Promise((resolve,reject)=>{server.once("error",reject);server.listen(listenPort,"127.0.0.1",resolve)})
     const address=server.address()
     if(!address||typeof address==="string")throw Error("loopback_tls_missing_port")
-    return await run({approvedForIsolatedUat:true,origin:"https://127.0.0.1:"+address.port,
+    if(includeServerTls)serverTls={ca:Buffer.from(ca),cert:Buffer.from(cert),key:Buffer.from(key)}
+    return await run({...(serverTls?{serverTls}:{}),approvedForIsolatedUat:true,origin:"https://127.0.0.1:"+address.port,
       ca,cert:workerCert,key:read("worker.key"),
       reviewedServerFingerprint256:new X509Certificate(cert).fingerprint256})
   }finally{
+    if(serverTls)for(const buffer of Object.values(serverTls))buffer.fill(0)
     if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve))}
     rmSync(temp,{recursive:true,force:true})
   }

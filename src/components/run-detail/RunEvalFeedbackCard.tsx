@@ -1,12 +1,11 @@
 import { Gauge, MessageSquareText, ThumbsDown, ThumbsUp } from "lucide-react"
 import type { RunDetailRow } from "@/pages/RunDetail/useRunDetail"
-import type { RunStateKey } from "@/pages/AgentRun/useAgentRun"
 
 type RunEvalFeedbackCardProps = {
   run: RunDetailRow
 }
 
-const TERMINAL_STATES: RunStateKey[] = ["succeeded", "failed", "cancelled"]
+const TERMINAL_STATES: readonly string[] = ["succeeded", "failed", "cancelled"]
 
 // 只读展示：评估报告摘要 + 反馈状态（生成评估与提交反馈在试跑页操作）
 export function RunEvalFeedbackCard({ run }: RunEvalFeedbackCardProps) {
@@ -67,7 +66,7 @@ export function RunEvalFeedbackCard({ run }: RunEvalFeedbackCardProps) {
           </div>
         ) : (
           <p className="rounded-xl bg-muted/50 px-3.5 py-2.5 text-xs leading-relaxed text-muted-foreground">
-            尚未评估。可在「助手配置与试跑」页对这次运行生成评估报告。
+            {run.native?"原评估摘要尚未映射到此卡；现有 Native review 历史需另行接线，不能据空值判定从未评估。":"尚未评估。可在「助手配置与试跑」页对这次运行生成评估报告。"}
           </p>
         )}
       </section>
@@ -104,7 +103,7 @@ export function RunEvalFeedbackCard({ run }: RunEvalFeedbackCardProps) {
           </div>
         ) : (
           <p className="rounded-xl bg-muted/50 px-3.5 py-2.5 text-xs leading-relaxed text-muted-foreground">
-            暂无反馈。可在「助手配置与试跑」页对这次运行提交 👍/👎 反馈。
+            {run.native?"本页没有取得可显示的反馈正文；这不证明原运行从未收到反馈。自主运行已接入可用时的本人 Native 反馈读取。":"暂无反馈。可在「助手配置与试跑」页对这次运行提交 👍/👎 反馈。"}
           </p>
         )}
       </section>

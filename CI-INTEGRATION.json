@@ -1,0 +1,62 @@
+{
+  "Root_reference_status": "historical author source reference, not current acceptance",
+  "Root_current_note": "Historical author integration proposal. Root has registered the monitor074 TCP purpose and original release completion story. Original monitor074 browser hosting remains pending required material/artifact/quality contracts; the proposal is not evidence of registration or execution. Final seals and actual hosted results are required.",
+  "schema": "C_monitor074_CI_integration_plan_v1",
+  "TCP": {
+    "entry": "services/pg-api/tests/native-monitor074-genuine-pg18.test.mjs",
+    "workflow": "Agent Studio F01 Agent Design genuine PG18 isolated verification",
+    "job": "pg18-agent-design-genuine",
+    "purpose_inputs": {
+      "AGENT_STUDIO_NATIVE_MONITOR074_CI": "YES_DISPOSABLE_MONITOR074_LIVE_CHAIN_ONLY",
+      "AGENT_STUDIO_NATIVE_MONITOR074_SUITE": "monitor074",
+      "AGENT_STUDIO_NATIVE_MONITOR074_SOURCE_EGRESS": "APPROVE_ONE_DECLARED_SYNTHETIC_HTTPBIN_SOURCE_ONLY",
+      "AGENT_STUDIO_NATIVE_MONITOR074_EXPECTED_HEAD": "actual Hosted GITHUB_SHA; never synthesized"
+    },
+    "preconditions": [
+      "unchanged real requireAgentDesignGenuineCi/requireEphemeralPg18Ci gates",
+      "Root final LF reviewed source map must be non-null/frozen and match clean actual Git HEAD",
+      "fresh dedicated actual PG18/TCP service; synthetic Native users only; no DATABASE_URL/local target"
+    ],
+    "source_egress": {
+      "host": "httpbin.org",
+      "path": "/base64/<fixed synthetic DEMO document>",
+      "requests_max": 2,
+      "model_provider_calls": 0,
+      "actual_network": true
+    },
+    "positive": "actual role logins/catalog, Native Cookie, manual employee identities, actual Native acknowledgments/occurrences/origins, original Root approvals, request/material/capture, record write, freeze/review/baseline, later rejection blocking next baseline",
+    "models": "scripted synthetic model decisions behind original Root lease/approval guard; no paid provider execution claim",
+    "not_run_by_C": true
+  },
+  "browser": {
+    "guard": "tests/helpers/pg-original-monitor074-browser-guard.mjs",
+    "policy": "tests/helpers/pg-original-monitor074-host-policy.mjs",
+    "scenario": "tests/helpers/pg-original-monitor074-scenario.mjs",
+    "job": "pg18-agent-design-browser",
+    "purpose_inputs": {
+      "AGENT_STUDIO_ORIGINAL_MONITOR074_CI": "YES_DISPOSABLE_ORIGINAL_MONITOR074_LIVE_CHAIN_ONLY",
+      "AGENT_STUDIO_ORIGINAL_MONITOR074_STORY": "original-agent-run-monitor074",
+      "AGENT_STUDIO_ORIGINAL_MONITOR074_EXPECTED_HEAD": "actual Hosted GITHUB_SHA"
+    },
+    "requires": "Root original-build/Native backend fixture contract in ROOT-CONTRACTS.json; no old073/login profile substitutions",
+    "hard_failures": [
+      "legacy-block observer >0 even when no PB request is sent",
+      "PB/unapproved browser/backend egress",
+      "missing original parent/material/artifact/quality contract",
+      "Pilot or replacement UI instead of original index/App/AgentRun",
+      "nonzero paid provider request",
+      "source receipt absent or baseline advances after later employee rejection"
+    ],
+    "not_run_by_C": true
+  },
+  "do_not_override": [
+    "GITHUB_JOB",
+    "GITHUB_SHA",
+    "GITHUB_REF",
+    "process.platform",
+    "UID",
+    "existing frozen SQL",
+    "Root source pins"
+  ],
+  "production_GO": false
+}

@@ -1,3 +1,4 @@
+import {carryOriginalRoleRevisionOnClient} from './original-role-revision.ts'
 import { HttpError, isUuid, type Identity, type SqlPool, type SqlClient,
   type AgentSpecInput } from "./contracts.ts"
 import {exactProviderEndpoint} from "./model-connection-probe.ts"
@@ -53,6 +54,13 @@ export async function withActor<T>(
   } finally {
     client.release()
   }
+}
+
+/** Original-client062 save RPC: SQL performs Agent+045 history+receipt+audit
+ * atomically; this helper owns no transaction, pool or nested Actor scope. */
+export async function recordAgentDesignSaveOnClient(db:SqlClient,owner:string,intent:unknown,preview:unknown):Promise<unknown>{
+  await assertOwnedAdmissionContext(db,owner)
+  return (await db.query<{value:unknown}>("SELECT agentstudio.agent_design_save_record($1::jsonb,$2::jsonb) AS value",[JSON.stringify(intent),JSON.stringify(preview)])).rows[0]?.value
 }
 
 export interface SpecRow {
@@ -131,15 +139,25 @@ export async function verifyAgentSpecResources(db:SqlClient,actor:string,spec:Ag
 
 export class AgentSpecRepository {
   readonly pool:SqlPool
-  constructor(pool:SqlPool) {this.pool=pool}
+  readonly hideCallerSources:boolean
+  constructor(pool:SqlPool,options:{hideCallerSources?:boolean}={}) {this.pool=pool;this.hideCallerSources=options.hideCallerSources===true}
+  private async callerSources(db:SqlClient):Promise<string[]>{
+    if(!this.hideCallerSources)return []
+    const installed=(await db.query<{ok:boolean}>("SELECT to_regprocedure('agentstudio.agent_caller_internal_sources()') IS NOT NULL AS ok")).rows[0]?.ok
+    if(!installed)return []
+    const ids=(await db.query<{ids:string[]}>('SELECT agentstudio.agent_caller_internal_sources() AS ids')).rows[0]?.ids
+    if(!Array.isArray(ids)||ids.some(id=>!isUuid(id)))throw new HttpError(503,'agent_caller_source_unavailable')
+    return ids
+  }
   list(identity:Identity,limit=30):Promise<SpecRow[]> {
     const bounded=Math.max(1,Math.min(50,Math.trunc(limit)))
     return withActor(this.pool,identity,async (db,actor)=>{
+      const hidden=await this.callerSources(db)
       const result=await db.query<SpecRow>(
         "SELECT id,owner_user_id,name,spec,revision,created_at,updated_at "+
-        "FROM agentstudio.agent_specs WHERE owner_user_id=$1::uuid "+
+        "FROM agentstudio.agent_specs WHERE owner_user_id=$1::uuid AND NOT(id=ANY($3::uuid[])) "+
         "ORDER BY updated_at DESC,id LIMIT $2::int",
-        [actor,bounded],
+        [actor,bounded,hidden],
       )
       return result.rows.map(toSpecRow)
     })
@@ -147,6 +165,7 @@ export class AgentSpecRepository {
   get(identity:Identity,id:string):Promise<SpecRow|null> {
     if(!isUuid(id))throw new HttpError(400,"invalid_spec_id")
     return withActor(this.pool,identity,async (db,actor)=>{
+      if((await this.callerSources(db)).includes(id.toLowerCase()))return null
       const result=await db.query<SpecRow>(
         "SELECT id,owner_user_id,name,spec,revision,created_at,updated_at "+
         "FROM agentstudio.agent_specs WHERE id=$1::uuid AND owner_user_id=$2::uuid",
@@ -175,6 +194,7 @@ export class AgentSpecRepository {
     if(!Number.isSafeInteger(revision) || revision<1)
       throw new HttpError(400,"invalid_revision")
     return withActor(this.pool,identity,async (db,actor)=>{
+      if((await this.callerSources(db)).includes(id.toLowerCase()))return null
       await verifyAgentSpecResources(db,actor,spec)
       const result=await db.query<SpecRow>(
         "UPDATE agentstudio.agent_specs "+
@@ -184,7 +204,9 @@ export class AgentSpecRepository {
         "RETURNING id,owner_user_id,name,spec,revision,created_at,updated_at",
         [id,actor,name,JSON.stringify(spec),revision],
       )
-      return result.rows[0]?toSpecRow(result.rows[0]):null
+      const saved=result.rows[0]?toSpecRow(result.rows[0]):null
+      if(saved)await carryOriginalRoleRevisionOnClient(db,actor,id,revision,saved.revision)
+      return saved
     })
   }
 }

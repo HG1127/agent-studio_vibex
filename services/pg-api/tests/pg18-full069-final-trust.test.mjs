@@ -1,0 +1,10 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {finalContext,assertFinalStable,openFinalRunStore,writeFinalRecord,appendFinalSample,closeFinalSamples,verifyClosedFinalSamples,readFinalAcknowledgement,retireFinalTrust} from '../src/pg18-full069-final-trust.mjs'
+import {assertFull069FinalSources} from '../src/pg18-full069-final-sources.mjs'
+import {openFull069FinalRuntime,full069FinalPreflight,observeFull069FinalRuntime,finalizeFull069FinalRuntime,verifyFull069FinalRuntimeAfterAcknowledgement} from '../src/pg18-full069-final-runtime.mjs'
+const forged=()=>Object.freeze({baseTrust:{},source:{source_sha256:'a'.repeat(64)},store:'/var/lib/fake',write:true,runtime_authorization:true,qualifies_run:true})
+test('positive profile/context DTO has no genuine final trust authority',()=>{for(const action of[h=>finalContext(h),h=>assertFinalStable(h),h=>openFinalRunStore(h),h=>writeFinalRecord(h,'final-end.json',{qualifies_run:true}),h=>appendFinalSample(h,{ready:true}),h=>closeFinalSamples(h),h=>verifyClosedFinalSamples(h),h=>readFinalAcknowledgement(h,'end','a'.repeat(64))])assert.throws(()=>action(forged()),/untrusted_context/)})
+test('unbranded source snapshot and correct-looking hash cannot authorize runtime',()=>{assert.throws(()=>assertFull069FinalSources({source_sha256:'a'.repeat(64),manifest:{},complete:{},live:{},companions:{},planWorkflow:{}},'a'.repeat(64)),/source_refused/)})
+test('retiring a forged object cannot make it a final context',()=>{const h=forged();retireFinalTrust(h);assert.throws(()=>finalContext(h),/untrusted_context/)})
+test('Pool/target/ready DTO cannot open or observe a genuine final runtime',async()=>{await assert.rejects(openFull069FinalRuntime(forged()),/untrusted_context/);assert.throws(()=>full069FinalPreflight(forged()),/untrusted_runtime/);for(const action of[observeFull069FinalRuntime,finalizeFull069FinalRuntime,verifyFull069FinalRuntimeAfterAcknowledgement])await assert.rejects(action(forged()),/untrusted_runtime/)})

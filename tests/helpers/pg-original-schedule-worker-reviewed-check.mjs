@@ -1,0 +1,9 @@
+import {requireOriginalScheduleWorkerCi} from './pg-original-schedule-worker-guard.mjs'
+import {scheduleWorkerReviewedSources} from './pg-original-schedule-worker-reviewed-sources.mjs'
+import {scheduleWorkerRequiredSources} from './pg-original-schedule-worker-required-sources.mjs'
+export async function verifyOriginalScheduleWorkerSources(env=process.env){
+ const permit=requireOriginalScheduleWorkerCi(env),[fs,path,url,crypto,child,{default:assert}]=await Promise.all([import('node:fs'),import('node:path'),import('node:url'),import('node:crypto'),import('node:child_process'),import('node:assert/strict')]),repo=fs.realpathSync(url.fileURLToPath(new URL('../../',import.meta.url)))
+ for(const file of scheduleWorkerRequiredSources)assert.match(scheduleWorkerReviewedSources[file]??'',/^[a-f0-9]{64}$/,'Root must seal current integrated schedule Worker source DAG: '+file)
+ const check=()=>{assert.equal(child.execFileSync('git',['rev-parse','HEAD'],{cwd:repo,encoding:'utf8',maxBuffer:4096}).trim(),permit.head);assert.equal(child.execFileSync('git',['status','--porcelain','--untracked-files=normal'],{cwd:repo,encoding:'utf8',maxBuffer:65536}).trim(),'');for(const [file,pin]of Object.entries(scheduleWorkerReviewedSources)){assert(!file.startsWith('/')&&!file.includes('..')&&!file.includes('\\'));let current=repo;for(const part of file.split('/')){assert(!fs.lstatSync(current).isSymbolicLink());current=path.join(current,part)}const stat=fs.lstatSync(current);assert(stat.isFile()&&!stat.isSymbolicLink()&&stat.size>0&&stat.size<=16*1024*1024);const bytes=fs.readFileSync(current),committed=child.execFileSync('git',['show',permit.head+':'+file],{cwd:repo,maxBuffer:16*1024*1024});assert(bytes.equals(committed));assert.equal(crypto.createHash('sha256').update(committed).digest('hex'),pin)}}
+ check();return{repo,check,sources:Object.entries(scheduleWorkerReviewedSources).map(([file,sha256])=>({file,sha256}))}
+}

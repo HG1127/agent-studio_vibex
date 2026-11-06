@@ -7,6 +7,9 @@ import {fileURLToPath} from "node:url"
 import {HttpError,isUuid,type SqlClient,type SqlPool}
   from "./contracts.ts"
 import {safeWorkflowPlan,type SafeWorkflowPlan} from "./workflow-safe-plan.ts"
+import {createWorkerClaimAdmission,type WorkerClaimAdmissionView,type WorkerClaimPermit}
+  from "./worker-claim-admission.ts"
+
 const sql=(name:string)=>readFileSync(
   fileURLToPath(new URL("../../../db/postgres/"+name,import.meta.url)),"utf8")
 const claimSql=sql("007_claim_workflow_safe.sql")
@@ -56,20 +59,54 @@ async function asActor(db:SqlClient,owner:string){
 }
 export class WorkflowSafeWorker{
   readonly pool:SqlPool;readonly workerId:string
+  readonly #claimAdmission=createWorkerClaimAdmission({lanes:["workflow_safe"]})
   constructor(pool:SqlPool,workerId:string){
     if(!/^[a-zA-Z0-9_-]{1,120}$/.test(workerId))throw Error("invalid_worker_id")
     this.pool=pool;this.workerId=workerId
   }
+  closeNewClaims():void {this.#claimAdmission.close()}
+  // Local claim transactions only; this does not prove all Worker kinds drained.
+  claimAdmissionSnapshot():WorkerClaimAdmissionView {return this.#claimAdmission.snapshot()}
   async claim(seconds=60):Promise<Job|null>{
     if(!Number.isInteger(seconds)||seconds<15||seconds>300)throw Error("invalid_workflow_lease")
-    return tx(this.pool,async db=>{
+    const admission=this.#claimAdmission
+    if(admission.snapshot().closed)return null
+    const db=await this.pool.connect()
+    let started=false,commitAttempted=false,dispatched=false
+    let permit:WorkerClaimPermit|null=null
+    try{
+      await db.query("BEGIN");started=true
       await db.query("SET LOCAL ROLE agentstudio_worker")
-      const r=await db.query<Job>(claimSql,[this.workerId,seconds])
-      const j=r.rows[0]
-      if(!j)return null
-      if(!validJob(j,this.workerId))throw Error("invalid_workflow_claim")
-      return j
-    })
+      // Final synchronous gate after every connection/scope/role await.
+      // Keep the intent through row validation and transaction acknowledgement.
+      permit=admission.tryEnter("workflow_safe")
+      let job:Job|null=null
+      if(permit){
+        const request=admission.dispatch(permit,()=>{
+          dispatched=true
+          return db.query<Job>(claimSql,[this.workerId,seconds])
+        })
+        if(request.started){
+          job=(await request.value).rows[0]??null
+          if(job&&(!validJob(job,this.workerId)))throw Error("invalid_workflow_claim")
+        }else permit=null // final gate rejected an undispatched reservation
+      }
+      commitAttempted=true
+      await db.query("COMMIT");started=false
+      if(permit)admission.confirm(permit,{outcome:"commit_confirmed"})
+      return job
+    }catch(error){
+      // A lost COMMIT acknowledgement remains uncertain even if a later
+      // ROLLBACK succeeds: the server may already have committed the claim.
+      if(permit&&dispatched)admission.markUncertain(permit)
+      let rolledBack=false
+      if(started)try{await db.query("ROLLBACK");rolledBack=true}catch{}
+      if(permit){
+        if(!dispatched)admission.discardUndispatched(permit)
+        else if(!commitAttempted&&rolledBack)admission.confirm(permit,{outcome:"rollback_confirmed"})
+      }
+      throw error
+    }finally{db.release()}
   }
   async tick():Promise<WorkflowSafeWorkerTick>{
     const job=await this.claim()

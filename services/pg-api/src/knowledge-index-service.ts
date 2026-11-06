@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import type {WorkerHeartbeatWorkerLifecycle} from './worker-heartbeat-worker-lifecycle.ts'
 // Separate private daemons. Import/--plan never read credentials or use network.
 import {createServer} from "node:https"
 import {X509Certificate,createPrivateKey} from "node:crypto"
@@ -65,7 +66,9 @@ export async function startKnowledgeIndexService(env=process.env,kind:"worker"|"
   const cfg=knowledgeIndexServiceConfig(env,kind,mode),read=(name:string)=>readBoundRuntimeCredential(cfg.service,name,env)
   const {Pool}=await import("pg"),pools:PgPool[]=[],controller=new AbortController()
   let key:Buffer|undefined,server:ReturnType<typeof createServer>|undefined
-  const stop=()=>controller.abort()
+  let indexHeartbeat:WorkerHeartbeatWorkerLifecycle|null=null,queryHeartbeat:WorkerHeartbeatWorkerLifecycle|null=null
+  let closeWorkerClaims:(()=>void)|undefined,claimsClosed:(()=>boolean)|undefined
+  const stop=()=>{closeWorkerClaims?.();if(claimsClosed?.()){indexHeartbeat?.newClaimsClosed();queryHeartbeat?.newClaimsClosed()}controller.abort()}
   const pool=(user:string,secret:Buffer)=>{const value=new Pool({host:cfg.target.host,port:cfg.target.port,database:cfg.target.database,user,password:password(secret),max:2,
     connectionTimeoutMillis:4000,statement_timeout:6000,query_timeout:6500});value.on("error",()=>{});pools.push(value);return value}
   try{
@@ -95,11 +98,20 @@ export async function startKnowledgeIndexService(env=process.env,kind:"worker"|"
     process.once("SIGTERM",stop);process.once("SIGINT",stop)
     if(kind==="worker"){
       const config={approvedForIsolatedUat:true,origin:cfg.origin,reviewedServerFingerprint256:cfg.fingerprint,ca,cert,key:tlsKey}
+      if(process.env.AGENT_STUDIO_PG_WORKER_HEARTBEAT_ENABLED==='true'){
+        const {openKnowledgeWorkerHeartbeatLifecycles}=await import('./knowledge-worker-heartbeat-lifecycle.ts')
+        const pair=await openKnowledgeWorkerHeartbeatLifecycles({index:cfg.approved,query:cfg.queryApproved},controller.signal)
+        indexHeartbeat=pair.index;queryHeartbeat=pair.query
+      }
       const index=cfg.approved?new KnowledgeIndexWorker(runtime,createKnowledgeIndexPrivateClient(config),{approvedForIsolatedUat:true}):null
       const query=cfg.queryApproved?new KnowledgeQueryWorker(runtime,createKnowledgeQueryPrivateClient(config),{approvedForIsolatedUat:true}):null
+      closeWorkerClaims=()=>{index?.closeNewClaims();query?.closeNewClaims()}
+      claimsClosed=()=>Boolean((!index||index.claimAdmissionSnapshot().closed)&&(!query||query.claimAdmissionSnapshot().closed))
+      if(controller.signal.aborted){stop();return {mode:'stopped',kind,production_cutover_allowed:false}}
+      indexHeartbeat?.startupChecksComplete();queryHeartbeat?.startupChecksComplete()
       while(!controller.signal.aborted){
         let active=false
-        for(const worker of [query,index])if(worker&&!controller.signal.aborted)try{const result=await worker.tick(controller.signal);active=active||result.status==="indexed"||result.status==="retrieved"}catch{}
+        for(const worker of [query,index])if(worker&&!controller.signal.aborted)try{const result=await worker.tick(controller.signal);active=active||result.status==="indexed"||result.status==="retrieved"}catch{if(worker===query)queryHeartbeat?.loopUnavailable();else indexHeartbeat?.loopUnavailable()}
         if(!active&&!controller.signal.aborted)await new Promise<void>(resolve=>{const done=()=>{clearTimeout(timer);controller.signal.removeEventListener("abort",done);resolve()},timer=setTimeout(done,1000)
           controller.signal.addEventListener("abort",done,{once:true});if(controller.signal.aborted)done()})
       }
@@ -122,7 +134,7 @@ export async function startKnowledgeIndexService(env=process.env,kind:"worker"|"
     }
     return {mode:"stopped",kind,production_cutover_allowed:false}
   }finally{
-    controller.abort();process.removeListener("SIGTERM",stop);process.removeListener("SIGINT",stop)
+    closeWorkerClaims?.();if(claimsClosed?.()){indexHeartbeat?.newClaimsClosed();queryHeartbeat?.newClaimsClosed()}indexHeartbeat?.close();queryHeartbeat?.close();controller.abort();process.removeListener("SIGTERM",stop);process.removeListener("SIGINT",stop)
     if(server)await new Promise<void>(resolve=>server!.close(()=>resolve()))
     await Promise.allSettled(pools.map(p=>p.end()));key?.fill(0)
   }

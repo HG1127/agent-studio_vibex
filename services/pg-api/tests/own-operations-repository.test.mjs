@@ -17,6 +17,7 @@ function fixture(options={}){
  const trace=[];let connections=0,releases=0
  const pool={async connect(){connections++;if(options.connectError)throw Error('private_connection_error');return {release(){releases++},async query(sql,values=[]){
   trace.push({sql,values});if(options.throwAt===sql)throw Error('private_sql_error')
+  if(sql==="SELECT to_regnamespace('agentstudio_roles') IS NOT NULL AS installed,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid")return {rows:[{installed:false,database_oid:"16384"}]}
   if(sql.includes('identity_user_id('))return {rows:[{id:options.missingActor?null:owner}]}
   if(sql.startsWith("SELECT current_user="))return {rows:[{ok:options.context!==false}]}
   if(sql===ownOperationsGuardSql)return {rows:[{ok:options.guard!==false}]}

@@ -18,3 +18,10 @@ test("independent auth cannot be disabled by legacy mode in non-test environment
  assert.equal(authGuardEnabled({AGENT_STUDIO_AUTH_MODE:"legacy",AGENT_STUDIO_LEGACY_TEST_ONLY:"true",NODE_ENV:"production"}),true)
  assert.equal(authGuardEnabled({AGENT_STUDIO_AUTH_MODE:"legacy",AGENT_STUDIO_LEGACY_TEST_ONLY:"true",NODE_ENV:"test"}),false)
 })
+
+import './original-dialog-navigation-privacy-pure.test.mjs'
+
+import './original-staff084-pure.test.mjs'
+
+import './original-staff-api-pure.test.mjs'
+import './original-staff-page-pure.test.mjs'

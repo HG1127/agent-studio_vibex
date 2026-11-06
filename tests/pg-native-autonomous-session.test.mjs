@@ -107,7 +107,7 @@ test("background reads do not reload the history list; terminal or opposite deci
   assert.equal(model.snapshot().runs[0].status,"running");assert.equal(model.snapshot().loading,false)
   f.api.cancelAutonomousAgentRun=async()=>{throw new PgNativePilotError(0,"lost")};await model.cancel();assert.ok(model.snapshot().pendingMutation)
   f.record={...detail(),run:{...detail().run,status:"succeeded"}};await model.refresh()
-  assert.equal(model.snapshot().pendingMutation,null);assert.match(model.snapshot().notice,/无法再取消/)
+  assert.equal(model.snapshot().pendingMutation,null);assert.equal(model.snapshot().notice,'已读到任务结束；目前无法确认是否由本次取消操作引起。')
   f.record=detail();await model.refresh();f.api.decideAutonomousAgentNode=async()=>{throw new PgNativePilotError(0,"lost")};await model.decide("approved",true)
   f.record={...detail(),approvals:[{step_key:step,status:"rejected"}]};await model.refresh()
   assert.equal(model.snapshot().pendingMutation,null);assert.match(model.snapshot().notice,/另一操作/)

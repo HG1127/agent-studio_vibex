@@ -37,6 +37,7 @@ function fixture(options={}){
     trace.push({sql,values:structuredClone(values)})
     await options.beforeQuery?.(sql,values,state)
     if(options.throwAt===sql)throw options.error??Error('PRIVATE_DB_DETAIL')
+    if(sql==="SELECT to_regnamespace('agentstudio_roles') IS NOT NULL AS installed,(SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid")return {rows:[{installed:false,database_oid:"16384"}]}
     if(sql===mapped){state.mapped=true;return {rows:[{id:options.missingActor?null:owner}]}}
     if(sql==="SELECT set_config('agentstudio.actor_id',$1::text,true)"){assert.deepEqual(values,[owner]);state.actorSet=true}
     if(sql===companyOverviewSql||sql===companyEmployeeStatsSql){

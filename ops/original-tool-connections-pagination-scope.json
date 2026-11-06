@@ -1,0 +1,56 @@
+{
+  "format": "agentstudio.original-tool-connections.pagination.v1",
+  "scope": "independent full-own Tool metadata pagination; same original page/layout; no direct execution or exact write receipt",
+  "base": {
+    "metadata": "f3bc8cc707267fb970b1bd512231491a3cabd69594c34d6e9961230402a60f46",
+    "host": "cbbc78a1b00aaed5e0e43856bb6ea581217acbc446ee4eba48205e1ff24bbf15",
+    "Root_reported_head": "03b716c1308ec4d607fbce9e92df108179cb0369",
+    "Root_current_LF_not_read": true
+  },
+  "protocol": {
+    "marker": "native_tool_connections_paging_v1",
+    "mode": "owner_cursor_v1",
+    "header": "X-AgentStudio-Tool-Pagination",
+    "discovery": "strict original collection GET keeps exact old partial envelope; header advertised only from actual immutable own repository marker",
+    "cursor": "tcpg1 AES-256-GCM; independent HMAC-derived Tool pagination key/AAD; owner/snapshot/public metadata fingerprint/total/offset/limit/microsecond position/expiry authenticated",
+    "consistency": "one PostgreSQL MVCC statement per page over all own public Tool fields plus header names/masks, UTC microseconds; real sha256 aggregate fingerprint checked against authenticated prior cursor on every page; UUID alone never attests consistency",
+    "sort": "updated_at DESC, id ASC; paged public timestamps retain six fractional digits so client can reject within/across-page reversal",
+    "guards": "actual withActor, expected employee and assertOwnedAdmissionContext before cursor decrypt/metadata query; no header/model ciphertext or Broker read; no OFFSET/DML/schema/grants"
+  },
+  "client": {
+    "complete": "publish only after complete same owner/snapshot/total walk with unique IDs, strictly ordered timestamps/IDs and nonrepeated cursors",
+    "limits": "per request original8s/1MiB; whole walk30s/32MiB rejects whole result without partial success or automatic retry/restart/fallback",
+    "legacy": "missing/unknown paging advertisement returns exact original max50 partial, including empty/short lists; never infers complete from config/owner flags",
+    "refresh_failure": "clear stale list completeness; selected open-form/delete CAS baselines are not rebased",
+    "mutation": "a confirmed metadata mutation invalidates the previous list snapshot completeness; subsequent explicit/focus refresh verifies a fresh whole list",
+    "read_replay": "same server cursor is a stateless idempotent read; client refuses cursor loops/repeated rows/backward order, never claims a one-use token or write receipt",
+    "identity": "Native Cookie + fixed expected employee on every page; account/permission/late response fences retained",
+    "PB0": "original direct compile-time selector, PB hook, TSX/routes/layout unchanged"
+  },
+  "host_increment": {
+    "source_only": true,
+    "actual_repository_seed_rows": 251,
+    "minimum_original_page_reads": 6,
+    "oldest_tool_visible": true,
+    "cleanup": "actual owner/CAS delete all251; preserve251 create +251 delete audit events, count502 explicitly; final whole-business audit delta508 includes normal6",
+    "frozen_original_gates": "actual F01 and four069 auditors, two inherited synthetic readiness tests/reads, original config approval, all provider/credential/legacy/identity/payment/cleanup gates retained",
+    "images": "only complete story and cleanup success; all temporary seed Tools removed before images; no full-page execution/receipt acceptance"
+  },
+  "Root_required": [
+    "Apply exact hunks onto current Root LF, preserving employee unsupported/cancel messages; do not replace whole files.",
+    "Native builder change is a small whitelist substring insertion beside Model pagination; retain Root already added shared/original-tool-connections-contract.ts.",
+    "Reseal actual final LF source DAG/global maps, including the four new runtime pagination modules and scope file; retain current Root 075/C work.",
+    "Run actual TS6/TS5, defaultPG0/originalPG builds and fresh hosted251 story later; local work only terminal public DATA/callback/crypto/AST/parser checks."
+  ],
+  "remaining": [
+    "direct draft/card/retest synchronous execution contract",
+    "exact unknown Tool write receipt",
+    "legacy http/query/URL placeholders",
+    "MCP/Smithery original PluginMarket adaptation",
+    "actual hosted/employee UAT/full page and migration acceptance"
+  ],
+  "genuine_acceptance": 0,
+  "SQL_Pool_fakePool_Worker_server_browser_network_compile_Git_H": 0,
+  "all_original_pages_complete": false,
+  "production_GO": false
+}

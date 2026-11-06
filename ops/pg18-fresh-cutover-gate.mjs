@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-// Read-only evidence gate for a fresh PG18 cutover of DISPOSABLE 8090 PB TEST DATA.
+// Read-only source inventory for a fresh PG18 cutover of disposable PB test data.
 // This never connects to SQLite/PostgreSQL, runs Workers, modifies websites,
-// changes config or certifies a cutover from a green unit-test result.
+// changes config or certifies deployment. Actual release evidence is assessed
+// separately; neither a source-text hint nor retained legacy code proves parity.
 import {readFileSync,readdirSync} from "node:fs"
+import {createHash} from "node:crypto"
 import path from "node:path"
 import {fileURLToPath} from "node:url"
 
@@ -16,7 +18,33 @@ function sourceFiles(dir){
     return e.isFile()&&/\.(?:ts|tsx|js|jsx)$/.test(e.name)?[rel]:[]
   })
 }
-const apiRoot="services/pg-api/src/"
+const entrypointPaths=Object.freeze([
+  "src/App.tsx","src/lib/pgNativeSession.ts",
+  "services/pg-api/src/native-server.ts",
+  "services/pg-api/src/worker-loop.ts",
+  "services/pg-api/src/model-worker-loop.ts",
+  "services/pg-api/src/workflow-worker-loop.ts",
+  "services/pg-api/src/worker-heartbeat-activation-control-service.ts",
+  "services/pg-api/src/native-company-worker-heartbeats.ts",
+  "services/pg-api/src/pg18-fresh-runtime-source.mjs",
+  "ops/verify-pg18-only-web-build.mjs",
+])
+const requiredEvidence=Object.freeze([
+  "verified_final_candidate_and_delivery_closure",
+  "verified_pg_only_web_build",
+  "verified_existing_reachable_feature_parity",
+  "verified_native_http_employee_and_business_flows",
+  "native_run_and_approval_parity",
+  "full_workflow_execution_parity",
+  "verified_pg18_worker_operations",
+  "verified_worker_transitive_model_secret_denial",
+  "verified_owner_model_worker_broker_parity",
+  "independent_https_employee_uat",
+  "verified_target_network_and_minimal_privileges",
+  "verified_target_long_running_workers",
+  "verified_8090_full_rollback",
+  "explicit_production_cutover_signoff",
+])
 const oldDependencyPatterns={
   pocketbase_import:/\bfrom\s*["'][^"']*(?:pocketbase|(?:@\/|\.\.?\/)+lib\/pb)["']/,
   pocketbase_url:/\bgetPocketBaseUrl\s*\(/,
@@ -31,52 +59,30 @@ export function reportFreshPgCutover(){
       .map(([name])=>name)
     if(deps.length)legacy.push({path:rel,dependencies:deps})
   }
-  const app=read("src/App.tsx")
-  const nativeServer=read(apiRoot+"native-server.ts")
-  const nativeAuthClient=read("src/lib/pgNativeSession.ts")
-  const worker=read(apiRoot+"worker-loop.ts")
-  const modelWorker=read(apiRoot+"model-worker-loop.ts")
-  const workflowWorker=read(apiRoot+"workflow-worker-loop.ts")
-  const results={
-    legacy_ui_pocketbase_dependencies:legacy.length===0,
-    full_pg_only_login_and_route_guard:
-      !app.includes("verifyStudioSession")&&!app.includes("studioAuth"),
-    native_http_supports_business_writes:
-      !nativeServer.includes("pilot_business_writes_disabled")&&
-      !nativeServer.includes('if(req.method!=="GET")'),
-    native_http_supports_employee_provisioning:
-      !nativeServer.includes("allowEmployeeProvisioning:false"),
-    // A source-level, opt-in UAT repository is NOT operational parity.
-    // This gate requires independent real PG18 Worker/approval/HTTPS UAT;
-    // never flip a production gate from a substring found in source code.
-    native_run_and_approval_parity:false,
-    // Start/End-only safe-node Worker is a real slice, not full Workflow parity.
-    full_workflow_execution_parity:false,
-    verified_pg18_worker_operations:false, // needs real operator UAT
-    // Source migrations now separate the broker role, but the real PG18
-    // login-level privilege test has not yet been run on the target database.
-    // Never flip this gate based only on isolated PGlite tests.
-    verified_worker_transitive_model_secret_denial:false,
-    verified_owner_model_worker_broker_parity:false,
-    independent_https_employee_uat:false, // needs real browser evidence
-    verified_8090_full_rollback:false, // needs real backup/restore exercise
-    native_cookie_session_client_isolated:
-      nativeAuthClient.includes('credentials:"same-origin"') &&
-      !/from\s*["'][^"']*(?:pocketbase|lib\/pb)/.test(nativeAuthClient),
-    worker_has_separate_pg18_opt_in:
-      worker.includes("selectPgRuntimeTarget")&&
-      modelWorker.includes("selectPgRuntimeTarget")&&
-      workflowWorker.includes("selectPgRuntimeTarget")&&
-      workflowWorker.includes("AGENT_STUDIO_PG_WORKFLOW_WORKER_APPROVED"),
-  }
+  const entrypoints=entrypointPaths.map(relative=>{
+    const bytes=readFileSync(path.join(root,relative))
+    return {path:relative,bytes:bytes.length,sha256:createHash("sha256").update(bytes).digest("hex")}
+  })
+  // This command has no target, UAT, backup or signed-release inputs. Explicitly
+  // leave those gates unevaluated instead of inferring them from substrings.
+  const results=Object.fromEntries(requiredEvidence.map(key=>[key,false]))
   const blockers=Object.entries(results).filter(([key,ready])=>!ready)
     .map(([key])=>key)
   return {
     mode:"report",migration:"fresh_pg18_disposable_8090_pb_testdata",
-    source_branch_target:"migration/postgres-v8-6-staging-20261015",
+    report_schema:"fresh_pg18_source_inventory_v2",
+    evidence_scope:"source_inventory_only",is_authority:false,
+    source_branch_target:null,source_branch_selection_required:true,
     measured_frontend_source_files:sourceFiles("src").length,
     pocketbase_dependent_files:legacy.length,
     pocketbase_dependencies:legacy,
+    source_observations:{
+      legacy_reference_scope:"source_text_hints_not_runtime_reachability",
+      retained_legacy_code_is_not_a_cutover_blocker_by_itself:true,
+      selected_entrypoints:entrypoints,
+      fingerprint_scope:"raw_worktree_bytes_of_selected_entrypoints_not_dependency_closure",
+    },
+    required_evidence:requiredEvidence.map(key=>({key,status:"not_evaluated_by_source_report"})),
     gates:results,blockers,
     cutover_allowed:blockers.length===0,
     old_pocketbase_must_remain_running:blockers.length!==0,

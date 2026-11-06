@@ -13,6 +13,7 @@ import type {
 } from "@/pages/VersionRelease/useVersionRelease"
 
 type VersionHistoryListProps = {
+  actionsDisabled?:boolean;onRetryDetail?:(ids:string[])=>void
   versionList: SpecVersionRow[]
   isLoadingVersions: boolean
   expandedVersionId: string
@@ -24,7 +25,8 @@ type VersionHistoryListProps = {
   onRequestDelete: (row: SpecVersionRow) => void
 }
 
-function SnapshotDetail({ row }: { row: SpecVersionRow }) {
+function SnapshotDetail({ row,onRetry }: { row: SpecVersionRow;onRetry?:(ids:string[])=>void }) {
+  if(row.nativeDetailState && row.nativeDetailState!=='ready')return <div role="status" className="mt-3 rounded-xl bg-muted p-4 text-xs text-muted-foreground">{row.nativeDetailState==='loading'?'正在读取完整版本配置…':'完整配置尚未读取或读取失败。'}<button type="button" className="ml-3 rounded text-primary underline focus-visible:ring-2 focus-visible:ring-primary" onClick={()=>onRetry?.([row.id])} disabled={row.nativeDetailState==='loading'}>读取完整配置</button></div>
   const snap = row.spec_snapshot
   const cfg = row.config_snapshot
   const listRows: { label: string; items: string[] }[] = snap
@@ -37,6 +39,8 @@ function SnapshotDetail({ row }: { row: SpecVersionRow }) {
     : []
   return (
     <div className="mt-3 rounded-xl bg-muted p-4">
+      {row.nativeTestModelBinding && <p className="mb-3 whitespace-pre-wrap break-words text-xs text-muted-foreground">验收模型绑定：{JSON.stringify(row.nativeTestModelBinding)}</p>}
+      {row.nativeSnapshot && <details className="mb-3"><summary className="cursor-pointer text-sm font-medium text-card-foreground">完整模型、工具与知识库绑定</summary><pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words text-xs">{JSON.stringify(row.nativeSnapshot,null,2)}</pre></details>}
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <p className="text-xs font-medium text-muted-foreground">助手名称</p>
@@ -45,7 +49,7 @@ function SnapshotDetail({ row }: { row: SpecVersionRow }) {
         <div>
           <p className="text-xs font-medium text-muted-foreground">来源</p>
           <p className="mt-0.5 text-sm text-card-foreground">
-            {cfg?.source === "template" ? "模板创建" : "需求生成"}
+            {cfg?.source === "template" ? "模板创建" : row.nativeDetailState ? "历史来源未记录" : "需求生成"}
             {cfg?.template_key ? ` · ${cfg.template_key}` : ""}
           </p>
         </div>
@@ -84,6 +88,7 @@ function SnapshotDetail({ row }: { row: SpecVersionRow }) {
 }
 
 export function VersionHistoryList({
+  actionsDisabled=false,onRetryDetail,
   versionList,
   isLoadingVersions,
   expandedVersionId,
@@ -133,7 +138,7 @@ export function VersionHistoryList({
                 row.test_passed ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
                     <CheckCircle2 className="h-3 w-3" />
-                    测试通过
+                    {row.nativeDetailState && !row.nativeTestCurrent ? "曾通过，当前需复核" : "测试通过"}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive">
@@ -160,6 +165,7 @@ export function VersionHistoryList({
                 </button>
                 <button
                   type="button"
+                  disabled={actionsDisabled}
                   onClick={() => onRequestRestore(row)}
                   className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-secondary hover:text-card-foreground focus-visible:ring-2 focus-visible:ring-primary"
                 >
@@ -169,6 +175,7 @@ export function VersionHistoryList({
                 {row.status !== "published" && (
                   <button
                     type="button"
+                    disabled={actionsDisabled}
                     onClick={() => onRequestPublish(row)}
                     className="inline-flex items-center gap-1 rounded-lg border border-primary px-2.5 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary"
                   >
@@ -180,6 +187,7 @@ export function VersionHistoryList({
                   <button
                     type="button"
                     aria-label={`删除草稿 v${row.version_no}`}
+                    disabled={actionsDisabled}
                     onClick={() => onRequestDelete(row)}
                     className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-primary"
                   >
@@ -190,7 +198,7 @@ export function VersionHistoryList({
               </div>
             </div>
             {row.note && <p className="mt-2 text-sm leading-relaxed text-card-foreground">备注：{row.note}</p>}
-            {isExpanded && <SnapshotDetail row={row} />}
+            {isExpanded && <SnapshotDetail row={row} onRetry={onRetryDetail} />}
           </div>
         )
       })}

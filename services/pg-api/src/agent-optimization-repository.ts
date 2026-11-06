@@ -31,7 +31,7 @@ export class AgentOptimizationRepository{
     if(canonicalMcpJson(normalized)!==canonicalMcpJson(row.spec))throw new HttpError(409,"agent_optimization_role_unavailable")
     return {...row,spec:normalized,sha:hash(row.sha),revision:number(row.revision)}
   }
-  private async feedback(db:SqlClient,owner:string,v:AgentFeedbackOptimizationDraft|AgentFeedbackOptimizationAcceptance):Promise<Feedback>{
+  private async feedback(db:SqlClient,owner:string,v:Pick<AgentFeedbackOptimizationDraft,"run_id"|"spec_id"|"feedback_id"|"expected_feedback_sha256">):Promise<Feedback>{
     const run=(await db.query("SELECT id FROM agentstudio.runs WHERE id=$1::uuid AND owner_user_id=$2::uuid AND agent_spec_id=$3::uuid AND kind='agent' AND status IN('succeeded','failed','cancelled') AND finished_at IS NOT NULL FOR SHARE",[v.run_id,owner,v.spec_id])).rows[0]
     if(!run)throw new HttpError(404,"agent_run_not_found")
     const row=(await db.query<Feedback>("SELECT r.request_id AS feedback_id,r.run_id,r.spec_id,r.feedback_sha256,r.revision AS feedback_revision,r.source_sha256 AS feedback_source_sha256,b.rating,b.tags,b.comment FROM agentstudio.agent_feedback_receipts r JOIN agentstudio.agent_feedback_bodies b ON b.owner_user_id=r.owner_user_id AND b.feedback_id=r.request_id "+
@@ -87,14 +87,27 @@ export class AgentOptimizationRepository{
       return this.receipt(row,false)
     })
   }
-  async list(identity:Identity,specId:string){
-    if(!isUuid(specId))throw new HttpError(400,"invalid_agent_optimization_spec");specId=specId.toLowerCase()
+  // Called only inside the original owned admission transaction. No new task,
+  // model call, approval or mutable provenance row is created by this read.
+  async prepareRetestOwned(db:SqlClient,owner:string,specId:string,revision:number,requestId:string){
+    if(!isUuid(specId)||!isUuid(requestId)||!Number.isSafeInteger(revision)||revision<1)throw new HttpError(400,"invalid_optimization_retest")
+    await required(db);await epoch(db)
+    const row=(await db.query<Link>("SELECT "+columns+" FROM agentstudio.agent_optimization_links WHERE owner_user_id=$1::uuid AND request_id=$2::uuid AND spec_id=$3::uuid",[owner,requestId,specId])).rows[0]
+    if(!row)throw new HttpError(404,"agent_optimization_receipt_not_found")
+    await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,540))",[owner+":"+row.run_id])
+    const role=await this.role(db,owner,specId)
+    if(role.revision!==revision||number(row.after_spec_revision)!==revision||row.after_spec_sha256!==role.sha)throw new HttpError(409,"agent_optimization_role_changed")
+    await this.feedback(db,owner,{run_id:row.run_id,spec_id:specId,feedback_id:row.feedback_id,expected_feedback_sha256:row.feedback_sha256})
+    return this.receipt(row,true)
+  }
+  async list(identity:Identity,specId:string,requestId?:string){
+    if(!isUuid(specId)||requestId!==undefined&&!isUuid(requestId))throw new HttpError(400,"invalid_agent_optimization_spec");specId=specId.toLowerCase()
     return actor(this.pool,identity,async(db,owner)=>{
       await this.role(db,owner,specId)
       const rows=(await db.query<Link&{feedback_unchanged:boolean;role_current:boolean}>("SELECT "+columns.split(',').map(c=>"l."+c).join(',')+", "+
         "EXISTS(SELECT 1 FROM agentstudio.agent_feedback_receipts r JOIN agentstudio.agent_feedback_bodies b ON b.owner_user_id=r.owner_user_id AND b.feedback_id=r.request_id WHERE r.owner_user_id=l.owner_user_id AND r.request_id=l.feedback_id AND r.spec_id=l.spec_id AND r.run_id=l.run_id AND r.action='submit' AND r.feedback_sha256=l.feedback_sha256 AND agentstudio.agent_feedback_statement_sha256(r.spec_id,r.run_id,r.source_sha256,b.rating,b.tags,b.comment)=r.statement_sha256 AND NOT EXISTS(SELECT 1 FROM agentstudio.agent_feedback_receipts later WHERE later.owner_user_id=r.owner_user_id AND later.run_id=r.run_id AND later.action<>'forget_lesson' AND later.revision>r.revision)) AS feedback_unchanged, "+
         "s.revision=l.after_spec_revision AND agentstudio.agent_optimization_role_sha(s.id,s.owner_user_id,s.name,s.revision,s.spec)=l.after_spec_sha256 AS role_current "+
-        "FROM agentstudio.agent_optimization_links l JOIN agentstudio.agent_specs s ON s.id=l.spec_id AND s.owner_user_id=l.owner_user_id WHERE l.owner_user_id=$1::uuid AND l.spec_id=$2::uuid ORDER BY l.created_at DESC,l.request_id DESC LIMIT 80",[owner,specId])).rows
+        "FROM agentstudio.agent_optimization_links l JOIN agentstudio.agent_specs s ON s.id=l.spec_id AND s.owner_user_id=l.owner_user_id WHERE l.owner_user_id=$1::uuid AND l.spec_id=$2::uuid AND ($3::uuid IS NULL OR l.request_id=$3::uuid) ORDER BY l.created_at DESC,l.request_id DESC LIMIT 80",[owner,specId,requestId??null])).rows
       return {protocol,spec_id:specId,items:rows.map(row=>({...this.receipt(row,true),feedback_unchanged:row.feedback_unchanged===true,role_current:row.role_current===true})),limit:80}
     })
   }

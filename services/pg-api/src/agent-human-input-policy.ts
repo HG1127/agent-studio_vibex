@@ -71,7 +71,7 @@ export async function verifyAgentHumanResponses(db:SqlClient,run:Pick<WorkflowV2
     if(row.status==="failed"?view.status!=="failed"||saved.error_code!==view.error_code||!!effect:
       row.status!=="succeeded"||!["succeeded","rejected"].includes(view.status)||saved.output!==view.output||!effect||effect.output!==view.output.slice(0,4000)||
       (effect.outcome==="rejected")!==(view.status==="rejected"))throw new HttpError(409,"agent_human_archive_unavailable")
-    await verifyWorkflowAgentResources(db,run.owner_user_id,parent,agent)
+    await verifyWorkflowAgentResources(db,run.owner_user_id,parent,agent,state.execution_mode==="agent_native_v2")
     await verifyStateResponses(db,run,completed,agent)
     if(view.status==="succeeded"||view.status==="rejected")evidence.deliveries[parent.step_key]={status:view.status,output:view.output}
     append(parent,agent)

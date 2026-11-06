@@ -1,3 +1,7 @@
+import {reserveWorkflowWebDial,beginWorkflowWebDial} from './workflow-v2-web-cancel-fence.ts'
+import {readOrdinaryCaseEffectProof} from './native-ordinary-case-effect.ts'
+import type {OrdinaryCaseCapturePort,OrdinaryCaseCaptureSlot,OrdinaryCaseCapturedResponse} from './native-ordinary-case-capture.ts'
+import {enqueueNativeLocalTool,waitNativeLocalTool} from './native-local-device-execution.ts'
 // Private, owner-scoped Tool Broker. No caller-selected URL, headers, identity
 // or plaintext credential enters this protocol. No automatic effect retries.
 import {HttpError,type Identity,type SqlClient,type SqlPool} from "./contracts.ts"
@@ -14,7 +18,7 @@ import {checkedWorkflowV2StoredState} from "./workflow-v2-run-repository.ts"
 import {verifyWorkflowEffectLease,reserveWorkflowEffectDispatch,finishWorkflowEffectDispatch,WorkflowV2EffectLeaseIdentity} from "./workflow-v2-dispatch-guard.ts"
 import {safeWorkflowV2ToolRequest,type WorkflowV2ToolRequest} from "./workflow-v2-tool-contract.ts"
 import {prepareWorkflowTool,type WorkflowToolPlan,type ToolArguments} from "./workflow-v2-tool-plan.ts"
-import {prepareWorkflowToolHttp,redactWorkflowToolResponse,type WorkflowToolHttpMaterial} from "./workflow-v2-tool-network.ts"
+import {prepareWorkflowToolHttp,redactWorkflowToolResponse,type WorkflowToolHttpMaterial,type WorkflowToolBeforeDial} from "./workflow-v2-tool-network.ts"
 import {resolveMcpBinding} from "./mcp-binding-resources.ts"
 import {validateMcpArguments} from "./mcp-validation.ts"
 import {prepareMcpEgress} from "./mcp-network.ts"
@@ -27,10 +31,12 @@ type ModelRow={revision:number|string;enabled:boolean;status:string;provider:Sel
 type HeaderRef={id:string;header_name:string;updated_at:Date|string}
 type HeaderRow=HeaderRef&{value_ciphertext:Uint8Array;value_nonce:Uint8Array;value_tag:Uint8Array}
 export type WorkflowToolExecutor={
+  monitorHttp?:ReturnType<typeof import("./workflow-v2-tool-network.ts").createWorkflowToolNetwork>["monitorHttp"]
+  monitorWebFetch?:ReturnType<typeof import("./workflow-v2-tool-network.ts").createWorkflowToolNetwork>["monitorWebFetch"]
   mcp?(material:McpCallMaterial,args:ToolArguments,signal:AbortSignal):Promise<McpCallResult>
   http?(material:WorkflowToolHttpMaterial,args:ToolArguments,signal:AbortSignal):Promise<string>
-  webFetch?(url:string,signal:AbortSignal):Promise<string>
-  webSearch?(query:string,limit:number,signal:AbortSignal):Promise<string>
+  webFetch?(url:string,signal:AbortSignal,beforeDial?:WorkflowToolBeforeDial):Promise<string>
+  webSearch?(query:string,limit:number,signal:AbortSignal,beforeDial?:WorkflowToolBeforeDial):Promise<string>
   summarize?(material:SelectedModelMaterial,prompt:string,signal:AbortSignal):Promise<string>
 }
 function changed():never{throw new HttpError(409,"workflow_tool_configuration_changed")}
@@ -52,23 +58,32 @@ async function workflowContext(db:SqlClient,owner:string,id:string,query:string)
 export class WorkflowV2ToolDispatch{
   readonly pool:SqlPool;readonly brokerPool:SqlPool;readonly key:Buffer;readonly executor:WorkflowToolExecutor
   readonly allowAutonomous:boolean;readonly allowAgent:boolean
+  readonly allowLocalDevices:boolean
+  readonly allowCallers:boolean
+  readonly allowOrdinaryCase:boolean
+  readonly ordinaryCaseCapture?:OrdinaryCaseCapturePort
   readonly allowMemory:boolean
   readonly knowledgeQueries:KnowledgeQueryRepository|null
-  constructor(pool:SqlPool,key:Buffer,executor:WorkflowToolExecutor,brokerPool:SqlPool,options:{allowAutonomousExecution?:boolean;allowAgentExecution?:boolean;allowKnowledgeExecution?:boolean;allowMemoryExecution?:boolean}={}){
+  constructor(pool:SqlPool,key:Buffer,executor:WorkflowToolExecutor,brokerPool:SqlPool,options:{allowAutonomousExecution?:boolean;allowAgentExecution?:boolean;allowKnowledgeExecution?:boolean;allowMemoryExecution?:boolean;allowCallerExecution?:boolean;allowLocalDeviceExecution?:boolean;allowOrdinaryCaseExecution?:boolean;ordinaryCaseCapture?:OrdinaryCaseCapturePort}={}){
     if(!Buffer.isBuffer(key)||key.length!==32||!executor||!brokerPool)throw Error("workflow_tool_dispatch_dependencies_required")
+    this.allowOrdinaryCase=options.allowOrdinaryCaseExecution===true;this.ordinaryCaseCapture=options.ordinaryCaseCapture
+    if(this.allowOrdinaryCase&&(!this.ordinaryCaseCapture||!executor.monitorHttp||!executor.monitorWebFetch))throw Error("ordinary_case_capture_dependencies_required")
     this.pool=pool;this.key=key;this.executor=executor;this.brokerPool=brokerPool
     this.allowAutonomous=options.allowAutonomousExecution===true;this.allowAgent=options.allowAgentExecution===true
+    this.allowLocalDevices=options.allowLocalDeviceExecution===true
+    this.allowCallers=options.allowCallerExecution===true
     this.allowMemory=options.allowMemoryExecution===true
     if(options.allowKnowledgeExecution===true&&(pool.knowledgeToolRuntime!==true||pool.knowledgeQueryRuntime!==true))throw Error("workflow_knowledge_tool_disabled")
-    this.knowledgeQueries=options.allowKnowledgeExecution===true?new KnowledgeQueryRepository(pool,{executionSourceApproved:true,allowAgentExecution:this.allowAgent,allowAutonomousExecution:this.allowAutonomous}):null
+    this.knowledgeQueries=options.allowKnowledgeExecution===true?new KnowledgeQueryRepository(pool,{executionSourceApproved:true,allowAgentExecution:this.allowAgent,allowAutonomousExecution:this.allowAutonomous,allowCallerExecution:this.allowCallers,allowOrdinaryCaseExecution:this.allowOrdinaryCase,allowMemoryExecution:this.allowOrdinaryCase&&this.allowMemory,allowLocalDeviceExecution:this.allowOrdinaryCase&&this.allowLocalDevices}):null
   }
   async dispatch(identity:Identity,raw:unknown):Promise<{status:"succeeded";text:string}>{
     const request=safeWorkflowV2ToolRequest(raw)
     const selected=await withActor(this.pool,identity,async(db,owner)=>{
-      const pending=await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent,this.allowAutonomous,this.allowMemory),plan=prepareWorkflowTool(pending)
+      const pending=await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent,this.allowAutonomous,this.allowMemory,this.allowLocalDevices,this.allowCallers,false,this.allowOrdinaryCase),plan=prepareWorkflowTool(pending)
       let output:string|undefined,connection:ToolRow|undefined,model:Pick<ModelRow,"provider"|"base_url">|undefined,mcp:Awaited<ReturnType<typeof resolveMcpBinding>>|undefined,keywordRecorded=false
       let headerRefs:HeaderRef[]=[]
-      if(plan.kind==="calculate")output=plan.output
+      if(plan.kind==="local_computer"){if(!this.allowLocalDevices||!this.allowAutonomous||request.execution_mode!=="agent_native_v2")throw new HttpError(403,"native_local_device_execution_not_approved")}
+      else if(plan.kind==="calculate")output=plan.output
       else if(plan.kind==="knowledge_search"){
         if(plan.retrieval){if(!this.knowledgeQueries)throw new WorkflowKnownEffectFailure("workflow_tool_adapter_unavailable")}
         else if(!plan.ids.length)output=await workflowContext(db,owner,request.claim.run_id,plan.query)
@@ -104,23 +119,30 @@ export class WorkflowV2ToolDispatch{
         }catch{throw new WorkflowKnownEffectFailure("workflow_tool_input_invalid")}
       }
       await reserveWorkflowEffectDispatch(db,owner,request,"tool")
+      if(plan.kind==="web_fetch"||plan.kind==="web_search")await reserveWorkflowWebDial(db,owner,request,plan.kind)
+      const localJob=plan.kind==="local_computer"?await enqueueNativeLocalTool(db,request,plan.input):undefined
       if(plan.kind==="knowledge_search"&&!plan.retrieval&&plan.ids.length){
         const evidence=await gatherWorkflowKeywordEvidence(db,owner,plan.ids,plan.query,request)
         output=searchOutput(await sharedKnowledgeScopeEnabled(db)?"authorized_keyword":"owner_private_keyword",evidence.hits);keywordRecorded=evidence.recorded
       }
-      return {plan,output,connection,model,headerRefs,mcp,owner,keywordRecorded}
+      const proof=this.allowOrdinaryCase&&request.execution_mode==="agent_native_v2"?await readOrdinaryCaseEffectProof(db,owner,request,pending):undefined
+      return {plan,output,connection,model,headerRefs,mcp,owner,keywordRecorded,localJob,proof}
     })
     // Every error from here is potentially ambiguous. Only pre-reservation
     // parsing/configuration failures may be reported as deterministic failures.
     let text="",failed=true,confirmedToolFailure=false
+    let capture:OrdinaryCaseCaptureSlot|null=null,capturedResponse:OrdinaryCaseCapturedResponse|undefined
     const controller=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined
     try{
+      if(selected.proof!==undefined)capture=await this.ordinaryCaseCapture!.begin(request,selected.proof)
       const recheck=()=>withActor(this.pool,identity,async(db,owner)=>{
-        await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent,this.allowAutonomous,this.allowMemory)
+        await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent,this.allowAutonomous,this.allowMemory,this.allowLocalDevices,this.allowCallers,false,this.allowOrdinaryCase)
+        if(selected.plan.kind==="web_fetch"||selected.plan.kind==="web_search")await beginWorkflowWebDial(db,owner,request,selected.plan.kind)
       })
       const execute=async()=>{
         const plan=selected.plan
         if(selected.output!==undefined)return selected.output
+        if(plan.kind==="local_computer")return waitNativeLocalTool(this.pool,identity,request,selected.localJob!.id,controller.signal,this.allowMemory,this.allowOrdinaryCase,this.allowOrdinaryCase&&this.allowCallers)
         if(plan.kind==="knowledge_search"&&plan.retrieval){
           await recheck()
           return executeKnowledgeTool(this.knowledgeQueries!,identity,selected.owner,request,{...plan,retrieval:plan.retrieval},controller.signal)
@@ -169,6 +191,7 @@ export class WorkflowV2ToolDispatch{
             return {...row,headers}
           })
           await recheck()
+          if(capture){capturedResponse=await this.executor.monitorHttp!(material,plan.args,controller.signal);return "完整响应已接收，正在核实证据。"}
           return this.executor.http!(material,plan.args,controller.signal)
         }
         if(plan.kind==="summarize"){
@@ -183,22 +206,23 @@ export class WorkflowV2ToolDispatch{
           await recheck()
           return this.executor.summarize!(material,plan.prompt,controller.signal)
         }
-        await recheck()
-        if(plan.kind==="web_fetch")return this.executor.webFetch!(plan.url,controller.signal)
-        if(plan.kind==="web_search")return this.executor.webSearch!(plan.query,plan.limit,controller.signal)
+        if(plan.kind!=="web_fetch"&&plan.kind!=="web_search")await recheck()
+        if(plan.kind==="web_fetch"){if(capture){capturedResponse=await this.executor.monitorWebFetch!(plan.url,controller.signal,recheck);return "完整响应已接收，正在核实证据。"}return this.executor.webFetch!(plan.url,controller.signal,recheck)}
+        if(plan.kind==="web_search")return this.executor.webSearch!(plan.query,plan.limit,controller.signal,recheck)
         throw Error("workflow_tool_operation_unavailable")
       }
       text=await Promise.race([execute(),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{
-        controller.abort();reject(Error("workflow_tool_timeout"))},25000)})])
+        controller.abort();reject(Error("workflow_tool_timeout"))},selected.plan.kind==="local_computer"?123000:25000)})])
       if(typeof text!=="string"||!text.trim()||text.length>12000||text.includes("\0"))throw Error("invalid_workflow_tool_result")
       // No result based on an expired earlier observation may publish, even
       // when the effect completed while the source was being revoked/edited.
       await withActor(this.pool,identity,async(db,owner)=>{
-        await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent,this.allowAutonomous,this.allowMemory)
+        await verifyWorkflowEffectLease(db,owner,request,"tool",this.allowAgent,this.allowAutonomous,this.allowMemory,this.allowLocalDevices,this.allowCallers,false,this.allowOrdinaryCase)
         if(selected.keywordRecorded)await requireCurrentKeywordStep(db,request)
       })
+      if(capture){if(!capturedResponse||!selected.proof)throw Error("ordinary_case_actual_response_required");text=await this.ordinaryCaseCapture!.finish(capture,request,selected.proof,capturedResponse)}
       failed=false
-    }catch{ /* Never retry a committed private dispatch. */ }finally{if(timer)clearTimeout(timer)}
+    }catch{if(capture)await this.ordinaryCaseCapture!.fail(capture,request).catch(()=>{}); /* Never retry a committed private dispatch. */ }finally{if(timer)clearTimeout(timer)}
     await finishWorkflowEffectDispatch(this.pool,identity,request,"tool",failed,confirmedToolFailure&&!failed)
     if(failed)throw new HttpError(503,"workflow_tool_outcome_unknown")
     if(confirmedToolFailure)throw new WorkflowKnownEffectFailure("workflow_mcp_tool_error")

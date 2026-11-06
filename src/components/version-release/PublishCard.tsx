@@ -3,6 +3,7 @@ import { Link } from "react-router-dom"
 import type { SpecVersionRow } from "@/pages/VersionRelease/useVersionRelease"
 
 type PublishCardProps = {
+  blocked?:boolean;publicationKnown?:boolean
   hasSpec: boolean
   publishedVersion: SpecVersionRow | null
   versionList: SpecVersionRow[]
@@ -11,6 +12,7 @@ type PublishCardProps = {
 }
 
 export function PublishCard({
+  blocked=false,publicationKnown=true,
   hasSpec,
   publishedVersion,
   versionList,
@@ -43,7 +45,7 @@ export function PublishCard({
       ) : (
         <div className="mt-3 rounded-xl bg-muted p-3.5">
           <p className="text-xs leading-relaxed text-muted-foreground">
-            还没有已发布版本。从下面的候选版本里选一个发布，或在版本历史中点「发布」。
+            {publicationKnown ? "还没有已发布版本。从下面的候选版本里选一个发布，或在版本历史中点「发布」。" : "当前发布状态尚未核实，请刷新版本后再操作。"}
           </p>
         </div>
       )}
@@ -73,9 +75,9 @@ export function PublishCard({
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-card-foreground">
                   v{row.version_no}
-                  {!row.test_passed && (
+                  {(!row.test_passed || row.nativeTestCurrent===false) && (
                     <span className="ml-1.5 rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground">
-                      未测试
+                      {row.test_passed ? "验收需复核" : "未测试"}
                     </span>
                   )}
                 </p>
@@ -83,7 +85,9 @@ export function PublishCard({
               </div>
               <button
                 type="button"
+                disabled={blocked}
                 onClick={() => onRequestPublish(row)}
+                aria-label={`发布版本 v${row.version_no}`}
                 className="shrink-0 rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary"
               >
                 发布

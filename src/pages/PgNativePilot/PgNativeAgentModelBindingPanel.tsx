@@ -8,15 +8,17 @@ const selectField="min-h-10 w-full rounded-xl border border-slate-200 bg-white p
 const actionButton="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
 
 export default function PgNativeAgentModelBindingPanel({
-  api,agents,connections,onUpdated,runtimeSubmissionEnabled=false,
+  api,agents,connections,onUpdated,runtimeSubmissionEnabled=false,initialAgentId,
 }:{
   api:Api;agents:PgNativeAgent[];connections:PgNativeModelConnection[]
   onUpdated:()=>Promise<void>
   runtimeSubmissionEnabled?:boolean
+  initialAgentId?:string
 }){
-  const [agentId,setAgentId]=useState("")
-  const [connectionId,setConnectionId]=useState("")
-  const [modelId,setModelId]=useState("")
+  const initialAgent=agents.find(agent=>agent.id===initialAgentId)
+  const [agentId,setAgentId]=useState(()=>initialAgent?.id??"")
+  const [connectionId,setConnectionId]=useState(()=>initialAgent?.spec.model_binding?.connection_id??"")
+  const [modelId,setModelId]=useState(()=>initialAgent?.spec.model_binding?.model_id??"")
   const [busy,setBusy]=useState(false)
   const [error,setError]=useState("")
   const [notice,setNotice]=useState("")

@@ -18,18 +18,14 @@ export function VersionReleasePage(p: ReturnType<typeof useVersionRelease>) {
   return (
     <SiteShell>
     <div className="relative min-h-screen bg-background text-foreground">
-      <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-32 left-1/4 h-96 w-96 rounded-full bg-primary/10 blur-3xl" />
-        <div className="absolute top-1/3 -right-24 h-80 w-80 rounded-full bg-secondary blur-3xl" />
-        <div className="absolute bottom-0 left-0 h-72 w-72 rounded-full bg-primary/5 blur-3xl" />
-      </div>
+
 
       <header className="sticky top-0 z-40 border-b border-border bg-background/70 backdrop-blur-md">
         <VrTopBar />
       </header>
 
-      <main className="relative z-10 mx-auto w-full max-w-6xl px-4">
-        <section className="mt-4 rounded-2xl bg-gradient-to-br from-background via-secondary to-card px-5 py-3.5 shadow-md">
+      <main className="relative z-10 w-full min-w-0 px-3 sm:px-5 lg:px-7 2xl:px-10" data-studio-fluid-page="release">
+        <section className="mt-4 rounded-2xl border border-border bg-card px-5 py-3.5 shadow-sm">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h1 className="text-lg font-semibold tracking-tight text-card-foreground">
               测试通过后存版本，<span className="text-primary">放心发布每一次改动</span>
@@ -102,10 +98,18 @@ export function VersionReleasePage(p: ReturnType<typeof useVersionRelease>) {
           </div>
         )}
 
+        {p.nativeMode && (p.isLoggedIn || !p.needsRhLogin) && <div role="status" className="mt-6 space-y-2 rounded-xl bg-muted p-4 text-xs text-muted-foreground">
+          <p>{p.nativeNotice}</p>
+          <button type="button" onClick={p.handleRefreshNative} disabled={p.isConfirmBusy || p.isStartingTest || p.isSavingVersion} className="mr-4 rounded underline focus-visible:ring-2 focus-visible:ring-primary">刷新版本</button>
+          {p.nativePending && <button type="button" onClick={p.handleQueryNative} disabled={p.isConfirmBusy || !p.isLoggedIn} className="rounded underline focus-visible:ring-2 focus-visible:ring-primary">核对原请求结果</button>}
+        </div>}
+
         {p.isLoggedIn && (
           <>
             <section className="mt-6">
               <SpecSelector
+                publicationKnown={!p.nativeMode || p.nativeWorkspaceReady}
+                disabled={p.nativeMode && (p.nativePending || p.isConfirmBusy || p.isStartingTest || p.isSavingVersion)}
                 specList={p.specList}
                 isLoadingSpecs={p.isLoadingSpecs}
                 selectedSpecId={p.selectedSpecId}
@@ -124,6 +128,10 @@ export function VersionReleasePage(p: ReturnType<typeof useVersionRelease>) {
                 <AcceptanceTestCard
                   hasSpec={hasSpec}
                   specId={p.selectedSpecId}
+                  nativeMode={p.nativeMode}
+                  blocked={p.nativeMode && (p.nativeBlocked || !p.nativeAcceptanceEnabled)}
+                  acceptanceConfirmed={p.nativeAcceptanceConfirmed}
+                  onAcceptanceConfirmed={p.setNativeAcceptanceConfirmed}
                   testInstruction={p.testInstruction}
                   onInstructionChange={p.setTestInstruction}
                   testModel={p.testModel}
@@ -134,21 +142,26 @@ export function VersionReleasePage(p: ReturnType<typeof useVersionRelease>) {
                   isTestLive={p.isTestLive}
                   testRun={p.testRun}
                   testPassed={p.testPassed}
+                  isTestCurrentVersion={p.isTestCurrentVersion}
                   testMaxSteps={p.testMaxSteps}
                   onRunTest={p.handleRunTest}
                 />
                 <SaveVersionCard
                   hasSpec={hasSpec}
+                  nativeMode={p.nativeMode}
+                  blocked={p.nativeMode && p.nativeBlocked}
                   nextVersionNo={p.nextVersionNo}
                   versionNote={p.versionNote}
                   onNoteChange={p.setVersionNote}
                   isSavingVersion={p.isSavingVersion}
                   onSave={p.handleSaveVersion}
                   testPassed={p.testPassed}
-                  hasTestRun={Boolean(p.testRun)}
+                  testRunStatus={p.testRun?.status || ""}
                 />
                 <PublishCard
                   hasSpec={hasSpec}
+                  publicationKnown={!p.nativeMode || p.nativeWorkspaceReady}
+                  blocked={p.nativeMode && p.nativeBlocked}
                   publishedVersion={p.publishedVersion}
                   versionList={p.versionList}
                   onRequestPublish={p.requestPublish}
@@ -170,6 +183,8 @@ export function VersionReleasePage(p: ReturnType<typeof useVersionRelease>) {
                 </span>
               </div>
               <VersionHistoryList
+                actionsDisabled={p.nativeMode && p.nativeBlocked}
+                onRetryDetail={p.requireVersionDetails}
                 versionList={p.versionList}
                 isLoadingVersions={p.isLoadingVersions}
                 expandedVersionId={p.expandedVersionId}
@@ -183,11 +198,12 @@ export function VersionReleasePage(p: ReturnType<typeof useVersionRelease>) {
             </section>
 
             <section className="pb-8">
-              <VrDiffPanel versions={p.versionList} versionStatusMeta={p.versionStatusMeta} />
+              <VrDiffPanel versions={p.versionList} versionStatusMeta={p.versionStatusMeta} onRequireDetails={p.requireVersionDetails} />
             </section>
 
             <section className="pb-16">
               <PublishRecordsTable
+                nativeMode={p.nativeMode}
                 publishRecords={p.publishRecords}
                 specDisplayName={p.selectedSpec?.name || ""}
                 versionStatusMeta={p.versionStatusMeta}
@@ -201,11 +217,18 @@ export function VersionReleasePage(p: ReturnType<typeof useVersionRelease>) {
       <footer className="relative z-10 mt-4 border-t border-border py-10 text-center">
         <p className="text-sm font-medium text-card-foreground">Agent Studio · 版本与发布</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          每次发布都有据可查，随时回退到任意历史版本。
+          {p.nativeMode ? '配置与发布变更由服务端审计；当前历史为已加载范围，恢复会重新校验资源权限。' : '每次发布都有据可查，随时回退到任意历史版本。'}
         </p>
       </footer>
 
       <VrConfirmDialog
+        nativeMode={p.nativeMode}
+        checked={p.nativeConfirmChecked}
+        onCheckedChange={p.setNativeConfirmChecked}
+        restoreReason={p.nativeRestoreReason}
+        onRestoreReasonChange={p.setNativeRestoreReason}
+        untested={p.nativeUntested}
+        blocked={p.nativePending || p.nativeReadOnly || p.nativeMode && !p.nativeWorkspaceReady}
         confirmAction={p.confirmAction}
         isConfirmBusy={p.isConfirmBusy}
         onConfirm={p.handleConfirm}

@@ -1,11 +1,16 @@
+import {nativeDeviceOnline,type createPgNativeLocalDeviceApi} from '@/lib/pgNativeLocalDevice'
+import {useNativeLocalDevices} from './useNativeLocalDevices'
+import type {NativeOfficeRunRequest} from './PgNativeOfficeWorkflowPanel'
 import {useEffect,useRef,useState,type FormEvent} from "react"
 import {Loader2,Play,RefreshCcw} from "lucide-react"
 import type {createPgNativePilotApi,PgNativeAgent,PgNativeModelConnection,PgNativeToolConnection} from "@/lib/pgNativePilotApi"
+import type {PgNativeOptimizationHistory} from "@/lib/pgNativeAgentOptimization"
 import {readyAgentHttpTools} from "@/lib/pgNativeAgentHttpTools"
 import {readyAgentMcpTools} from "@/lib/pgNativeMcpConnection"
 import {useMcpConnections} from "./useMcpConnections"
 import {createPgNativeAutonomousAgentSession,emptyAutonomousView,readyAutonomousModel} from "@/lib/pgNativeAutonomousAgentSession"
 import {watchPgNativeOriginalTaskController,pgNativeOriginalTasksBlocked,createOwnTaskTargetDelivery,type OwnTaskRunTarget} from "@/lib/pgNativeOwnTaskNavigation"
+import PgNativeAgentRunControl from "./PgNativeAgentRunControl"
 import PgNativeAutonomousAgentDetail,{autonomousStates,autonomousButton,autonomousSecondary} from "./PgNativeAutonomousAgentDetail"
 import PgNativeAgentHumanInputPanel from "./PgNativeAgentHumanInputPanel"
 import PgNativeAgentOutcomeMemoryPanel from "./PgNativeAgentOutcomeMemoryPanel"
@@ -16,17 +21,23 @@ import PgNativeAgentHumanHistoryPanel from "./PgNativeAgentHumanHistoryPanel"
 const field="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
 type Controller=ReturnType<typeof createPgNativeAutonomousAgentSession>
 const noRoleChange=()=>{}
-export default function PgNativeAutonomousAgentPanel({api,agents,connections,ownerId="",tools=[],mcpEnabled=false,humanAvailable=false,humanEnabled=false,outcomeAvailable=false,outcomeEnabled=false,feedbackAvailable=false,feedbackEnabled=false,feedbackLessons=false,reviewAvailable=false,reviewEnabled=false,reviewHistoryAvailable=false,generatedAvailable=false,generatedEnabled=false,descriptivePatchAvailable=false,descriptivePatchEnabled=false,optimizationAvailable=false,optimizationEnabled=false,onRoleChanged=noRoleChange,active,enabled,onExpired,target,runTarget,onTargetSettled}:{
+export default function PgNativeAutonomousAgentPanel({api,agents,connections,ownerId="",tools=[],mcpEnabled=false,humanAvailable=false,humanEnabled=false,outcomeAvailable=false,outcomeEnabled=false,feedbackAvailable=false,feedbackEnabled=false,feedbackLessons=false,reviewAvailable=false,reviewEnabled=false,reviewHistoryAvailable=false,generatedAvailable=false,generatedEnabled=false,descriptivePatchAvailable=false,descriptivePatchEnabled=false,optimizationAvailable=false,optimizationEnabled=false,onRoleChanged=noRoleChange,active,enabled,onExpired,target,runTarget,onTargetSettled,agentSelectionRequest,localDeviceApi,localDevicesAvailable=false,officeRequest}:{
   api:ReturnType<typeof createPgNativePilotApi>;agents:PgNativeAgent[];connections:PgNativeModelConnection[];
-  ownerId?:string;tools?:PgNativeToolConnection[];mcpEnabled?:boolean;humanAvailable?:boolean;humanEnabled?:boolean;outcomeAvailable?:boolean;outcomeEnabled?:boolean;feedbackAvailable?:boolean;feedbackEnabled?:boolean;feedbackLessons?:boolean;reviewAvailable?:boolean;reviewEnabled?:boolean;reviewHistoryAvailable?:boolean;generatedAvailable?:boolean;generatedEnabled?:boolean;descriptivePatchAvailable?:boolean;descriptivePatchEnabled?:boolean;optimizationAvailable?:boolean;optimizationEnabled?:boolean;onRoleChanged?:()=>void;active:boolean;enabled:boolean;onExpired:()=>void;target?:{id:string;selection:number}|null;runTarget?:OwnTaskRunTarget|null;onTargetSettled?:(selection:number,opened:boolean)=>void
+  localDeviceApi?:ReturnType<typeof createPgNativeLocalDeviceApi>;localDevicesAvailable?:boolean;officeRequest?:NativeOfficeRunRequest|null;
+  ownerId?:string;tools?:PgNativeToolConnection[];mcpEnabled?:boolean;humanAvailable?:boolean;humanEnabled?:boolean;outcomeAvailable?:boolean;outcomeEnabled?:boolean;feedbackAvailable?:boolean;feedbackEnabled?:boolean;feedbackLessons?:boolean;reviewAvailable?:boolean;reviewEnabled?:boolean;reviewHistoryAvailable?:boolean;generatedAvailable?:boolean;generatedEnabled?:boolean;descriptivePatchAvailable?:boolean;descriptivePatchEnabled?:boolean;optimizationAvailable?:boolean;optimizationEnabled?:boolean;onRoleChanged?:()=>void;active:boolean;enabled:boolean;onExpired:()=>void;target?:{id:string;selection:number}|null;runTarget?:OwnTaskRunTarget|null;onTargetSettled?:(selection:number,opened:boolean)=>void;agentSelectionRequest?:{id:string;selection:number}|null
 }){
   const mcps=useMcpConnections(api,active,onExpired)
   const [view,setView]=useState(emptyAutonomousView)
   const [agentId,setAgentId]=useState("")
+  const [localDeviceId,setLocalDeviceId]=useState(""),[localError,setLocalError]=useState(""),[officeLoading,setOfficeLoading]=useState(false)
+  const deliveredOffice=useRef(""),officeLife=useRef(0)
+  useEffect(()=>{++officeLife.current;setLocalDeviceId("");setLocalError("");setOfficeLoading(false);deliveredOffice.current="";return()=>{++officeLife.current}},[api,localDeviceApi])
   const [instruction,setInstruction]=useState("")
   const [maxSteps,setMaxSteps]=useState(3)
   const [planReview,setPlanReview]=useState("inherit")
   const [rememberOutcome,setRememberOutcome]=useState(false)
+  const [retestChoice,setRetestChoice]=useState<{scope:string;id:string}|null>(null)
+  const [retestHistory,setRetestHistory]=useState<{api:typeof api;scope:string;items:PgNativeOptimizationHistory['items'];error:boolean}|null>(null)
   useEffect(()=>{if(!outcomeEnabled)setRememberOutcome(false)},[outcomeEnabled])
   const model=useRef<Controller|null>(null)
   const openedTarget=useRef("")
@@ -61,18 +72,49 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,own
   },[active,view.busy,view.loading,view.pendingSubmit,view.pendingMutation,view.pendingHumanResponse,view.detail,view.error])
   const eligible=agents.filter(agent=>readyAutonomousModel(agent,connections)&&readyAgentHttpTools(agent,tools)&&
     (!agent.spec.mcp_tools?.length||mcpEnabled)&&readyAgentMcpTools(agent,mcps.connections)),chosen=eligible.find(agent=>agent.id===agentId)
-  const locked=view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(view.pendingMutation)||Boolean(view.pendingHumanResponse)
+  const retestSpecId=chosen?.id??'',retestScope=retestSpecId?ownerId+':'+retestSpecId+':'+chosen!.revision:''
+  useEffect(()=>{
+    let current=true;setRetestHistory(null)
+    if(active&&optimizationEnabled&&retestSpecId)void api.getAgentOptimizations(retestSpecId).then(history=>{
+      if(current)setRetestHistory({api,scope:retestScope,items:history.items.filter(item=>item.role_current&&item.feedback_unchanged),error:false})
+    }).catch(cause=>{if(current){setRetestHistory({api,scope:retestScope,items:[],error:true});if(cause&&typeof cause==='object'&&'status'in cause&&cause.status===401)onExpired()}})
+    return()=>{current=false}
+  },[api,active,optimizationEnabled,retestSpecId,retestScope,onExpired])
+  useEffect(()=>{setRetestChoice(null)},[api,ownerId,active])
+  const retestItems=retestHistory?.api===api&&retestHistory.scope===retestScope?retestHistory.items:[]
+  const validRetest=optimizationEnabled&&retestChoice?.scope===retestScope&&retestItems.some(item=>item.request_id===retestChoice.id)
+  const invalidRetest=Boolean(retestChoice&&!validRetest)
+  const deliveredAgent=useRef("")
+  useEffect(()=>{
+    if(!active||!agentSelectionRequest||runTarget||target||view.busy||view.loading||view.pendingSubmit||view.pendingMutation||view.pendingHumanResponse||view.detail||instruction||maxSteps!==3||planReview!=="inherit"||rememberOutcome||agentId&&agentId!==agentSelectionRequest.id||pgNativeOriginalTasksBlocked(api)||!eligible.some(a=>a.id===agentSelectionRequest.id))return
+    const key=agentSelectionRequest.id+":"+agentSelectionRequest.selection
+    if(deliveredAgent.current===key)return
+    deliveredAgent.current=key;setAgentId(agentSelectionRequest.id)
+  },[active,agentSelectionRequest,runTarget,target,view.busy,view.loading,view.pendingSubmit,view.pendingMutation,view.pendingHumanResponse,view.detail,instruction,maxSteps,planReview,rememberOutcome,agentId,eligible,api])
+  const locked=officeLoading||view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(view.pendingMutation)||Boolean(view.pendingHumanResponse)
   const submit=async(event:FormEvent)=>{
     event.preventDefault()
-    if(!active||!enabled||view.busy||view.pendingMutation||view.pendingHumanResponse||!view.pendingSubmit&&!chosen)return
+    if(!active||!enabled||view.busy||view.pendingMutation||view.pendingHumanResponse||!view.pendingSubmit&&(!chosen||invalidRetest))return
     const controller=model.current
     if(!controller)return
-    await controller.submit({agentId,revision:chosen?.revision??0,instruction,maxSteps,...(humanAvailable&&planReview!=="inherit"?{requirePlanReview:planReview==="required"}:{}),...(outcomeEnabled&&rememberOutcome?{rememberOutcome:true}:{})})
+    if(!view.pendingSubmit&&chosen?.spec.tools?.includes("local_computer")&&(!localDevicesAvailable||!localDeviceId)){setLocalError("请读取并选择本人在线本机设备。");return}
+    await controller.submit({agentId,revision:chosen?.revision??0,instruction,maxSteps,...(chosen?.spec.tools?.includes("local_computer")&&localDeviceId?{localDeviceId}:{}),...(humanAvailable&&planReview!=="inherit"?{requirePlanReview:planReview==="required"}:{}),...(outcomeEnabled&&rememberOutcome?{rememberOutcome:true}:{}),...(validRetest&&retestChoice?{optimizationLineageId:retestChoice.id}:{})})
     if(model.current===controller&&!controller.snapshot().pendingSubmit&&controller.snapshot().notice)setInstruction("")
   }
   return <section aria-label="多轮 Agent" className="space-y-5">
+    {localError&&<p role="alert">{localError}</p>}
+    {localDeviceApi&&localDevicesAvailable&&<NativeLocalRunSelection key={ownerId} api={localDeviceApi} active={active} onExpired={onExpired} deviceId={localDeviceId} setDeviceId={setLocalDeviceId} disabled={locked} officeRequest={officeRequest} delivered={deliveredOffice.current} onOffice={async devices=>{
+      if(!officeRequest||locked||retestChoice||view.detail||instruction||runTarget||target||view.pendingSubmit||view.pendingMutation||view.pendingHumanResponse||pgNativeOriginalTasksBlocked(api)){setLocalError("请先完成或清空当前任务表单，再带入办公任务。");return}
+      const device=devices.find(d=>d.id===officeRequest.deviceId);if(!device||!nativeDeviceOnline(device)){setLocalError("办公设备当前不在线，请刷新后重试。");return}
+      const current=officeLife.current;setOfficeLoading(true);setLocalError("")
+      try{const row=await api.getAgent(officeRequest.agentId);if(current!==officeLife.current)return;if(!row.spec.tools?.includes("local_computer")||!row.spec.model_binding)throw Error("office_agent_not_ready");setAgentId(row.id);setLocalDeviceId(device.id);setInstruction(officeRequest.instruction);setMaxSteps(12);setPlanReview("required");deliveredOffice.current=officeRequest.agentId+":"+officeRequest.selection}
+      catch(e){if(current===officeLife.current){setLocalError("请先在原助手的资源配置中选择本人可用模型。");if(e&&typeof e==="object"&&"status" in e&&e.status===401)onExpired()}}finally{if(current===officeLife.current)setOfficeLoading(false)}
+    }}/>}
+    {view.detail?.local_device_id&&<p className="rounded-lg bg-indigo-50 p-3 text-sm">本任务设备 UUID：<code>{view.detail.local_device_id}</code>。本机截图会随后续已批准的模型步骤发送给本任务所选模型。</p>}
+    {view.detail?.local_tasks?.length? <div className="rounded-lg border p-3 text-sm"><p>本机原任务 UUID（可在本机设备页读取实际结果）：</p>{view.detail.local_tasks.map(task=><p key={task.id}><code>{task.id}</code> · {task.status} {task.error}</p>)}</div>:null}
     {view.error&&<p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{view.error}</p>}
     {view.notice&&<p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{view.notice}</p>}
+    {view.detail?.optimization_retest&&<div aria-label="优化复测来源" className="space-y-1 break-all rounded-xl bg-slate-50 p-3 text-xs"><p>复测角色版本：{view.detail.optimization_retest.spec_revision}</p><p>原任务：{view.detail.optimization_retest.source_run_id}</p><p>优化接受编号：{view.detail.optimization_retest.acceptance_request_id}</p></div>}
     <div className="rounded-2xl border border-slate-200 bg-white p-5">
       <h2 className="flex items-center gap-2 font-semibold"><Play size={18} aria-hidden="true"/>新建多轮任务</h2>
       <p className="mt-2 text-sm leading-6 text-slate-500">Agent 可根据工具结果继续规划，最多进行 30 轮模型调用。每个步骤都需要你核对并批准。</p>
@@ -85,10 +127,23 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,own
         <fieldset disabled={!enabled||locked} className="space-y-3">
           <legend className="sr-only">新建多轮任务字段</legend>
           <label className="block text-sm font-medium">多轮 Agent 角色
-            <select required aria-label="多轮 Agent 角色" className={field} value={view.pendingSubmit?.agentId??agentId} onChange={event=>setAgentId(event.target.value)}>
+            <select required aria-label="多轮 Agent 角色" className={field} value={view.pendingSubmit?.agentId??agentId} onChange={event=>{setAgentId(event.target.value);setRetestChoice(null)}}>
               <option value="">请选择</option>{eligible.map(agent=><option key={agent.id} value={agent.id}>{agent.name} · {agent.spec.model_binding?.model_id}</option>)}
             </select>
           </label>
+          {(optimizationAvailable||view.pendingSubmit?.optimizationLineageId||retestChoice)&&<div className="space-y-2 rounded-xl bg-slate-50 p-3">
+            {view.pendingSubmit?.optimizationLineageId?<p className="break-all text-xs">此次复测的原接受编号：{view.pendingSubmit.optimizationLineageId}</p>:<>
+              <label className="block text-sm font-medium">关联已接受的角色优化
+                <select aria-label="关联已接受的角色优化" className={field} value={validRetest?retestChoice!.id:''} disabled={!optimizationEnabled||locked||!retestHistory||retestHistory.api!==api||retestHistory.scope!==retestScope||retestHistory.error} onChange={event=>setRetestChoice(event.target.value?{scope:retestScope,id:event.target.value}:null)}>
+                  <option value="">普通新任务</option>{retestItems.map(item=><option key={item.request_id} value={item.request_id}>版本 {item.after_spec_revision} · 接受编号 {item.request_id}</option>)}
+                </select>
+              </label>
+              <p className="text-xs leading-5 text-slate-500">仅可关联当前角色版本和未变更的反馈。提交后创建新任务，仍按原步骤审批。</p>
+              {retestHistory?.error&&<p role="status" className="text-xs text-amber-900">优化接受记录暂无法核对。</p>}
+              {invalidRetest&&<p role="alert" className="text-xs text-amber-900">原关联暂不可用，请重新选择或清除后提交。</p>}
+              {retestChoice&&<button type="button" className={autonomousSecondary} disabled={locked} onClick={()=>setRetestChoice(null)}>清除复测关联</button>}
+            </>}
+          </div>}
           <label className="block text-sm font-medium">多轮任务要求
             <textarea required aria-label="多轮任务要求" rows={4} maxLength={2000} className={field} value={view.pendingSubmit?.instruction??instruction}
               onChange={event=>setInstruction(event.target.value)} placeholder="描述任务、期望结果及需要遵守的边界"/>
@@ -113,7 +168,7 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,own
           </div>}
         </fieldset>
         {view.pendingSubmit&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-sm leading-6 text-amber-900">上次提交结果尚未确认。角色、任务和轮数已保留，确认时会使用原请求。</p>}
-        <button type="submit" className={autonomousButton} disabled={!active||!enabled||view.busy||view.loading||Boolean(view.pendingMutation)||Boolean(view.pendingHumanResponse)||!view.pendingSubmit&&(!chosen||!instruction.trim())}>
+        <button type="submit" className={autonomousButton} disabled={!active||!enabled||view.busy||view.loading||Boolean(view.pendingMutation)||Boolean(view.pendingHumanResponse)||!view.pendingSubmit&&(!chosen||!instruction.trim()||invalidRetest)}>
           {view.busy?<Loader2 size={16} className="animate-spin" aria-hidden="true"/>:<Play size={16} aria-hidden="true"/>}
           {view.pendingSubmit?"确认上次多轮提交":"提交多轮任务"}
         </button>
@@ -137,13 +192,19 @@ export default function PgNativeAutonomousAgentPanel({api,agents,connections,own
     <PgNativeAgentReviewPanel api={api} ownerId={ownerId} specId={view.detail?.run.agent_spec_id??null} runId={view.detail?.run.id??null} runStatus={view.detail?.run.status??""} connections={connections} active={active} available={reviewAvailable} submitEnabled={reviewEnabled} historyAvailable={reviewHistoryAvailable} generatedAvailable={generatedAvailable} generatedEnabled={generatedEnabled} descriptivePatchAvailable={descriptivePatchAvailable} descriptivePatchEnabled={descriptivePatchEnabled} onAccepted={onRoleChanged} onExpired={onExpired}/>
     <PgNativeAgentOptimizationPanel api={api} runId={view.detail?.run.id??null} runStatus={view.detail?.run.status??""} active={active} available={optimizationAvailable} acceptEnabled={optimizationEnabled} onExpired={onExpired} onChanged={onRoleChanged}/>
     <PgNativeAgentOutcomeMemoryPanel api={api} runId={view.detail?.run.id??null} runStatus={view.detail?.run.status??""} active={active} available={outcomeAvailable} onExpired={onExpired}/>
-    <PgNativeAgentHumanInputPanel detail={view.detail} pendingResponse={view.pendingHumanResponse} active={active} enabled={enabled&&humanEnabled} locked={view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(view.pendingMutation)}
+    <PgNativeAgentHumanInputPanel detail={view.detail} pendingResponse={view.pendingHumanResponse} active={active} enabled={enabled&&humanEnabled} locked={view.busy||view.loading||Boolean(view.pendingSubmit)||Boolean(view.pendingMutation)||Boolean(view.pendingRunControl)}
       onRespond={(decision,answer,confirmed)=>{if(active&&enabled&&humanEnabled)void model.current?.respond(decision,answer,confirmed)}}
       onConfirm={()=>{if(active)void model.current?.retryHumanResponse()}}/>
     {humanAvailable&&<PgNativeAgentHumanHistoryPanel api={api} runId={view.detail?.run.id??null} mode="agent" active={active} onExpired={onExpired}/>}
+    <PgNativeAgentRunControl view={view} enabled={active&&enabled} onControl={action=>{if(active&&enabled)void model.current?.controlRun(action)}} onConfirm={()=>{if(active)void model.current?.confirmRunControl()}}/>
     <PgNativeAutonomousAgentDetail key={view.detail?.run.id??"none"} view={view} agents={agents} connections={connections} toolConnections={tools} mcpConnections={mcps.connections} mcpEnabled={mcpEnabled} enabled={active&&enabled}
       onDecision={(value,consent,fee)=>{if(active&&enabled)void model.current?.decide(value,consent,fee)}}
       onRetry={()=>{if(active&&(enabled||view.pendingMutation?.kind==="cancel"))void model.current?.retryMutation()}}
       onCancel={()=>{if(active)void model.current?.cancel()}}/>
   </section>
+}
+
+function NativeLocalRunSelection({api,active,onExpired,deviceId,setDeviceId,disabled,officeRequest,delivered,onOffice}:{api:ReturnType<typeof createPgNativeLocalDeviceApi>;active:boolean;onExpired:()=>void;deviceId:string;setDeviceId:(id:string)=>void;disabled:boolean;officeRequest?:NativeOfficeRunRequest|null;delivered:string;onOffice:(devices:import('@/lib/pgNativeLocalDevice').LocalDevice[])=>Promise<void>}){
+ const inventory=useNativeLocalDevices(api,active,true,onExpired)
+ return <div className="space-y-3 rounded-xl border bg-white p-4"><label className="block text-sm">本次本机设备<select className={field} value={deviceId} disabled={disabled} onChange={e=>setDeviceId(e.target.value)}><option value="">本次不使用本机</option>{inventory.devices.filter(d=>nativeDeviceOnline(d)).map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></label><button type="button" className={autonomousSecondary} disabled={disabled||inventory.loading||!active} onClick={()=>void inventory.load()}>读取本人设备</button>{inventory.error&&<p role="alert">{inventory.error}</p>}{officeRequest&&delivered!==officeRequest.agentId+':'+officeRequest.selection&&<button type="button" className={autonomousButton} disabled={disabled||!active||inventory.loading} onClick={()=>void onOffice(inventory.devices)}>载入已准备的办公任务</button>}<p className="text-sm text-slate-500">每个本机动作单独审批。设备令牌由本地执行器保存；这里不会获取它。</p></div>
 }

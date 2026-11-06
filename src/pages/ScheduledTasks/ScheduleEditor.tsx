@@ -1,4 +1,6 @@
+import {NativeScheduleAuthorization} from './NativeScheduleAuthorization'
 import { CalendarClock, Clock3, Plus, RefreshCw, Save, ShieldCheck } from "lucide-react"
+import { Link } from "react-router-dom"
 import { formatScheduledDate, FORM_CLASS, LABEL_CLASS, TIME_ZONES, WEEKDAYS } from "./types"
 import type { useScheduledTasks } from "./useScheduledTasks"
 
@@ -30,8 +32,9 @@ export function ScheduleEditor(p: Props) {
         {p.editingId && <button type="button" onClick={p.resetForm} className="shrink-0 text-xs text-primary hover:underline">取消编辑</button>}
       </div>
       <form onSubmit={p.save} className="space-y-4">
+        <fieldset className="contents" disabled={p.nativeMode&&(!p.nativeReady||Boolean(p.nativePending)||p.saving||Boolean(p.busyId)||!p.nativeCapabilities?.metadata_writes_enabled)}>
         <label className={LABEL_CLASS}>计划名称
-          <input required maxLength={120} className={FORM_CLASS} value={f.name}
+          <input id="schedule-plan-name" required maxLength={120} className={FORM_CLASS} value={f.name}
             onChange={e=>set("name",e.target.value)} placeholder="例如：每天早晨生成市场观察报告"/>
         </label>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -49,6 +52,14 @@ export function ScheduleEditor(p: Props) {
             </select>
           </label>
         </div>
+        {!p.initialLoading && p.targetOptions.length===0 && <p role="status"
+          className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+          {p.nativeMode?"当前已加载列表中没有可选的":"当前账号还没有已保存的"}{f.target_kind==="agent"?" Agent":"工作流"}。
+          <Link to={f.target_kind==="agent"?"/agent-create":"/workflow-canvas"}
+            className="ml-1 font-semibold text-primary underline-offset-2 hover:underline">
+            {f.target_kind==="agent"?"先创建 Agent →":"先创建工作流 →"}
+          </Link>
+        </p>}
         {f.target_kind==="agent" && <>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className={LABEL_CLASS}>模型连接
@@ -56,6 +67,7 @@ export function ScheduleEditor(p: Props) {
                 ...prev,model_connection_id:e.target.value,model_id:"",
               }))}>
                 <option value="">选择已启用的连接</option>
+                {p.nativeMode&&modelConnection&&!modelConnection.enabled&&<option value={modelConnection.id}>{modelConnection.name}（已停用，仅保存暂停计划）</option>}
                 {p.models.filter(m=>m.enabled).map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
             </label>
@@ -66,6 +78,11 @@ export function ScheduleEditor(p: Props) {
               </select>
             </label>
           </div>
+          {!p.models.some(m=>m.enabled && m.models?.length) && <p role="status"
+            className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+            尚未发现可用的模型连接。定时 Agent 需要先选定启用的模型。
+            <Link to="/model-connections" className="ml-1 font-semibold text-primary hover:underline">添加并测试模型 →</Link>
+          </p>}
           <label className={LABEL_CLASS}>最大推理步数（1–30）
             <input className={FORM_CLASS} type="number" min={1} max={30} required
               value={f.max_steps} onChange={e=>set("max_steps",Number(e.target.value))}/>
@@ -134,15 +151,18 @@ export function ScheduleEditor(p: Props) {
           )}
           <p className="mt-1">日期和时钟时间以所选时区计算；实际触发依赖后台 Worker 在线。</p>
         </div>
+        {p.nativeMode&&<NativeScheduleAuthorization value={p.nativeAuthorization} executionEnabled={p.nativeCapabilities?.automatic_execution_enabled===true&&(f.target_kind==='workflow'||Boolean(modelConnection?.enabled&&'status' in modelConnection&&modelConnection.status==='ok'))} pinsCurrent={p.nativePinsCurrent} recheck={p.nativeRecheck} set={p.nativeSetAuthorization}/>}
+        {p.nativeMode&&p.nativeWorkflowsMore&&<button type="button" onClick={()=>void p.nativeMore("workflows")} className="text-xs text-primary underline">加载更多工作流</button>}
         <p className="flex items-start gap-2 text-xs text-muted-foreground">
           <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
           定时 Agent 对非 GET 外部工具默认启用审批；未经确认不会执行敏感写入。
         </p>
-        <button type="submit" disabled={p.saving || Boolean(p.preview.error)}
+        <button type="submit" disabled={p.saving || (p.nativeMode ? !p.nativeReady||Boolean(p.nativePending)||!p.nativeCapabilities?.metadata_writes_enabled||!p.nativePinsCurrent||p.nativeAuthorization.enable&&(!p.nativeAuthorization.confirmed||Boolean(p.preview.error)) : Boolean(p.preview.error))}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-45">
           {p.saving?<RefreshCw className="h-4 w-4 animate-spin"/>:p.editingId?<Save className="h-4 w-4"/>:<Plus className="h-4 w-4"/>}
-          {p.saving?"保存中…":p.editingId?"保存并更新计划":"创建定时任务"}
+          {p.saving?"保存中…":p.nativeMode?(p.nativeAuthorization.enable?"保存并启用计划":"保存为暂停计划"):p.editingId?"保存并更新计划":"创建定时任务"}
         </button>
+        </fieldset>
       </form>
     </section>
   )

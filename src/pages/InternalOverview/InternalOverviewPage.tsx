@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Link } from "react-router-dom"
 import {
   Activity, AlertCircle, ArrowRight, BookOpen, CalendarClock,
@@ -7,7 +7,12 @@ import {
 } from "lucide-react"
 import { SiteShell } from "@/components/site/SiteShell"
 import { getPocketBaseUrl } from "@/lib/pb"
-import { redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
+import { getStudioAccountInfo, redirectToRhLogin, verifyStudioSession, vibexAuthHeaders } from "@/lib/studioAuth"
+import { getStudioBackend } from "@/lib/studioBackend"
+import { createOriginalInternalOverviewReadGate, loadOriginalInternalOverview as loadPgOriginalInternalOverview, loadLegacyOriginalInternalOverview, originalInternalOverviewFailureState } from "@/lib/originalInternalOverview"
+
+const loadOriginalInternalOverview = import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED === "true"
+  ? loadPgOriginalInternalOverview : loadLegacyOriginalInternalOverview
 
 type StatusKind = "agent" | "workflow" | "schedule"
 type ActionCategory = "approval" | "review" | "overdue" | "failed"
@@ -30,6 +35,7 @@ type Overview = {
   ok: boolean
   scope: "current_user"
   generated_at_ms: number
+  notice?: string
   counters: {
     running: number
     awaiting_approval: number
@@ -43,8 +49,8 @@ type Overview = {
   action_items: ActionItem[]
   recent_runs: RecentRun[]
   worker: {
-    configured: boolean
-    alive: boolean
+    configured: boolean | null
+    alive: boolean | null
     last_seen_age_ms: number | null
   }
   sampling: {
@@ -72,7 +78,7 @@ const categoryMeta: Record<ActionCategory, { label: string; className: string }>
 const statusNames: Record<string, string> = {
   succeeded: "已完成", failed: "失败", cancelled: "已取消",
   running: "运行中", awaiting_approval: "待审批",
-  paused: "已暂停", pending: "待运行",
+  paused: "已暂停", pending: "待运行", awaiting_input: "待回复",
 }
 
 function displayTime(value: string | number): string {
@@ -98,46 +104,54 @@ function runHref(run: RecentRun): string {
 }
 
 export default function InternalOverviewPage() {
-  const [overview, setOverview] = useState<Overview | null>(null)
-  const [pending, setPending] = useState(true)
-  const [error, setError] = useState("")
+  const readScope = () => {
+    const account = getStudioAccountInfo()
+    return JSON.stringify([getStudioBackend(), account?.id || "", account?.active === true, account?.role || ""])
+  }
+  const scope = readScope()
+  const [readState, setReadState] = useState<{scope: string; overview: Overview | null; pending: boolean; error: string; authRequired: boolean}>(
+    () => ({scope, overview: null, pending: true, error: "", authRequired: false}),
+  )
+  // Close at render time when an account changes, before effect cleanup runs.
+  const {overview, pending, error, authRequired} = readState.scope === scope ? readState :
+    {overview: null, pending: true, error: "", authRequired: false}
   const [revision, setRevision] = useState(0)
   const [filter, setFilter] = useState<"all" | ActionCategory>("all")
-  const [authRequired, setAuthRequired] = useState(false)
+  const reads = useRef(createOriginalInternalOverviewReadGate()), mounted = useRef(false), refreshTicket = useRef(0)
+  useEffect(() => {mounted.current = true; return () => {mounted.current = false; refreshTicket.current++}}, [])
 
   useEffect(() => {
-    const controller = new AbortController()
-    fetch(getPocketBaseUrl() + "/api/internal/overview", {
-      headers: vibexAuthHeaders(),
-      signal: controller.signal,
-    }).then(async response => {
-      const json = await response.json().catch(() => ({})) as Partial<Overview> & { error?: string }
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 412) {
-          setAuthRequired(true)
-          throw new Error("登录状态已过期，请重新登录后查看内部任务总览")
-        }
-        throw new Error(json.error || "内部任务总览暂时不可用")
-      }
-      if (!json.counters || !Array.isArray(json.action_items) || !Array.isArray(json.recent_runs)) {
-        throw new Error("服务器返回的任务数据不完整")
-      }
-      setOverview(json as Overview)
-      setError("")
-      setAuthRequired(false)
-    }).catch(err => {
-      if (!controller.signal.aborted) setError(String((err as Error).message || err))
-    }).finally(() => {
-      if (!controller.signal.aborted) setPending(false)
+    const controller = new AbortController(), gate = reads.current.begin(scope, controller.signal)
+    setReadState(previous => ({scope, overview: previous.scope === scope ? previous.overview : null, pending: true, error: "", authRequired: false}))
+    void loadOriginalInternalOverview({backend: getStudioBackend(), legacyUrl: getPocketBaseUrl,
+      legacyHeaders: vibexAuthHeaders, employeeId: getStudioAccountInfo()?.id, signal: controller.signal}).then(json => {
+      if (!gate.current(readScope())) return
+      setReadState({scope, overview: json as Overview, pending: false, error: getStudioBackend() === "native_pg" ? (json as Overview).notice || "" : "", authRequired: false})
+    }).catch((err: unknown) => {
+      if (!gate.current(readScope())) return
+      // Keep the legacy same-account transient-error presentation, while closing
+      // denied, missing-PG or foreign-account data instead of showing fake zeros.
+      setReadState(previous => originalInternalOverviewFailureState(previous, scope, getStudioBackend(), err))
     })
-    return () => controller.abort()
-  }, [revision])
+    return () => {gate.cancel(); controller.abort()}
+  }, [revision, scope])
 
   const filteredActions = useMemo(() =>
     (overview?.action_items || []).filter(item => filter === "all" || item.category === filter),
   [overview?.action_items, filter])
 
-  const refresh = () => { setPending(true); setRevision(current => current + 1) }
+  const refresh = () => {
+    const native = getStudioBackend() === "native_pg"
+    setReadState(previous => ({...previous, overview: native ? null : previous.overview, pending: true, error: ""}))
+    if (!native) {setRevision(current => current + 1); return}
+    // Cookie changes are unreadable in JS. Reuse the existing actual /me facade
+    // before retrying, so a409 can refresh to the new account without logging it out.
+    const ticket = ++refreshTicket.current
+    reads.current.begin(scope, new AbortController().signal)
+    void verifyStudioSession().catch(() => {}).finally(() => {
+      if (mounted.current && ticket === refreshTicket.current) setRevision(current => current + 1)
+    })
+  }
   const c = overview?.counters
   const stats = [
     { title: "待审批", value: c?.awaiting_approval ?? 0, icon: ClipboardCheck, href: "/agent-run" },
@@ -187,7 +201,7 @@ export default function InternalOverviewPage() {
             <>
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                 <span>数据更新于 {displayTime(overview.generated_at_ms)} · 失败任务统计周期：最近 {overview.sampling.failed_window_days} 天</span>
-                <span>{overview.worker.alive
+                <span>{overview.worker.alive === null ? "后台 Worker 状态未知" : overview.worker.alive
                   ? "后台 Worker 正常响应"
                   : overview.worker.configured ? "后台 Worker 暂未响应" : "尚未配置自动执行 Worker"}</span>
               </div>
@@ -205,7 +219,7 @@ export default function InternalOverviewPage() {
                 </Link>)}
               </div>
 
-              {!overview.worker.alive && <div className="flex items-start gap-3 rounded-xl border border-amber-300/40 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
+              {overview.worker.alive === false && <div className="flex items-start gap-3 rounded-xl border border-amber-300/40 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0"/>
                 <p>
                   后台执行器{overview.worker.configured ? "目前未响应" : "尚未配置"}。

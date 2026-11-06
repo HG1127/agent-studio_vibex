@@ -21,6 +21,8 @@ export class NativeAuthRepository{
   confirmEmployeeChange(token:string,choice:unknown):Promise<Record<string,unknown>>
   createGovernedEmployee(token:string,choice:unknown):Promise<Record<string,unknown>>
   changePassword(token:string,choice:unknown):Promise<{ok:true;reauthenticate:true}>
+  readonly accountPasswordProtocol:"native_account_password_owner_bound_v1"
+  changePasswordForOwner(token:string,choice:unknown,expectedOwner:string):Promise<{ok:true;reauthenticate:true}>
   /** Operator-only, never HTTP-callable. */
   provisionInitialAdmin(employee:{email:string,password:string,display_name:string}):Promise<Omit<NativeProfile,"identity">>
   login(email:string,password:string):Promise<NativeLoginResult>

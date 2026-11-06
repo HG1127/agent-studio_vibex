@@ -1,3 +1,6 @@
+import {usePgToolConnections} from './usePgToolConnections.ts'
+import {TOOL_STATUS_META,maskToolDomain} from '../../lib/toolPresentation.ts'
+export {TOOL_STATUS_META,maskToolDomain}
 import { useCallback, useEffect, useState } from "react"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, redirectToRhLogin, vibexAuthHeaders } from "@/lib/studioAuth"
@@ -33,17 +36,6 @@ export type ToolTestResult = {
 // 表单里的请求头草稿：value 为空 = 编辑时保留服务端已存值
 export type HeaderDraft = { key: string; value: string }
 
-export const TOOL_STATUS_META: Record<string, { label: string; badge: string }> = {
-  ok: { label: "正常", badge: "bg-primary/10 text-primary" },
-  error: { label: "异常", badge: "bg-destructive/10 text-destructive" },
-  untested: { label: "未测试", badge: "bg-muted text-muted-foreground" },
-}
-
-// 卡片上只展示脱敏域名，不展示完整 URL 路径
-export function maskToolDomain(rawUrl: string): string {
-  const cleaned = String(rawUrl || "").replace(/^https?:\/\//i, "")
-  return cleaned.split("/")[0] || cleaned
-}
 
 function normalizeTestResult(data: Record<string, unknown> | null): ToolTestResult {
   return {
@@ -57,7 +49,7 @@ function normalizeTestResult(data: Record<string, unknown> | null): ToolTestResu
 
 class AuthRequiredError extends Error {}
 
-export function useToolConnections() {
+export function usePocketBaseToolConnections() {
   const base = getPocketBaseUrl()
 
   const [rhUserId] = useState(() => {
@@ -520,3 +512,5 @@ export function useToolConnections() {
     statusMeta: TOOL_STATUS_META,
   }
 }
+
+export const useToolConnections=import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED==='true'?usePgToolConnections:usePocketBaseToolConnections

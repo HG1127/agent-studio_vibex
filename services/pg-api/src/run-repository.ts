@@ -1,3 +1,4 @@
+import {ownedStepDecisionActor,auditDelegatedOwnedStep} from './owned-step-decision-context.ts'
 // V8 PostgreSQL: authenticated, owner-scoped Agent prepare RUN queue.
 // Creating a run does NOT execute a model, tool, Workflow or external POST.
 import {HttpError,isUuid,type Identity,type SqlPool,type SqlClient}
@@ -141,6 +142,21 @@ export class RunRepository {
       throw new HttpError(400,"invalid_approval_decision")
     const decision=fields.decision as "approved"|"rejected"
     return withActor(this.pool,identity,async(db,actor)=>{
+      const result=await this.decideModelOwned(db,actor,runId,{decision})
+      return {...result,run:await projected(db,result.run)}
+    })
+  }
+  // Same original transaction, no Owner DTO assembled for delegated reviewer.
+  async decideModelOwned(db:SqlClient,actor:string,runId:string,raw:unknown,delegationRequestId?:string){
+    if(!isUuid(runId))throw new HttpError(400,"invalid_run_id")
+    if(!raw||typeof raw!=="object"||Array.isArray(raw))
+      throw new HttpError(400,"invalid_approval_decision")
+    const fields=raw as Record<string,unknown>
+    if(Object.keys(fields).length!==1||!["approved","rejected"].includes(String(fields.decision)))
+      throw new HttpError(400,"invalid_approval_decision")
+    const decision=fields.decision as "approved"|"rejected"
+    const decisionActor=await ownedStepDecisionActor(db,actor,runId,"model",null,delegationRequestId)
+
       // Row lock serializes competing approvals, model job creation, and replay.
       const previous=await db.query<RunRow>(
         "SELECT "+cols+" FROM agentstudio.runs WHERE id=$1::uuid "+
@@ -156,7 +172,7 @@ export class RunRepository {
       if(!approved)throw new HttpError(409,"approval_not_requested")
       if(approved.status!=="pending"){
         if(approved.status!==decision)throw new HttpError(409,"approval_already_decided")
-        return {run:await projected(db,run),approval:approved.status,replayed:true}
+        return {run,approval:approved.status,replayed:true}
       }
       if(run.status!=="awaiting_approval" ||
          run.checkpoint?.stage!=="awaiting_model_approval")
@@ -171,11 +187,11 @@ export class RunRepository {
         throw new HttpError(409,"agent_spec_revision_changed")
       const decisionResult=await db.query<{id:string}>(
         "UPDATE agentstudio.approvals SET status=$3::text,"+
-        "decided_by=$2::uuid,decided_at=clock_timestamp(),"+
+        "decided_by=$5::uuid,decided_at=clock_timestamp(),"+
         "reason_code=$4::text WHERE run_id=$1::uuid "+
         "AND owner_user_id=$2::uuid AND step_key='model' AND status='pending' "+
         "RETURNING id",
-        [runId,actor,decision,"employee_"+decision+"_model"])
+        [runId,actor,decision,"employee_"+decision+"_model",decisionActor])
       if(decisionResult.rows.length!==1)throw Error("approval_race")
       const isApproved=decision==="approved"
       const checkpoint={...run.checkpoint,
@@ -199,11 +215,11 @@ export class RunRepository {
       await db.query(
         "INSERT INTO agentstudio.audit_events "+
         "(owner_user_id,actor_user_id,run_id,action,target_kind,target_id,"+
-        "result,metadata) VALUES($1::uuid,$1::uuid,$2::uuid,"+
+        "result,metadata) VALUES($1::uuid,$4::uuid,$2::uuid,"+
         "'agent.model_approval','run',$2::text,'succeeded',$3::jsonb)",
-        [actor,runId,JSON.stringify({decision})])
-      return {run:await projected(db,updated.rows[0]!),approval:decision,replayed:false}
-    })
+        [actor,runId,JSON.stringify(delegationRequestId===undefined?{decision}:{decision,delegated:true,delegation_request_id:delegationRequestId}),decisionActor])
+      return {run:updated.rows[0]!,approval:decision,replayed:false}
+
   }
   async submit(identity:Identity,specId:string,raw:unknown):Promise<RunSubmission> {
     if(!isUuid(specId))throw new HttpError(400,"invalid_spec_id")
@@ -233,6 +249,8 @@ export class RunRepository {
           if(scope.some(base=>base.owner_user_id!==actor)&&!spec.spec.model_binding)
             throw new HttpError(409,"shared_knowledge_requires_owner_model_binding")
         }
+        if(Array.isArray(spec.spec?.tools)&&spec.spec.tools.includes("local_computer"))
+          throw new HttpError(409,"agent_local_tools_require_autonomous_runtime")
         if(Array.isArray(spec.spec?.http_tools)&&spec.spec.http_tools.length)
           throw new HttpError(409,"agent_http_tools_require_autonomous_runtime")
         if(Array.isArray(spec.spec?.mcp_tools)&&spec.spec.mcp_tools.length)

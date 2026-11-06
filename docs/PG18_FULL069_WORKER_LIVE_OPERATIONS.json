@@ -1,0 +1,121 @@
+{
+  "format": "pg18_full069_worker_live_operations_v2",
+  "status": "SOURCE_IMPLEMENTATION_AWAITING_ISOLATED_LINUX_VALIDATION",
+  "actual_24h_window_started": false,
+  "actual_24h_window_passed": false,
+  "production_cutover_allowed": false,
+  "physical_targets": {
+    "business": "postgres@127.0.0.1:5333/agent_studio",
+    "telemetry": "postgres@127.0.0.1:5333/agent_studio_telemetry",
+    "same_system_identifier": true,
+    "distinct_database_oids": true,
+    "previous_plan_correction": "telemetry_v1 is an audit-domain/schema label; it is not the physical telemetry database name. Frozen review-only v1 artifacts remain unchanged."
+  },
+  "authority": {
+    "host": "Linux, real UID/GID 0, Node 24, only --experimental-strip-types, no compile cache or injected Node/PG/proxy environment",
+    "source": "root-owned read-only complete069 snapshot plus the independent complete closure containing all seven original entrypoints and NativeServer",
+    "driver": "the original complete069 14-package verified runtime and genuine private capability; no injected Pool, SQL, clock, loader or positive probe",
+    "profile": "/etc/agentstudio/full069-worker-live/profile.json",
+    "public_key": "/etc/agentstudio/full069-worker-live/operator-public.pem",
+    "store": "/var/lib/agentstudio-full069-worker-live/<signed-run-UUID>",
+    "signature": "Ed25519 over UTF-8 JSON.stringify(payload), envelope exactly {payload,signature}; no private key is consumed by this harness",
+    "private_files": "Root-owned canonical paths, no symlinks or hardlinks, protected ancestors, regular O_NOFOLLOW files, modes 0400/0600, bounded stable reads",
+    "configuration_and_store_directories": "Root:Root mode 0700; existing run directory refuses reuse",
+    "required_environment": {
+      "AGENT_STUDIO_FULL069_WORKER_LIVE_ENABLED": "true",
+      "AGENT_STUDIO_FULL069_WORKER_LIVE_APPROVED": "RUN_DISPOSABLE_FULL069_WORKER_QUALIFICATION_ONLY"
+    },
+    "approval_scope": "The initial signed profile authorizes warm-up and owned process launches only. It does not start a qualifying window or authorize production deployment."
+  },
+  "preconditions_owned_by_root_operator": [
+    "Explicitly select and authorize a disposable experimental complete069 target; record actual cluster system identifier and both database OIDs.",
+    "Complete the real C bootstrap and preserve its eight external intent/result pairs unchanged. Do not convert their exit codes or observations into aggregate readiness.",
+    "Prepare the separate agentstudio_review_worker_login with its original single review-worker group and pass its original real-session assessment audit. Do not alias stage-worker or extend C's action enum.",
+    "If the separate local Executor account is already enabled, explicitly declare executor.enabled and its independent credential file; invoke its original preflight. Otherwise declare executor.enabled=false. This harness never prepares that role.",
+    "Supply protected Root credential originals and already-created nonroot-owned 0400 mount copies. Supply original Worker/Broker/Knowledge/Native configuration and certificate inputs. This harness does not create passwords, accounts, grants, HBA entries or worker boot credentials.",
+    "Operate the original Root Controller in serving state with current instance/epoch, actual Native UID/GID, eight active fresh generations, seven newly issued never-reused boot UIDs, and staged unclaimed original boot files. Knowledge index/query share one process and one issued UID with two independent generations.",
+    "Leave no live Writer or Reader backend at preflight and no prior claim/binding for the planned generations. Reserve the original Root journal's unchanged 4 MiB capacity for the entire period; do not compact or erase its evidence.",
+    "Provide a TLS certificate/key/CA for 127.0.0.1, already valid and valid through minimum duration plus ten minutes. Do not reuse the one-day Native smoke certificate for a 24-hour run.",
+    "Keep loopback ports 17403 and 17443 available, fixed private mount namespaces and setpriv available, protected source/runtime readable by their fixed nonroot processes, network policy explicitly reviewed and pinned to actual iptables-save/ip6tables-save output.",
+    "Keep original runtime approvals and heartbeat enrollment in the fixed service environment. Native configuration writes, employee UAT writes and embedded Worker startup remain disabled.",
+    "Ensure the four original business queues are empty and no actual business traffic or unrelated Native reader shares this isolated qualification. Retain legitimate Native login/logout session rows."
+  ],
+  "C_interface": {
+    "ordered_actions": ["api", "native-auth", "first-admin", "worker", "identity", "broker", "index-worker", "index-broker"],
+    "intent_format": "complete069_service_operation_v1",
+    "result_format": "complete069_service_result_v1",
+    "binding": "exact action, operation UUID, complete source hash, cluster/database identity and raw record SHA-256",
+    "live_safe_reuse": ["inspectCompleteProfile", "verifyCompleteProfile", "completeServiceActualLogin"],
+    "fresh_only_functions_never_called": ["completeServiceCatalog", "completeServicePreflight", "completeServiceInitialAdmin"],
+    "prior_commit_acknowledged": "Preserved verbatim, including false. Historical API/native-auth first_admin_verified=false is permitted only for those two earlier actions.",
+    "raw_scram_map": "Never obtained, serialized, logged or forwarded. Current role verifiers are hashed server-side; only digests are compared privately.",
+    "provenance_is_live_readiness": false
+  },
+  "modes": {
+    "--plan": "Offline closed metadata only; performs no filesystem, credential, SQL, network or process operation.",
+    "--inspect-live": "Requires genuine approved host and signed profile. Performs actual read-only physical target/catalog/service-login audits; starts no process or qualifying window.",
+    "--run": "Requires explicit run approval and signed profile. Owns one NativeServer, its local TLS proxy, and the seven original business processes. Uses no old CI purpose guard or old success receipt.",
+    "unsupported": "No test bypass, injected duration/clock/process, automatic retry, automatic restart, automatic rebind, UID reset, standalone --accept-end, resume or cumulative-fragment mode."
+  },
+  "processes": [
+    {"id": "prepare", "entry": "worker-loop.ts", "args": ["--serve"], "kinds": ["prepare"]},
+    {"id": "model", "entry": "model-worker-loop.ts", "args": ["--serve"], "kinds": ["model"]},
+    {"id": "workflow_safe", "entry": "workflow-worker-loop.ts", "args": ["--serve"], "kinds": ["workflow_safe"]},
+    {"id": "workflow_v2", "entry": "workflow-v2-worker-loop.ts", "args": ["--serve"], "kinds": ["workflow_v2"]},
+    {"id": "agent_autonomous", "entry": "autonomous-agent-worker-loop.ts", "args": ["--serve"], "kinds": ["agent_autonomous"]},
+    {"id": "knowledge", "entry": "knowledge-index-service.ts", "args": ["--serve", "worker"], "kinds": ["knowledge_index", "knowledge_query"]},
+    {"id": "assessment", "entry": "agent-assessment-service.ts", "args": ["--serve", "worker"], "kinds": ["assessment"]}
+  ],
+  "process_identity": "Genuine private spawn handles, PID plus /proc start ticks and supervisor identity, exact original argv, UID/GID/groups, zero capabilities, no_new_privs, private mount namespace and exclusive nonroot UIDs. Only owned processes may be signalled; PID reuse never authorizes a signal.",
+  "window": {
+    "warm_up": "All seven processes run together; Native HTTPS and original Root journal/telemetry prove all eight fresh-ready kinds and independent Knowledge bindings before BEGIN.",
+    "minimum_ms": 86400000,
+    "sample_ms": 30000,
+    "maximum_gap_ms": 45000,
+    "maximum_collection_ms": 15000,
+    "worker_send_ms_unchanged": 5000,
+    "reader_ms_unchanged": 5000,
+    "native_ms_unchanged": 8000,
+    "uid_pool_unchanged": 128,
+    "clock": "Both actual performance.now() and wall elapsed time must meet minimum; process/clock origin bound to start. A gap, clock drift, PID exit/reuse, source/profile/runtime/role/ledger/credential/Root epoch/generation change, failed audit or unavailable sample disqualifies the entire period.",
+    "native_path": "Actual original admin login, current-admin verification, GET /api/v2/company-worker-heartbeats and logout via fixed https://127.0.0.1:17443 to the owned original NativeServer. Never replace it with a Root Reader client or a supplied snapshot.",
+    "public_metadata": "Native snapshot contains readiness and timestamps only. Generation/sequence and original PID/backend_start evidence are independently read from the actual telemetry target and Root journal.",
+    "business_audits": "Original full069 API audit chain and actual service login checks repeat throughout; original assessment audit repeats; optional separate Executor preflight repeats when explicitly enabled.",
+    "session_rows": "Legitimate revoked login/logout sessions remain. Fresh-only zero-session checks and cleanup DELETE are forbidden."
+  },
+  "operator_acknowledgements": {
+    "window_ms_each": 120000,
+    "begin_file": "<run store>/begin-acknowledgement.json",
+    "begin_payload_keys": ["format", "run_id", "profile_sha256", "record_sha256", "operator", "accepted_at"],
+    "begin_format": "pg18_full069_worker_live_begin_acknowledgement_v1",
+    "begin_record_sha256": "actual raw warm.json SHA-256, emitted only after concrete warm-up evidence is durable",
+    "end_file": "<run store>/end-acknowledgement.json",
+    "end_format": "pg18_full069_worker_live_end_acknowledgement_v1",
+    "end_record_sha256": "actual raw end-draft.json SHA-256 after required duration, stop and cleanup evidence",
+    "timestamps": "Canonical ISO UTC; same configured operator; signature validated with pinned independent operator public key; acknowledgement within the actual 120-second wait and within 120 seconds of host wall time.",
+    "missing_ack": "Disqualify and clean up owned processes. No delayed resume, inferred approval or conversion of C's old ACK.",
+    "post_end_ack": "Reverify original complete069 audits, physical target, roles/ledger, Root epoch and telemetry backend absence before the new end receipt may say qualifies_run=true."
+  },
+  "receipts": {
+    "new_only": ["pg18_full069_worker_live_warm_v1", "pg18_full069_worker_live_start_v1", "pg18_full069_worker_live_sample_v1", "pg18_full069_worker_live_end_draft_v1", "pg18_full069_worker_live_end_v1", "pg18_full069_worker_live_failure_v1"],
+    "storage": "External Root-only run directory, O_EXCL records, fsync, sequence/hash-chain JSONL samples, protected acknowledgement files; never schema_migrations receipts.",
+    "closed_output": "Only bounded status, run ID and hashes. No raw stderr, provider response, password, SCRAM verifier, cookie, employee email or arbitrary exception body.",
+    "no_old_success_substitution": ["050", "059", "060", "short hosted CI", "C preparation observation", "Reader/Writer short test receipt"]
+  },
+  "cleanup": {
+    "workers": "Signal all seven original owned processes, preserve original graceful shutdown; original 12-second stop and 5-second forced cleanup budget. Any forced kill or uncertain identity fails qualification.",
+    "telemetry": "Original Root journal must contain matching ended records for the exact bound Writer PID/backend_start identities. Writer and Reader sessions in the dedicated telemetry database must be zero. The Root controller and read-only business audit pools are outside that zero-session scope.",
+    "queues": {"jobs": 0, "runs": 0, "reviews": 0, "queries": 0},
+    "native": "Close owned TLS proxy and owned NativeServer gracefully; verify owned process absence. Never stop unrelated processes or mutate Root policy.",
+    "failure": "Latches false; still cleans genuine owned handles if source/epoch checks fail. If trustworthy final evidence cannot be persisted, report records_available=false and require Root investigation."
+  },
+  "integration_and_validation": {
+    "root_unit_hook": "Add services/pg-api/tests/pg18-full069-worker-live.test.mjs to the existing root unit-test command without replacing its current tests.",
+    "source_candidate_scope": "Nine new MJS modules, one pure test and this operation-plan JSON; no existing SQL/auditor/claim/lease/Broker/approval/protocol implementation is edited.",
+    "source_assembly": "The original complete069 archive alone does not include these nine independent modules and every Worker entry. Assemble the independent live source closure together with the unchanged complete069 SQL and genuine verified 14-package runtime, then recapture hashes from that exact deployed read-only tree. Do not infer source hashes from the offline handoff or change old bundler flag behavior.",
+    "offline_validation": "Pure contract/refusal tests, actual offline CLI probes, genuine source capture and compiler interoperability checks only.",
+    "required_before_real_window": "Root review, normal pnpm check and isolated PB/SQLite E2E, then bounded isolated Linux validation of real preflight, mount/UID process ownership, HTTPS path and cleanup. A short test cannot lower this harness's 24-hour qualifying minimum or supply its start/end receipts.",
+    "actual_hosted_run_pending": true,
+    "actual_production_deployment_authorized": false
+  }
+}

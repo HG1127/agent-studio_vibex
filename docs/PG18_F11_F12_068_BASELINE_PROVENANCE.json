@@ -1,0 +1,246 @@
+{
+  "format": "F11_F12_original_business_baseline_source_provenance_v4",
+  "baseline_ref": "5a31a1d6bf073cc2cc110340847cbf05346813ab",
+  "authority": "Locally available accepted main Git object; read-only git show, not a new remote HEAD or push claim",
+  "files": [
+    {
+      "path": "src/pages/Integrate/useIntegrate.ts",
+      "Git_LF_sha256": "9e1188d21aa6a9f9847b1e9a95660787befc7a97ac0ca3d8b310bef9c2b1ce47",
+      "lines": [
+        {
+          "term": "createKey",
+          "line": 430
+        },
+        {
+          "term": "reissueKey",
+          "line": 462
+        },
+        {
+          "term": "revokeKey",
+          "line": 481
+        },
+        {
+          "term": "saveEmbedConfig",
+          "line": 372
+        },
+        {
+          "term": "toggleEmbedEnabled",
+          "line": 405
+        },
+        {
+          "term": "runTest",
+          "line": 545
+        },
+        {
+          "term": "pollTestRun",
+          "line": 507
+        },
+        {
+          "term": "sourceFilter",
+          "line": 144
+        },
+        {
+          "term": "statsRow",
+          "line": 146
+        },
+        {
+          "term": "embedSnippet",
+          "line": 631
+        },
+        {
+          "term": "api/public/agent",
+          "line": 632
+        }
+      ]
+    },
+    {
+      "path": "src/pages/Integrate/IntegratePage.tsx",
+      "Git_LF_sha256": "d97eb63feb727e43b502d767a30a6946ab16b228a4478b99ed16a0cd30ebb6ad",
+      "lines": [
+        {
+          "term": "AgentPickerCard",
+          "line": 2
+        },
+        {
+          "term": "createKey",
+          "line": 131
+        },
+        {
+          "term": "reissueKey",
+          "line": 132
+        },
+        {
+          "term": "revokeKey",
+          "line": 133
+        },
+        {
+          "term": "saveEmbedConfig",
+          "line": 116
+        },
+        {
+          "term": "toggleEmbedEnabled",
+          "line": 117
+        },
+        {
+          "term": "runTest",
+          "line": 159
+        },
+        {
+          "term": "sourceFilter",
+          "line": 173
+        },
+        {
+          "term": "statsRow",
+          "line": 94
+        },
+        {
+          "term": "embedSnippet",
+          "line": 118
+        },
+        {
+          "term": "每分钟",
+          "line": 195
+        },
+        {
+          "term": "一次",
+          "line": 195
+        }
+      ]
+    },
+    {
+      "path": "src/components/integrate/AgentPickerCard.tsx",
+      "Git_LF_sha256": "620c3cf1434143dcd4861b3d1ae457a399a56be81c3a4cc25e9296731e358d89",
+      "lines": [
+        {
+          "term": "AgentPickerCard",
+          "line": 4
+        }
+      ]
+    },
+    {
+      "path": "src/components/integrate/ApiKeysCard.tsx",
+      "Git_LF_sha256": "1ea63ada95770aa269581b44aa5bb0102cab41e5b9d8eb4f2e8e3480bcac515b",
+      "lines": [
+        {
+          "term": "一次",
+          "line": 43
+        }
+      ]
+    },
+    {
+      "path": "src/components/integrate/EmbedConfigCard.tsx",
+      "Git_LF_sha256": "a067dba11b9b8c6f67a80b1b8f5294def7d27ade9ca87a05da33ed89c21d5d28",
+      "lines": [
+        {
+          "term": "embedSnippet",
+          "line": 19
+        }
+      ]
+    },
+    {
+      "path": "src/components/integrate/EmbedPreviewPanel.tsx",
+      "Git_LF_sha256": "cb8e4022951ba94c86ad6f0830023c1387013a6296af9c40b3998ed2c244a816",
+      "lines": []
+    },
+    {
+      "path": "src/components/integrate/EndpointDocsCard.tsx",
+      "Git_LF_sha256": "2c6069ec815900d5dbee7b9b4e17f5ee5c53a8f9e56359f98cb0503cdd70b4c2",
+      "lines": [
+        {
+          "term": "const curlText",
+          "line": 14
+        },
+        {
+          "term": "const jsText",
+          "line": 24
+        },
+        {
+          "term": "每分钟",
+          "line": 101
+        }
+      ]
+    },
+    {
+      "path": "src/components/integrate/InvocationStatsRow.tsx",
+      "Git_LF_sha256": "619b7f679cc5436e3377cc6df13c8aa6d89bf0bd6194a277638dcede21c221c9",
+      "lines": [
+        {
+          "term": "statsRow",
+          "line": 5
+        },
+        {
+          "term": "每分钟",
+          "line": 51
+        }
+      ]
+    },
+    {
+      "path": "src/components/integrate/InvocationLogList.tsx",
+      "Git_LF_sha256": "b590759aa97bbffbd78eb342c33743b54e4386e6a4d073f29c9f8bf4a90ef552",
+      "lines": [
+        {
+          "term": "sourceFilter",
+          "line": 9
+        },
+        {
+          "term": "5 秒",
+          "line": 37
+        },
+        {
+          "term": "一次",
+          "line": 83
+        }
+      ]
+    },
+    {
+      "path": "src/components/integrate/TestRunPanel.tsx",
+      "Git_LF_sha256": "8c3b60e0df37193c1b1abb1c3bbe695c4cd227d772d8dd377fe1ea4547708ec8",
+      "lines": []
+    },
+    {
+      "path": "pocketbase/pb_hooks/integrate_api.pb.js",
+      "Git_LF_sha256": "58fd309f41b7ff7ca8ba76a8c5a115d14ef8e08ff4b2b21b1a4f08807932d2e3",
+      "lines": [
+        {
+          "term": "每分钟",
+          "line": 529
+        },
+        {
+          "term": "一次",
+          "line": 8
+        },
+        {
+          "term": "api/public/agent",
+          "line": 17
+        }
+      ]
+    }
+  ],
+  "protected_shared_cohort_readonly": [
+    {
+      "path": "services/pg-api/src/contracts.ts",
+      "current_H_readonly_Git_LF_sha256": "7aa7b9d3332e8200f2d3dd78f88c62acf4b7363b83fdfd41dfa5b04b7c887935",
+      "modified_by_A": false
+    },
+    {
+      "path": "services/pg-api/src/workflow-graph-v2.ts",
+      "current_H_readonly_Git_LF_sha256": "3d3c0f24fee5173869dc5c407583bc58cd901ec480b374de67030255ded3587a",
+      "modified_by_A": false
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_059_agent_generated_acceptance.sql",
+      "current_H_readonly_Git_LF_sha256": "74f884019a36ef33b8f8c95396fe6fa8ec128ece904c915e3495312d4a0d8063",
+      "modified_by_A": false
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_060_agent_descriptive_patch.sql",
+      "current_H_readonly_Git_LF_sha256": "b8aac275e692a81d2e05c8825f33bba7e5f418199e3dce97a409832f951ccbc9",
+      "modified_by_A": false
+    }
+  ],
+  "Root_reported_lineage8_device9_retained_by_not_modifying_their_sources": true,
+  "SQL068_changed": false,
+  "actual_SQL": false,
+  "actual_browser": false,
+  "provider": false
+}

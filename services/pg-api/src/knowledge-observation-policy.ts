@@ -1,8 +1,10 @@
+import {ordinaryCaseObservationsCurrent} from './native-ordinary-case-observation-policy.ts'
 import {HttpError,type SqlClient} from "./contracts.ts"
 import {checkedWorkflowV2StoredState,verifyWorkflowV2Snapshot,workflowV2RunColumns,type WorkflowV2RunRow} from "./workflow-v2-run-repository.ts"
 import {agentHumanEvidenceExpected} from "./agent-human-input-policy.ts"
 import {agentMemoryContextExpected} from "./agent-memory-context-policy.ts"
 export async function currentKnowledgeObservations(db:SqlClient,run:string,currentStep=""):Promise<boolean>{
+  if(!await ordinaryCaseObservationsCurrent(db,run))return false
   const state=(await db.query<{installed:boolean;human_installed?:boolean}>("SELECT to_regprocedure('agentstudio.knowledge_query_execution_validate_run(uuid,text)') IS NOT NULL AS installed,"+
     "to_regclass('agentstudio.agent_human_input_responses') IS NOT NULL AS human_installed")).rows[0]
   if(state?.installed!==true)return state?.human_installed!==true

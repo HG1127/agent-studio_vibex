@@ -1,0 +1,10 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {requireAgentCreateJourneyGenuineCi,agentCreateJourneyGenuineWorkflow} from './helpers/agent-create-journey-genuine-guard.mjs'
+const env={GITHUB_ACTIONS:'true',CI:'true',RUNNER_OS:'Linux',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'HG1127/agent-studio_vibex',GITHUB_WORKFLOW:agentCreateJourneyGenuineWorkflow,GITHUB_RUN_ID:'987654',GITHUB_JOB:'pg18-agent-create-journey-browser',AGENT_STUDIO_F02_GENUINE_CI:'YES_DISPOSABLE_F02_EMPLOYEE_JOURNEY_ONLY',AGENT_STUDIO_F02_GENUINE_SUITE:'browser',AGENT_STUDIO_PG18_CI_EPHEMERAL:'true',AGENT_STUDIO_PG18_CI_WRITE_APPROVED:'YES_DISPOSABLE_GITHUB_ONLY',AGENT_STUDIO_PG18_CI_HOST:'127.0.0.1',AGENT_STUDIO_PG18_CI_PORT:'5432',AGENT_STUDIO_PG18_CI_DATABASE:'agentstudio_pg18_ci',AGENT_STUDIO_PG18_CI_ADMIN_USER:'agentstudio_admin',AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD:'synthetic-agentstudio-pg18-ci-987654'}
+test('exact F02 employee browser purpose accepts only an independent synthetic CI target',()=>{const t=requireAgentCreateJourneyGenuineCi(env,'linux',1001);assert.equal(t.database,'agentstudio_pg18_ci');assert.equal(t.host,'127.0.0.1');assert.equal(t.port,5432)})
+test('ordinary hosts, wrong purpose and production or injected transport alternatives refuse before I/O',()=>{
+ assert.throws(()=>requireAgentCreateJourneyGenuineCi({},'win32',1001));assert.throws(()=>requireAgentCreateJourneyGenuineCi(env,'linux',0))
+ for(const patch of [{GITHUB_WORKFLOW:'Other workflow'},{GITHUB_JOB:'pg18-local-device-browser'},{GITHUB_REPOSITORY:'other/repo'},{AGENT_STUDIO_F02_GENUINE_CI:'yes'},{AGENT_STUDIO_F02_GENUINE_SUITE:'database'},{AGENT_STUDIO_PG18_CI_PORT:'5333'},{AGENT_STUDIO_PG18_CI_DATABASE:'company'}])assert.throws(()=>requireAgentCreateJourneyGenuineCi({...env,...patch},'linux',1001))
+ for(const key of ['NODE_OPTIONS','NODE_PATH','NODE_EXTRA_CA_CERTS','NODE_TLS_REJECT_UNAUTHORIZED','HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy','PGHOST','PGPASSWORD','DATABASE_URL'])assert.throws(()=>requireAgentCreateJourneyGenuineCi({...env,[key]:'1'},'linux',1001))
+})

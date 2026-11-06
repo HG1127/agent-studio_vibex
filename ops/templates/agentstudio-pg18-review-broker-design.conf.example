@@ -1,0 +1,8 @@
+# SOURCE EXAMPLE ONLY. Do not install, enable or start a service.
+# Review with agent-assessment-broker.service.example, then place only under
+# agentstudio-pg18-review-broker.service.d/ after separate runtime approval.
+# The unchanged base ExecStart remains the original --preflight broker.
+[Service]
+LoadCredential=design-dispatch.secret:/root/.agentstudio-pg18-secrets/design-dispatch.secret
+Environment=AGENT_STUDIO_PG18_DESIGN_EXECUTION_ENABLED=false
+Environment=AGENT_STUDIO_PG18_DESIGN_EXECUTION_APPROVED=REVIEW_REQUIRED

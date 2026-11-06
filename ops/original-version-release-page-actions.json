@@ -1,0 +1,124 @@
+{
+  "format": "original-version-release-page-actions.v1",
+  "scope": "Preserve the existing employee VersionRelease route and interactions while replacing its underlying backend.",
+  "baseline": {
+    "entry": "src/main.tsx -> src/App.tsx -> src/pages/VersionRelease/index.tsx",
+    "page": "src/pages/VersionRelease/VersionReleasePage.tsx",
+    "selector": "src/pages/VersionRelease/useVersionRelease.ts",
+    "native_hook": "src/pages/VersionRelease/usePgVersionRelease.ts",
+    "PocketBase_default_preserved": true,
+    "D_UI_interactions_preserved": [
+      "three pipeline cards",
+      "history and comparison",
+      "confirmation dialog",
+      "fluid page width",
+      "editor refresh event",
+      "approval return testRun recovery",
+      "live waiting states"
+    ],
+    "Pilot_UI_used_as_acceptance": false
+  },
+  "authority": {
+    "identity": "Actual Native Cookie verification and SQL withActor identity mapping.",
+    "expected_employee": "Checked after real actor resolution and before release queries; never an authentication credential.",
+    "protocol": "native_original_version_release_v1",
+    "feature_header": "X-AgentStudio-Original-Release: 1",
+    "backend": "services/pg-api/src/original-version-release-http.ts -> actual AgentReleaseRepository and existing migration046 RPCs",
+    "writes": "Existing configuration-write and acceptance flags remain authoritative; the facade grants no new permissions.",
+    "API_root": "/__pg_native/api/v2/original-ui/agent-releases"
+  },
+  "actions": [
+    {
+      "ui": "Select owned Agent",
+      "api": "Original Home owner catalog and GET agent",
+      "result": "Read verified owner pages, validate totals and deduplicate; late old employee or selection responses cannot update the current view."
+    },
+    {
+      "ui": "Load versions and publication status",
+      "api": "GET /:spec",
+      "result": "Use server next_version_no and active_version_id. History is explicitly partial: latest100 versions and10 acceptance entries."
+    },
+    {
+      "ui": "Read an older current publication",
+      "api": "GET /:spec/versions/:version",
+      "result": "Fetch active_version_id even outside the loaded history, then recheck source and release head before displaying it."
+    },
+    {
+      "ui": "Submit acceptance",
+      "api": "POST /:spec/acceptance",
+      "result": "Require explicit task and cost acknowledgement, current owner model revision, source CAS and existing acceptance gate; create the actual server-owned run, without browser ticks."
+    },
+    {
+      "ui": "Observe acceptance and handle approvals",
+      "api": "GET /:spec/acceptance/:run; original run-detail route",
+      "result": "awaiting_approval and awaiting_input remain live. Only test_current with matching source and revision proves the current configuration passed."
+    },
+    {
+      "ui": "Save version",
+      "api": "POST /:spec/change action=snapshot",
+      "result": "Use the current source revision/hash and a server-assigned version number. Only a current verified acceptance may be linked."
+    },
+    {
+      "ui": "Publish",
+      "api": "POST /:spec/change action=publish",
+      "result": "Recheck source, version and release-head CAS, current resources and explicit confirmation. Untested publication requires its separate explicit acknowledgement."
+    },
+    {
+      "ui": "Restore full configuration",
+      "api": "POST /:spec/change action=restore",
+      "result": "Require an8-500 character reason, current source/version CAS and current resource ownership/ACL checks; reuse the actual atomic restore transaction."
+    },
+    {
+      "ui": "Delete draft",
+      "api": "POST /:spec/change action=delete_draft",
+      "result": "Require current version CAS and confirmation. Published versions cannot be deleted as drafts."
+    },
+    {
+      "ui": "Expand and compare versions",
+      "api": "GET /:spec/versions/:version",
+      "result": "Read full owner snapshots including name, model, HTTP, MCP, knowledge and acceptance-model bindings. Missing details never mean identical configurations."
+    },
+    {
+      "ui": "Recover an unknown mutation",
+      "api": "GET /:spec/receipts/:request",
+      "result": "Persist only owner/action/IDs/revisions/hashes and request fingerprint in owner-scoped session storage. Exact GET confirmation checks the original fingerprint;404 remains uncertain and no POST is automatically replayed."
+    },
+    {
+      "ui": "Recover temporary identity failure",
+      "api": "Actual Native /me plus fresh workspace/resource reads",
+      "result": "Hide private content and disable actions while unknown. A newly verified same employee may recover in-memory inputs after context checks; verified signout, me401/me403, another employee and disposal permanently erase local private drafts. Late responses remain fenced."
+    },
+    {
+      "ui": "Refresh model and source context",
+      "api": "Actual owner model inventory plus fresh workspace and source reads",
+      "result": "Revalidate current model revisions, availability and source/head; clear stale fee/review confirmation, never silently rebind, preserve unsubmitted text, and reject late old initialization or inventory responses. Partial inventory does not establish model absence."
+    }
+  ],
+  "history_limits": {
+    "version_rows_complete": false,
+    "older_active_version_fetched_separately": true,
+    "publication_table": "Loaded versions' last-publication state; not a complete publication-event ledger.",
+    "missing_details_equal": false
+  },
+  "open_acceptance_gaps": [
+    "Dedicated original /version-release genuine browser story has not run.",
+    "Actual employee Cookie, owner isolation, resource revocation, CAS/audit rollback and full restore must be verified on the original page with isolated PG.",
+    "Committed reply-prefix loss and matching browser requestfailed must be followed by GET-only exact receipt recovery for release mutations.",
+    "Acceptance through actual Worker, current-source pass, pending approval/input and return recovery still require end-to-end evidence.",
+    "Real employee UAT, target installation, backups/recovery/rollback and long-running Worker qualification remain open."
+  ],
+  "evidence_limits": {
+    "pure_terminal_only": true,
+    "focused_pure_checks": 90,
+    "combined_curated_pure_checks": 1944,
+    "frontend_TS6": true,
+    "API_TS5": true,
+    "normal_build_assets": 104,
+    "normal_PG_resource_matches": 0,
+    "original_PG_build_assets": 106,
+    "actual_local_SQL_Worker_server_browser_executed": false,
+    "original_version_release_genuine_accepted": false,
+    "all_original_pages_complete": false,
+    "production_GO": false
+  }
+}

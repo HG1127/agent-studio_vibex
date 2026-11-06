@@ -1,0 +1,101 @@
+name: Agent Studio Original ScheduledTasks Worker synthetic PG18 verification
+
+on:
+  push:
+    branches: ['codex/pg18-worker-heartbeat-20261028']
+  workflow_dispatch:
+    inputs:
+      reviewed_head:
+        description: Full reviewed committed head including Worker story and source pins
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: original-schedule-worker-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pg18-original-schedule-worker:
+    name: Original ScheduledTasks / actual existing Workers / same-round synthetic TLS model
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    env:
+      AGENT_STUDIO_ORIGINAL_SCHEDULE_WORKER_CI: YES_DISPOSABLE_ORIGINAL_SCHEDULE_WORKER_TLS_ONLY
+      AGENT_STUDIO_ORIGINAL_SCHEDULE_WORKER_STORY: original-scheduled-tasks-worker
+      AGENT_STUDIO_ORIGINAL_SCHEDULE_WORKER_EXPECTED_HEAD: '${{ inputs.reviewed_head || github.sha }}'
+      AGENT_STUDIO_ORIGINAL_SCHEDULE_WORKER_MODEL_ORIGIN: 'https://127.0.0.1:7459'
+      AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+      AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+      AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+      AGENT_STUDIO_PG18_CI_PORT: '5432'
+      AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+      AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+      AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+      AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED: 'true'
+      AGENT_STUDIO_PG18_UAT_APPROVAL: APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY
+      AGENT_STUDIO_PG18_RUN_APPROVAL_UAT_ENABLED: 'true'
+      AGENT_STUDIO_PG18_RUN_APPROVAL_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_RUN_APPROVAL_UAT_ONLY
+      AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_ENABLED: 'true'
+      AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_EXECUTION_ONLY
+      AGENT_STUDIO_PG_AUTONOMOUS_AGENT_ENABLED: 'true'
+      AGENT_STUDIO_PG_AUTONOMOUS_AGENT_APPROVED: APPROVE_DISPOSABLE_PG18_AUTONOMOUS_AGENT_ONLY
+      AGENT_STUDIO_PG18_SCHEDULE_RUNTIME_ENABLED: 'true'
+      AGENT_STUDIO_PG18_SCHEDULE_RUNTIME_APPROVED: APPROVE_DISPOSABLE_PG18_SCHEDULE_RUNTIME_ONLY
+      AGENT_STUDIO_PG18_BOUND_GENERATION_UAT_ENABLED: 'true'
+      AGENT_STUDIO_PG18_BOUND_GENERATION_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_OWNER_BOUND_GENERATION_UAT_ONLY
+      AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_ENABLED: 'true'
+      AGENT_STUDIO_PG_WORKFLOW_V2_MODEL_APPROVED: APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_MODEL_ONLY
+      AGENT_STUDIO_PG_WORKFLOW_V2_TOOLS_ENABLED: 'true'
+      AGENT_STUDIO_PG_WORKFLOW_V2_TOOLS_APPROVED: APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_TOOLS_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '${{ inputs.reviewed_head || github.sha }}'
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Locked dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual type checks and both original builds
+        run: |
+          pnpm --dir services/pg-api check
+          pnpm exec tsc -p tsconfig.app.json --noEmit
+          pnpm build
+          node node_modules/vite/bin/vite.js build --config vibex-local/vite.original-pg.config.ts --configLoader runner
+      - name: Purpose and closed transport source checks
+        run: >-
+          node --experimental-strip-types --test
+          tests/original-schedule-worker-hosted-policy.test.mjs
+          tests/original-schedule-worker-hosted-source.test.mjs
+      - name: Chromium for the fixed original page
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Reviewed source then real synthetic Worker completion chain
+        run: node --experimental-strip-types ops/pg18-original-schedule-worker-hosted-entry.mjs
+      - name: Closed aggregate evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-schedule-worker-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/original-schedule-worker-genuine-results/**/original-schedule-worker-observation.json
+          if-no-files-found: warn
