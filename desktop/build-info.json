@@ -1,6 +1,6 @@
 {
-  "sourceCommit": "eaf6e08d3f684424fa7e69815f85cefb61ff2dc1",
-  "version": "0.1.0-preview.27",
+  "sourceCommit": "27943f559783d37cab781b3c5f562e0eeaf51459",
+  "version": "0.1.0-preview.28",
   "platform": "win32-x64",
   "codeSigned": false,
   "integratedSources": {
@@ -27,7 +27,8 @@
     "agentBoundLifecycle": "validated-working-tree-before-preview25",
     "runModelSettings": "single-resource-settings-control",
     "desktopComputerWorkspaceLayout": "validated-working-tree-before-preview25",
-    "windowScopedVision": "5f43271cf8dbd059e5134ead0b0355965ccdfbb7"
+    "windowScopedVision": "5f43271cf8dbd059e5134ead0b0355965ccdfbb7",
+    "companyHttps": "scoped-bundled-company-ca-business-connector-and-signed-updates"
   },
-  "sourceState": "preview27-candidate-integrated-window-vision-authoring-diagnostics-and-agent-receipt-fixes"
+  "sourceState": "committed-unified-source-with-release-metadata"
 }

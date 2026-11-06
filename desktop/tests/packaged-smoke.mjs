@@ -22,7 +22,7 @@ const data=await fs.mkdtemp(path.join(os.tmpdir(),'agentstudio-desktop-db-'))
 const key=randomBytes(32).toString('hex')
 const sleep=ms=>new Promise(r=>setTimeout(r,ms))
 const listener=net.createServer();await new Promise(r=>listener.listen(0,'127.0.0.1',r));const port=listener.address().port;await new Promise(r=>listener.close(r))
-let pb,client,workbench,report,electronFixture,applicationGrant
+let pb,client,workbench,report,electronFixture,applicationGrant,passed=false
 const sockets=new Set()
 try {
   pb=spawnHeadlessPocketBase(process.env.POCKETBASE_BIN||path.join(root,'vibex-local/bin/windows/pocketbase.exe'),['serve','--http=127.0.0.1:'+port,'--dir='+data,'--hooksDir='+path.join(root,'pocketbase/pb_hooks')],{cwd:path.join(root,'pocketbase'),env:{AGENT_STUDIO_AUTH_MODE:'standalone',AGENT_STUDIO_LEGACY_TEST_ONLY:'false',AGENT_STUDIO_ALLOW_ANON:'false',AGENT_STUDIO_BOOTSTRAP_SECRET:key,AGENT_STUDIO_SECRET_KEY:randomBytes(16).toString('hex'),AGENT_STUDIO_BACKGROUND_WORKER:'false'}})
@@ -148,6 +148,7 @@ try {
   assert.equal(await fs.readFile(prepared.configFile,'utf8'),originalConfig,'cancelled in-app review changed local permissions')
   const manager=await fetch(report.managerOrigin+'/api/state');assert.equal(manager.status,403)
   const code=await (await fetch(report.origin+'/__desktop/runtime.js')).text();assert.ok(code.includes(server));assert.ok(!code.includes(login.data.token))
+  passed=true
   console.log('PACKAGED_DESKTOP_SMOKE '+JSON.stringify({...report,testHome:dir,backend:'isolated-standalone-pocketbase',verifiedEmployeeJwt:true,forgedIdentityDenied:true,bundledNode:true,developerPathRemoved:true,realFileJob:true,nativeFileApplications,electronColdStart,electronObservation,unapprovedJobDenied:true,inAppPermissionReview:true,cancelledReviewUnchanged:true,productionData:false}))
   if(process.argv.includes('--keep-open')){
     await fs.writeFile(path.join(root,'.tmp','desktop-active-smoke.json'),JSON.stringify({directory:dir,report,finish:path.join(dir,'finish')},null,2))
@@ -164,6 +165,16 @@ try {
   for(const s of sockets)s.destroy()
   if(workbench)await new Promise(r=>workbench.close(r))
   await stopHeadlessPocketBase(pb)
-  console.log('DESKTOP_SMOKE_TEST_DATA '+dir)
-  // Retain this run's isolated UI profile as evidence, never ship it.
+  await fs.mkdir(path.join(root,'.tmp'),{recursive:true})
+  await fs.writeFile(path.join(root,'.tmp','desktop-smoke-last-summary.json'),JSON.stringify({status:passed?'PASS':'FAIL',report,productionData:false},null,2))
+  for(const [directory,prefix] of [[dir,'agentstudio-desktop-smoke-'],[data,'agentstudio-desktop-db-']]){
+    try{
+      assert.equal(path.dirname(directory),path.resolve(os.tmpdir()))
+      assert.ok(path.basename(directory).startsWith(prefix))
+      assert.equal((await fs.lstat(directory)).isSymbolicLink(),false)
+      assert.equal(await fs.realpath(directory),directory)
+      // fs.rm unlinks child directory links rather than traversing their targets.
+      await fs.rm(directory,{recursive:true,force:true,maxRetries:10,retryDelay:300})
+    }catch(error){console.log('DESKTOP_SMOKE_CLEANUP_RETAINED '+JSON.stringify({directory,reason:error.message,condition:'Remove after the test-owned process releases handles; preserve the small summary.'}))}
+  }
 }
