@@ -120,6 +120,7 @@ function read(app, uid, runId, id, options) {
     fault("invalid_result_range",400)
   var r = row(app,uid,runId,id), envelope = JSON.parse(String(r.payload))
   if(envelope.validation&&envelope.validation.status==="invalid")fault("result_output_contract_invalid",422)
+  if (!Object.prototype.hasOwnProperty.call(envelope, field)) fault("result_field_unavailable",422)
   var value = envelope[field]
   var text = field === "text" ? String(value || "") : JSON.stringify(value === undefined ? null : value)
   if (offset > text.length) fault("invalid_result_range",400)

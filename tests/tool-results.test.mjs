@@ -32,6 +32,31 @@ function fixture() {
   return {db,app,store,envelope,scope,grants,runs,configs,save,sanitize}
 }
 
+test('missing local screenshot content is not a successful four-character null result',()=>{
+  const f=fixture();try{
+    const reference=f.store.save(f.app,'alice','run-a',1,'local_computer',{
+      text:JSON.stringify({application:'Synthetic WorkBuddy',mode:'vision',actionable:true,
+        observation:'0123456789abcdef0123456789abcdef',expiresInSeconds:30}),
+      structuredContent:{job_id:'synthetic-job',status:'succeeded'},
+      resources:[{type:'local_job',job_id:'synthetic-job'}],
+    },{},s=>s)
+    assert.throws(()=>f.store.read(f.app,'alice','run-a',reference.result_id,{field:'content'}),
+      {code:'result_field_unavailable',httpStatus:422},
+      'an absent field must not look like successfully read evidence')
+    const metadata=f.store.read(f.app,'alice','run-a',reference.result_id,{field:'text'})
+    assert.equal(JSON.parse(metadata.text).observation,'0123456789abcdef0123456789abcdef')
+    assert.throws(()=>f.store.read(f.app,'bob','run-a',reference.result_id,{field:'content'}),{code:'result_not_found'})
+  }finally{f.db.close()}
+})
+
+test('an explicitly stored null remains valid typed content',()=>{
+  const f=fixture();try{
+    const reference=f.store.save(f.app,'alice','run-a',1,'fixture',{text:'Explicit empty value',content:null},{},s=>s)
+    const result=f.store.read(f.app,'alice','run-a',reference.result_id,{field:'content'})
+    assert.equal(result.text,'null');assert.equal(result.total_length,4);assert.equal(result.encoding,'json_fragment')
+  }finally{f.db.close()}
+})
+
 test('record projection preserves persisted evaluation and feedback while rejecting empty retry resets',()=>{
  const f=fixture();try{
   f.save()

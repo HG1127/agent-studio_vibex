@@ -47,7 +47,7 @@
     "test:agent-effects": "node tests/agent-effects.integration.mjs",
     "test:agent-run-lifecycle": "node tests/agent-run-lifecycle.integration.mjs",
     "test:authoring-errors": "node tests/authoring-error-diagnostics.test.mjs",
-    "test:agent-local-result": "node tests/agent-local-result.integration.mjs",
+    "test:agent-local-result": "node tests/agent-local-result.integration.mjs && node tests/agent-visual-context.integration.mjs",
     "test:agent-run-retry-ui": "node tests/agent-run-retry.chrome.mjs",
     "test:schedules": "node tests/schedules.integration.mjs",
     "test:knowledge": "node tests/knowledge.integration.mjs",
