@@ -2,7 +2,7 @@ import {createHash} from 'node:crypto'
 import {isProxy} from 'node:util/types'
 import {originalQuality089Static as s} from './original-quality089-static.mjs'
 import {quality089Expression as expr} from './original-quality089-expression.mjs'
-export {originalQuality089CatalogSQL} from './original-quality089-catalog-sql.mjs'
+export {originalQuality089CatalogSQL} from './staff084-named-api-auth-ledger-catalog.mjs'
 const fail=()=>{throw Error('original_quality089_catalog_unconfirmed')}
 const canonical=v=>{if(v===undefined||typeof v==='function'||typeof v==='symbol'||typeof v==='bigint'||typeof v==='number'&&!Number.isFinite(v))fail();if(v&&typeof v==='object'){if(Array.isArray(v))return JSON.stringify(rows(v).map(x=>JSON.parse(canonical(x))));if(isProxy(v)||Object.getPrototypeOf(v)!==Object.prototype)fail();const d=Object.getOwnPropertyDescriptors(v);if(Reflect.ownKeys(d).some(k=>typeof k!=='string'||!d[k].enumerable||!Object.hasOwn(d[k],'value')))fail();return JSON.stringify(Object.fromEntries(Object.keys(d).sort().map(k=>[k,JSON.parse(canonical(d[k].value))])))}return JSON.stringify(v)}
 const eq=(a,b)=>{if(canonical(a)!==canonical(b))fail()}

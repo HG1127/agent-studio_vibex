@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {isBuiltin} from 'node:module'
-import {createHash} from 'node:crypto'
+import {createHash,hash as digestBytes} from 'node:crypto'
 import {isUtf8} from 'node:buffer'
 import {captureFull069WorkerLiveSources,assertFull069WorkerLiveSources} from './pg18-full069-worker-live-sources.mjs'
 import {captureComplete069CompanionSources,assertComplete069CompanionSources} from './pg18-complete-companion-sources.mjs'
@@ -11,7 +11,7 @@ import {finalBusinessLogins,finalCompanions} from './pg18-full069-final-login-co
 import {freeze,hex} from './pg18-full069-worker-live-contract.mjs'
 export const finalRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..')
 export const finalModules=Object.freeze(['login-contract','records','sources','trust','runtime','window','runner','cli','companions','companion-child','companion-contract','companion-kernel','final14-catalog'].map(n=>n==='final14-catalog'?'services/pg-api/src/pg18-full069-final14-catalog.mjs':'services/pg-api/src/pg18-full069-final-'+n+'.mjs'))
-const states=new WeakSet(),sha=b=>createHash('sha256').update(b).digest('hex'),fail=()=>{throw Error('full069_final_source_refused')}
+const states=new WeakSet(),sha=b=>typeof b==='string'||Buffer.isBuffer(b)?digestBytes('sha256',b,'hex'):createHash('sha256').update(b).digest('hex'),fail=()=>{throw Error('full069_final_source_refused')}
 const sourcePath=p=>typeof p==='string'&&/^(?:services\/pg-api\/src|shared)\/[A-Za-z0-9_./-]+\.(?:ts|mts|mjs|js)$/.test(p)&&p.split('/').every(v=>v&&v!=='.'&&v!=='..')
 function read(relative,deployment=false){const file=path.join(finalRoot,relative);if(typeof relative!=='string'||relative.startsWith('/')||relative.split('/').some(v=>!v||v==='.'||v==='..'))fail();let at=finalRoot;for(const part of relative.split('/')){const d=fs.lstatSync(at);if(!d.isDirectory()||d.isSymbolicLink()||deployment&&(d.uid!==0||d.gid!==0||(d.mode&0o022)!==0))fail();at=path.join(at,part)}const before=fs.lstatSync(file);if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1||before.size<1||before.size>16777216||fs.realpathSync.native(file)!==file||deployment&&(before.uid!==0||before.gid!==0||(before.mode&0o222)!==0))fail();const bytes=fs.readFileSync(file),after=fs.lstatSync(file);if(['dev','ino','size','mtimeMs','ctimeMs','uid','gid','mode'].some(k=>before[k]!==after[k])||bytes.length!==before.size||bytes.includes(0)||!isUtf8(bytes))fail();return bytes}
 export async function captureFull069FinalSources(){

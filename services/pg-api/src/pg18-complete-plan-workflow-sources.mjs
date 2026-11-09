@@ -3,10 +3,10 @@ import fs from'node:fs'
 import path from'node:path'
 import{fileURLToPath}from'node:url'
 import{isBuiltin}from'node:module'
-import{createHash}from'node:crypto'
+import{createHash,hash as digestBytes}from'node:crypto'
 import {isUtf8} from 'node:buffer'
 import{captureCompleteProfileSources,assertCompleteProfileSnapshot,assertCompleteProfileDeployment}from'./pg18-complete-profile-source.mjs'
-const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..'),captured=new WeakSet(),sha=b=>createHash('sha256').update(b).digest('hex'),fail=()=>{throw Error('complete069_plan_workflow_source_refused')}
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..'),captured=new WeakSet(),sha=b=>typeof b==='string'||Buffer.isBuffer(b)?digestBytes('sha256',b,'hex'):createHash('sha256').update(b).digest('hex'),fail=()=>{throw Error('complete069_plan_workflow_source_refused')}
 export const complete069PlanWorkflowModules=Object.freeze(['plan','sources','predecessor-plan','predecessors','catalog','journal','core','cli'].map(n=>'services/pg-api/src/pg18-complete-plan-workflow-'+n+'.mjs'))
 export const complete069PlanWorkflowAssets=Object.freeze(['docs/PG18_COMPLETE_069_PLAN_WORKFLOW_PREPARATION.md','ops/templates/agentstudio-pg18-plan-workflow-predecessor-credentials.json.example',...['worker.service','broker.service','worker.conf','broker.conf','hba.conf'].map(n=>'ops/templates/agentstudio-pg18-plan-workflow-'+n+'.example')])
 function sourceBytes(name,deployment=false){

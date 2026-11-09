@@ -32,8 +32,10 @@ test('actual original PluginMarket full action paths keep owner, source, consent
     await p.getByRole('textbox', { name: '工作邮箱', exact: true }).fill(f.credentials[who].email);
     await p.getByLabel('密码', { exact: true }).fill(f.credentials[who].password);
     const signedIn = wire(p, '/api/native-auth/login', 'POST');
+    const currentEmployee = wire(p, '/api/native-auth/me', 'GET');
     await p.getByRole('button', { name: '登录', exact: true }).click();
-    const authenticated = await signedIn; expect(authenticated.authenticated).toBe(true); expect(authenticated.user.id).toBe(f.users[who]);
+    const loginAcknowledgement = await signedIn; expect(loginAcknowledgement.authenticated).toBe(true);
+    const authenticated = await currentEmployee; expect(authenticated.authenticated).toBe(true); expect(authenticated.user.id).toBe(f.users[who]);
     await expect(p).toHaveURL(f.url);
     const title = p.locator('main[data-studio-fluid-page="plugins"] h1');
     await expect(title).toHaveCount(1); await expect(title).toHaveText(/^\s*插件\s*市场\s*$/); await expect(title).toBeVisible();

@@ -4,11 +4,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {isBuiltin} from 'node:module'
-import {createHash} from 'node:crypto'
+import {createHash,hash as digestBytes} from 'node:crypto'
 import {isUtf8} from 'node:buffer'
 import {captureCompleteProfileSources,assertCompleteProfileSnapshot,assertCompleteProfileDeployment} from './pg18-complete-profile-source.mjs'
 import {liveEntries,liveLimits} from './pg18-full069-worker-live-contract.mjs'
-const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..'),snapshots=new WeakSet(),sha=b=>createHash('sha256').update(b).digest('hex'),fail=c=>{throw Error('complete069_companion_'+c)}
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..'),snapshots=new WeakSet(),sha=b=>typeof b==='string'||Buffer.isBuffer(b)?digestBytes('sha256',b,'hex'):createHash('sha256').update(b).digest('hex'),fail=c=>{throw Error('complete069_companion_'+c)}
 const freeze=v=>{if(v&&typeof v==='object'){for(const x of Object.values(v))freeze(x);Object.freeze(v)}return v},hex=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v)
 export const companionServices=freeze([
  {id:'bound_broker',entry:'services/pg-api/src/bound-dispatch-server.ts',preflight_args:['--preflight'],serve_args:['--serve'],unit:'agentstudio-pg18-dispatch.service',template:'ops/templates/agentstudio-pg18-dispatch.service.example',origin:'https://127.0.0.1:7453',credential_kind:'dispatch',credential_directory:'/run/credentials/agentstudio-pg18-dispatch.service',credential_leaves:['api.secret','identity.secret','broker.secret','model-encryption.secret','dispatch-ca.pem','dispatch-server.pem','dispatch-server.key'],database_logins:['agentstudio_stage_login','agentstudio_bound_dispatch_login','agentstudio_model_broker_login'],review_gate:'AGENT_STUDIO_PG_BOUND_DISPATCH_REVIEWED',client_fingerprint:'AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT',original_auditors:['verifyBoundDispatchRole'],preflight_loads_encryption_key:true,preflight_constructs_provider:false},

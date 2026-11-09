@@ -1,5 +1,5 @@
-import {complete078StaffQuality089CatalogSQL} from './staff084-complete078-auth-catalog.mjs'
-import {inspectComplete078StaffExtensions} from './staff084-complete078-auth-extension.mjs'
+import {complete078StaffQuality089CatalogSQL} from './staff084-named-api-auth-ledger-catalog.mjs'
+import {inspectComplete078StaffApiExtensions as inspectComplete078StaffExtensions} from './staff084-complete078-api-extension.mjs'
 const complete078QualityToken=Symbol('named_complete069_employee078_staff084')
 import {emitHostedStaffComplete078ContractRefusal,hostedProfileCatalogRefusal} from './hosted-profile-diagnostic.mjs'
 import {createHash} from 'node:crypto'
@@ -32,7 +32,7 @@ function assertStaffQuality089AuthCatalog(raw,profileToken){
  const extension=completeMode?(diagnosticCheck=55,inspectComplete078StaffExtensions(v,true)):null
  const schemaAcl=v.namespace.acl.map(a=>{;(diagnosticCheck=23,exact(a,['grantor','grantee','privilege','grantable']));;return JSON.stringify([a.grantor,a.grantee,a.privilege,a.grantable])}).sort();;(diagnosticCheck=24,eq(schemaAcl,[[owner,owner,'USAGE',false],[owner,owner,'CREATE',false],[owner,auth.oid,'USAGE',false],[owner,quality.oid,'USAGE',false],...(completeMode?extension.namespaceAcl:[])].map(JSON.stringify).sort()));
  const ledger=v.ledger_privileges;;(diagnosticCheck=25,exact(ledger,['owner','kind','select','insert','update','delete','truncate','references','trigger','maintain','acl','column_acl']));;if(ledger.owner!==owner||ledger.kind!=='r'||ledger.select!==true||ledger.column_acl!==0||tableRights.filter(r=>r!=='SELECT').some(r=>ledger[r.toLowerCase()]!==false))(diagnosticCheck=26,bad());;;(diagnosticCheck=27,eq(ledger.acl,[{grantor:owner,grantee:auth.oid,privilege:'SELECT',grantable:false}]));
- ;(diagnosticCheck=28,unique(v.migrations.map(r=>r.version)));;for(const r of v.migrations){;(diagnosticCheck=29,exact(r,['version','description','applied_at']));;if(typeof r.version!=='string'||typeof r.description!=='string'||typeof r.applied_at!=='string')(diagnosticCheck=30,bad());}
+ ;(diagnosticCheck=28,unique(v.migrations.map(r=>r.version)));;for(const r of v.migrations){;(diagnosticCheck=29,exact(r,completeMode?['version','description']:['version','description','applied_at']));;if(typeof r.version!=='string'||typeof r.description!=='string'||!completeMode&&typeof r.applied_at!=='string')(diagnosticCheck=30,bad());}
  for(const version of ['pg18_native_auth_001','pg_v9_047','pg_v9_084'])(diagnosticCheck=31,one(v.migrations,r=>r.version===version));
  const indexes=tables.flatMap(t=>[...t.constraints.filter(c=>['p','u'].includes(c.type)).map(c=>({name:c.name,keys:c.keys,unique:true,primary:c.type==='p',table:t})),...(t.extra_indexes??[]).map(c=>({...c,primary:false,table:t}))])
  if(v.relations.length!==tables.length+indexes.length||v.columns.length!==50||v.constraints.length!==81||v.indexes.length!==8||v.policies.length!==(completeMode?12:6)||v.types.length!==10||v.functions.length!==1)(diagnosticCheck=32,bad());

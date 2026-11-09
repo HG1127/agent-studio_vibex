@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {isBuiltin} from 'node:module'
-import {createHash} from 'node:crypto'
+import {createHash,hash as digestBytes} from 'node:crypto'
 import {captureCompleteProfileSources,assertCompleteProfileSnapshot,assertCompleteProfileDeployment} from './pg18-complete-profile-source.mjs'
 import {liveEntries,liveFail,freeze,hex} from './pg18-full069-worker-live-contract.mjs'
 export const liveRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..')
@@ -11,7 +11,7 @@ export const liveModules=Object.freeze([...['contract','sources','trust','runtim
 // Operational SQL read by the original Worker modules at import time.
 // Separate from the unchanged complete069 installation/migration SQL inputs.
 export const liveWorkerSqlAssets=Object.freeze(['003_finish_job.sql','004_retry_job.sql','005_claim_agent_prepare.sql','006_claim_agent_model.sql','007_claim_workflow_safe.sql','008_claim_workflow_v2.sql','009_claim_autonomous_agent.sql'].map(name=>'db/postgres/'+name))
-const snapshots=new WeakSet(),sha=v=>createHash('sha256').update(v).digest('hex')
+const snapshots=new WeakSet(),sha=v=>typeof v==='string'||Buffer.isBuffer(v)?digestBytes('sha256',v,'hex'):createHash('sha256').update(v).digest('hex')
 export async function captureFull069WorkerLiveSources(){
   const complete=await captureCompleteProfileSources(),ts=await import('typescript'),entries=new Map(complete.manifest.sources.map(x=>[x.path,{...x}])),pending=[...liveModules,'services/pg-api/src/native-server.ts',...liveEntries.map(x=>'services/pg-api/src/'+x.file)],seen=new Set(),edges=[]
   while(pending.length){const file=pending.pop()??liveFail('source_path');if(seen.has(file))continue;seen.add(file);if(!/^(services\/pg-api\/src|shared)\/[A-Za-z0-9_./-]+\.(?:ts|mts|mjs|js)$/.test(file)||file.split('/').some(p=>p==='..'||p==='.'||!p))liveFail('source_path')
