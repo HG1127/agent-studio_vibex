@@ -1,0 +1,166 @@
+name: Agent Studio original ToolHub and Home PG18 isolated verification
+on:
+  push:
+    branches:
+      - 'codex/pg18-worker-heartbeat-20261028'
+  workflow_dispatch:
+    inputs:
+      run_original_toolhub:
+        type: boolean
+        required: true
+        default: false
+      run_original_pages:
+        description: Run one separately guarded original page family
+        type: boolean
+        required: true
+        default: false
+      original_page:
+        description: Select exactly one original page family
+        type: choice
+        required: true
+        default: none
+        options:
+          - none
+          - resource
+          - create
+          - plugin
+          - web
+permissions:
+  contents: read
+concurrency:
+  group: original-toolhub-reviewed-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AGENT_STUDIO_TOOL_HUB_GENUINE_CI: YES_DISPOSABLE_F16_19_TOOL_HUB_ONLY
+  AGENT_STUDIO_PG_OWNER_TOOL_HUB_AVAILABLE: 'true'
+  AGENT_STUDIO_PG_OWNER_TOOL_HUB_APPROVED: APPROVE_DISPOSABLE_PG18_OWNER_TOOL_HUB_ONLY
+  AGENT_STUDIO_PG_OWNER_TOOL_TRIALS_ENABLED: 'true'
+  AGENT_STUDIO_PG_PUBLIC_MCP_REGISTRY_ENABLED: 'true'
+  AGENT_STUDIO_PG_PUBLIC_MCP_REGISTRY_APPROVED: APPROVE_DISPOSABLE_PG18_PUBLIC_REGISTRY_READ_ONLY
+  AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED: 'true'
+  AGENT_STUDIO_PG18_UAT_APPROVAL: APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY
+  AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_ENABLED: 'true'
+  AGENT_STUDIO_PG18_WORKFLOW_V2_UAT_APPROVED: APPROVE_DISPOSABLE_PG18_WORKFLOW_V2_EXECUTION_ONLY
+  AGENT_STUDIO_PG_MCP_TOOLS_ENABLED: 'true'
+  AGENT_STUDIO_PG_MCP_TOOLS_APPROVED: APPROVE_DISPOSABLE_PG18_MCP_TOOLS_ONLY
+  AGENT_STUDIO_PG_AUTONOMOUS_AGENT_ENABLED: 'true'
+  AGENT_STUDIO_PG_AUTONOMOUS_AGENT_APPROVED: APPROVE_DISPOSABLE_PG18_AUTONOMOUS_AGENT_ONLY
+  AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+  AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+  AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+  AGENT_STUDIO_PG18_CI_PORT: '5432'
+  AGENT_STUDIO_PG18_CI_DATABASE: agentstudio_pg18_ci
+  AGENT_STUDIO_PG18_CI_ADMIN_USER: agentstudio_admin
+  AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+jobs:
+  pg18-tool-hub-browser:
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/codex/pg18-worker-heartbeat-20261028') || (github.event_name == 'workflow_dispatch' && inputs.run_original_toolhub == true)
+    name: Original ToolHub / ${{ matrix.case }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        case: [home, app]
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18
+        env:
+          POSTGRES_DB: agentstudio_pg18_ci
+          POSTGRES_USER: agentstudio_admin
+          POSTGRES_PASSWORD: 'synthetic-agentstudio-pg18-ci-${{ github.run_id }}'
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U agentstudio_admin -d agentstudio_pg18_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    env:
+      AGENT_STUDIO_TOOL_HUB_GENUINE_SUITE: browser
+      AGENT_STUDIO_ORIGINAL_TOOL_HUB_WORKFLOW_CI: YES_DISPOSABLE_ORIGINAL_TOOLHUB_HOME_BROWSER_ONLY
+      AGENT_STUDIO_ORIGINAL_TOOL_HUB_CI: YES_DISPOSABLE_ORIGINAL_TOOL_HUB_ONLY
+      AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_CI: YES_DISPOSABLE_ORIGINAL_TOOL_HUB_HOME_READ_ONLY
+      AGENT_STUDIO_ORIGINAL_TOOL_HUB_EXPECTED_HEAD: ${{ github.sha }}
+      AGENT_STUDIO_ORIGINAL_TOOL_HUB_SOURCES_SHA256: 'e8e11ccdfb8a7550d6d6d074b0b2e90247267b38ceec057175433987e76ee0fc'
+      AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_SOURCES_SHA256: '86c894fc872610daaf5341442200ade38dcfe8858ce925121b98067d42f3a6c7'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install exact locked dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Original frontend/API compilers and pure refusal guard
+        run: |
+          pnpm exec tsc -p tsconfig.app.json --noEmit
+          pnpm --dir services/pg-api check
+          node --test --test-concurrency=1 services/pg-api/tests/tool-hub-genuine-guard.test.mjs tests/original-toolhub-workflow-lifecycle-source-pure.test.mjs tests/original-reviewed-member-admission-pure.test.mjs
+      - name: Install isolated Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Actual original Home on its fresh PG service
+        if: matrix.case == 'home'
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-toolhub-home-genuine.config.mjs
+      - name: Actual original ToolHub on its fresh PG service
+        if: matrix.case == 'app'
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-original-toolhub-genuine.config.mjs
+      - name: Retain synthetic UI images only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-toolhub-${{ matrix.case }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/original-toolhub-home-genuine-results/**/*.png
+            .tmp/original-toolhub-genuine-results/**/*.png
+          if-no-files-found: ignore
+
+  original-resource-pages:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_original_pages == true && inputs.run_original_toolhub != true && inputs.original_page == 'resource' && github.ref == 'refs/heads/codex/pg18-worker-heartbeat-20261028'
+    name: Registered original resource page entry
+    permissions:
+      contents: read
+    uses: ./.github/workflows/pg18-original-resource-read-ci.yml
+    with:
+      run_original_resources: true
+      registered_original_page_entry: true
+      registered_original_page: resource
+
+  original-agent-create-page:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_original_pages == true && inputs.run_original_toolhub != true && inputs.original_page == 'create' && github.ref == 'refs/heads/codex/pg18-worker-heartbeat-20261028'
+    name: Registered original create page entry
+    permissions:
+      contents: read
+    uses: ./.github/workflows/pg18-original-agent-create-fresh-ci.yml
+    with:
+      run_original_create: true
+      registered_original_page_entry: true
+      registered_original_page: create
+
+  original-plugin-market-pages:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_original_pages == true && inputs.run_original_toolhub != true && inputs.original_page == 'plugin' && github.ref == 'refs/heads/codex/pg18-worker-heartbeat-20261028'
+    name: Registered original plugin page entry
+    permissions:
+      contents: read
+    uses: ./.github/workflows/pg18-original-plugin-market-ci.yml
+    with:
+      run_original_plugin_market: true
+      registered_original_page_entry: true
+      registered_original_page: plugin
+
+  original-web-pages:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_original_pages == true && inputs.run_original_toolhub != true && inputs.original_page == 'web' && github.ref == 'refs/heads/codex/pg18-worker-heartbeat-20261028'
+    name: Registered original web page entry
+    permissions:
+      contents: read
+    uses: ./.github/workflows/pg18-original-web-pages-ci.yml
+    with:
+      run_original_web_pages: true
+      registered_original_page_entry: true
+      registered_original_page: web

@@ -1,0 +1,189 @@
+{
+  "format": "agentstudio.original-tool-connections.page-actions.v1",
+  "scope": "Original /tool-connections HTTP metadata only; page subtask, not migration acceptance",
+  "baseline": {
+    "entry": "src/main.tsx -> src/App.tsx",
+    "hook": "src/pages/ToolConnections/useToolConnections.ts",
+    "page": "src/pages/ToolConnections/ToolConnectionsPage.tsx",
+    "components": "src/components/tool-connections",
+    "unchanged_routes_layout_TSX": true,
+    "PocketBase_default_preserved": true,
+    "static_selector": "import.meta.env.VITE_AGENT_STUDIO_ORIGINAL_PG_UI_ENABLED==='true'"
+  },
+  "authority": {
+    "identity": "actual Native Secure HttpOnly Strict host-only Cookie + Origin/CSRF; verified studio employee only",
+    "expected_employee": "X-AgentStudio-Expected-Employee, singleton, checked first inside each actual owner transaction",
+    "protocol": "native_tool_connections_owner_cas_v1",
+    "feature_header": "X-AgentStudio-Original-Tools: 1",
+    "permissions": "actual selectNativePg18UatCapabilities and outer original UAT wrapper; no hardcoded grants",
+    "credential_delivery": "ephemeral form/request only; no localStorage, logs or receipt storage; clear on send/test refusal/close/dispose/scope loss",
+    "owner": "all reads/writes own records under actual repository withActor; no arbitrary X-Rh-User-Id"
+  },
+  "fields": [
+    {
+      "ui": "工具名称 / 用途描述",
+      "dto": "name / description",
+      "behavior": "existing controls; validate before transport; public metadata; no secret fields in observations"
+    },
+    {
+      "ui": "请求 URL / 请求方法",
+      "dto": "url / method",
+      "behavior": "GET or POST; existing PG requires public HTTPS domain with no query/custom port/IP/local address; URL placeholders explicitly refused; legacy http/query/template capabilities remain missing"
+    },
+    {
+      "ui": "请求头 rows + 添加/删除请求头",
+      "dto": "headers[{key,value}]",
+      "behavior": "max20 case-insensitive unique names; password value ephemeral; edit empty retains only already stored same-name value; removing row removes stored header; renaming with empty value does not invent a credential; PG DTO displays exact full mask ••••, not tail4"
+    },
+    {
+      "ui": "请求体模板",
+      "dto": "body_template",
+      "behavior": "existing POST control, max20000; GET save sends empty template; metadata storage does not execute placeholders"
+    },
+    {
+      "ui": "超时秒数（5–60 label）",
+      "dto": "timeout_s",
+      "behavior": "actual PG integer1–60; original UI min5 unchanged; validation does not coerce partial values"
+    },
+    {
+      "ui": "卡片状态 / 延迟 / 错误",
+      "dto": "status / last_latency_ms / last_checked_at / last_error",
+      "behavior": "strict server public DTO only; save resets actual server status to untested; no simulated success or probe status"
+    },
+    {
+      "ui": "测试参数 / 本次 POST 确认",
+      "dto": "none for supported migration actions",
+      "behavior": "form-only state; tests explicitly refused; never implicit save, queue, approval, credential read or outbound call"
+    },
+    {
+      "ui": "hidden identity/revision/timestamps",
+      "dto": "owner_user_id / id / revision / created_at / updated_at",
+      "behavior": "strict owner UUID, safe integer, calendar and exact field validation; never employee editable"
+    }
+  ],
+  "actions": [
+    {
+      "ui": "initial list / loadList / focus-pageshow-storage-visible refresh",
+      "api": "existing listToolConnections -> GET /api/v2/tool-connections, strict envelope",
+      "result": "own max50 only, complete:false; persistent existing notice discloses incompleteness; no complete-list or exact receipt inference"
+    },
+    {
+      "ui": "添加工具 / close / cancel",
+      "api": "none except session verification",
+      "result": "existing form; clear raw password drafts on close; no unsaved create"
+    },
+    {
+      "ui": "保存并启用",
+      "api": "existing createToolConnection -> POST collection",
+      "preconditions": "actual config gate + strict protocol GET preflight + verified expected employee + durable secret-free pending marker",
+      "result": "exact actual201 DTO intent + owner + revision1 + untested acknowledged once; clear raw header values before transport; no auto probe"
+    },
+    {
+      "ui": "编辑",
+      "api": "existing getToolConnection -> GET UUID",
+      "result": "read actual current own public record, blank password fields, capture selected exact revision; stale response fenced by epoch/form sequence"
+    },
+    {
+      "ui": "保存修改",
+      "api": "existing updateToolConnection -> PATCH UUID full metadata + selected expected_revision",
+      "result": "exact owner/id/revision+1/untested intent acknowledgement; background list cannot rebase form CAS; no implicit secret replay"
+    },
+    {
+      "ui": "启用/停用 switch",
+      "api": "existing updateToolConnection -> PATCH UUID + selected expected_revision",
+      "result": "preserve stored header names with empty values; configuration only, no new execution permission or auto test"
+    },
+    {
+      "ui": "删除 / 取消 / 确认删除",
+      "api": "existing deleteToolConnection optional expected_revision -> DELETE UUID JSON",
+      "result": "own row FOR UPDATE + selected revision before delete/audit; config-gated exact HTTP Tool DELETE only; no SQL grant change"
+    },
+    {
+      "ui": "展开/收起测试",
+      "api": "none",
+      "result": "existing panel only; clears prior confirmation/test result on change"
+    },
+    {
+      "ui": "保存前测试调用",
+      "api": "no transport; explicit original_tool_direct_test_unavailable405",
+      "result": "clear password drafts/results/confirmation; synchronous PG direct execution contract missing"
+    },
+    {
+      "ui": "卡片发起真实调用 / GET重新测试 / POST确认后测试",
+      "api": "no transport; same explicit405",
+      "result": "no implicit save, ToolHub trial enqueue, step approval or outbound call; current execution gap remains"
+    },
+    {
+      "ui": "error/notice dismiss / login / home link",
+      "api": "existing session login/navigation; dismiss is local",
+      "result": "keep original controls and destinations; unknown-operation notice cannot be dismissed into a writable state"
+    },
+    {
+      "ui": "same Save / refresh / reload after unknown create/update/delete",
+      "api": "GET metadata only",
+      "result": "secret-free per-owner sessionStorage nonce/action/id/revision/time retained; nonce is client-only, never request receipt/idempotency; matching/absent latest state never clears uncertainty; no automatic retry; admin verification required"
+    },
+    {
+      "ui": "account/permission/unavailable identity / late response",
+      "api": "verifyStudioSession before and after actual request; expected employee on server",
+      "result": "hide rows/body/header drafts, confirmations/results, preserve original owner uncertainty; late owner DTO cannot reopen form; never clear Cookie as unknown-write recovery"
+    }
+  ],
+  "existing_contract_reuse": {
+    "http": {
+      "repository": "ToolConnectionRepository",
+      "sdk": "createPgNativePilotApi list/get/create/update/deleteToolConnection",
+      "changes": "strict feature branch, expected-employee precondition, delete CAS; no schema or Worker change"
+    },
+    "tool_hub": {
+      "sdk": "createPgNativeToolHubApi",
+      "behavior": "queues workflow_native_v2 and requires original step approval; not original synchronous test and not used as substitute"
+    },
+    "MCP": {
+      "actual_UI": "PluginMarket, not ToolConnections",
+      "sdk": [
+        "listMcpConnections",
+        "getMcpConnection",
+        "createMcpConnection",
+        "updateMcpConnection",
+        "deleteMcpConnection",
+        "discoverMcpConnection"
+      ],
+      "contracts": "existing PgNativeMcpInput / parsePgMcpConnection, owner/CAS/request_id and separate discovery/run gates",
+      "delivered_here": false,
+      "warning": "do not reuse credential-retaining/retry-create UI sessions for unknown original-page writes"
+    },
+    "Smithery": {
+      "actual_UI": "PluginMarket, not ToolConnections",
+      "sdk": [
+        "getSmitheryKey",
+        "saveSmitheryKey",
+        "removeSmitheryKey",
+        "readSmitheryNamespaces",
+        "searchSmitheryCatalog",
+        "listSmitheryConnections",
+        "getSmitheryConnection",
+        "connectSmithery",
+        "operateSmithery"
+      ],
+      "contracts": "existing SmitherySelection / parsePgSmitheryKey / parsePgSmitheryConnection / parsePgSmitheryCatalog; expected_revision/request_id and independent management gate",
+      "delivered_here": false
+    }
+  },
+  "open_acceptance_gaps": [
+    "original synchronous draft/saved test backend contract",
+    "legacy URL http/query/placeholders",
+    "complete owner Tool pagination",
+    "exact request receipt for unknown Tool writes",
+    "MCP/Smithery PluginMarket original-page adaptation",
+    "fresh genuine hosted execution, normal PG0/original-PG TS/build and employee UAT"
+  ],
+  "evidence_limits": {
+    "pure_terminal_only": true,
+    "actual_SQL_Pool_Worker_server_browser_network_executed": 0,
+    "genuine_host_source_only": true,
+    "paid_provider_calls": 0,
+    "all_original_pages_complete": false,
+    "production_GO": false
+  }
+}

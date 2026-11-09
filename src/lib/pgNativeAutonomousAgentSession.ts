@@ -1,5 +1,10 @@
+import {originalOptimizationRetestSelection,originalOptimizationRetestProofMatches,type OriginalOptimizationRetestSelection} from './originalOptimizationRetestSelection.ts'
+import {parseOriginalRunOptions,originalRunOptionsCanonical,type OriginalRunOptions} from '../../shared/original-agent-run-options.ts'
+import {parseOrdinaryCaseRunInput,parseOrdinaryCaseRunBinding,type OrdinaryCaseRunInput} from '../../shared/ordinary-case-run-contract.ts'
+import {originalRoleOwnerView} from './originalRoleOwnerView.ts'
 import {createPgNativeDurableRunSession,emptyDurableRunView,type DurableRunView} from "./pgNativeDurableRunSession.ts"
 import {verifyOwnTaskRun} from "./pgNativeOwnTaskNavigation.ts"
+import {optimizationRetestId,optimizationRetestProof} from "../../shared/agent-optimization-retest-contract.ts"
 import {declaredAgentHttpTool,readyAgentHttpTools} from "./pgNativeAgentHttpTools.ts"
 import {declaredAgentMcpTool,readyAgentMcpTools} from "./pgNativeMcpConnection.ts"
 import {optionalKnowledgeToolContext,knowledgeBindingCurrent,knowledgePendingMatches,knowledgeToolScopeCurrent,usesPaidKnowledge,type KnowledgeToolContext} from "./pgNativeKnowledgeTool.ts"
@@ -8,13 +13,14 @@ import type {KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT} from "../../services/pg-api/
 import {PgNativePilotError,type PgNativeAutonomousAgentResult,type PgNativeAutonomousAgentSummary,type PgNativeAgent,type PgNativeModelConnection,
   type PgNativeWorkflowV2Pending,type PgNativeToolConnection,type PgNativeMcpConnection,type PgNativeAgentModelBinding} from "./pgNativePilotApi.ts"
 type Api={
-  submitAutonomousAgentRun(id:string,revision:number,instruction:string,key:string,max:number,requirePlanReview?:boolean,rememberOutcome?:boolean):Promise<PgNativeAutonomousAgentResult>
+  submitOriginalAutonomousAgentRun?(input:{agentId:string;revision:number;instruction:string;key:string;maxSteps:number;options:OriginalRunOptions;optimizationLineageId?:string;optimizationExpected?:OriginalOptimizationRetestSelection;businessCase?:OrdinaryCaseRunInput}):Promise<PgNativeAutonomousAgentResult>
+  submitAutonomousAgentRun(id:string,revision:number,instruction:string,key:string,max:number,requirePlanReview?:boolean,rememberOutcome?:boolean,optimizationLineageId?:string,localDeviceId?:string,businessCase?:OrdinaryCaseRunInput,taskPlanning?:'reviewed_v1'):Promise<PgNativeAutonomousAgentResult>
   listAutonomousAgentRuns():Promise<PgNativeAutonomousAgentSummary[]>
   getAutonomousAgentRun(id:string):Promise<PgNativeAutonomousAgentResult>
   decideAutonomousAgentNode(id:string,decision:"approved"|"rejected",step:string,hash:string,charge?:typeof KNOWLEDGE_TOOL_CHARGE_ACKNOWLEDGEMENT):Promise<PgNativeAutonomousAgentResult>
   cancelAutonomousAgentRun(id:string):Promise<PgNativeAutonomousAgentResult>
-}&Partial<Pick<ReturnType<typeof import("./pgNativePilotApi.ts").createPgNativePilotApi>,"getAgent"|"getConfigCapabilities"|"getKnowledgeEmbeddingConsent"|"listKnowledge"|"listSharedKnowledge"|"respondAutonomousAgent"|"confirmAutonomousAgentResponse">>
-export type AutonomousDraft={agentId:string;revision:number;instruction:string;maxSteps:number;requirePlanReview?:boolean;rememberOutcome?:boolean}
+}&Partial<Pick<ReturnType<typeof import("./pgNativePilotApi.ts").createPgNativePilotApi>,"getAgent"|"getConfigCapabilities"|"getKnowledgeEmbeddingConsent"|"listKnowledge"|"listSharedKnowledge"|"respondAutonomousAgent"|"confirmAutonomousAgentResponse"|"controlAutonomousAgentRun"|"confirmAutonomousAgentRunControl">>
+export type AutonomousDraft={originalRunOptions?:OriginalRunOptions;taskPlanning?:'reviewed_v1';agentId:string;revision:number;instruction:string;maxSteps:number;requirePlanReview?:boolean;rememberOutcome?:boolean;optimizationLineageId?:string;optimizationExpected?:OriginalOptimizationRetestSelection;localDeviceId?:string;businessCase?:OrdinaryCaseRunInput}
 export type AutonomousDetail=PgNativeAutonomousAgentResult&{knowledge?:KnowledgeToolContext}
 export type AutonomousView=DurableRunView<AutonomousDetail,PgNativeAutonomousAgentSummary,AutonomousDraft>
 export const emptyAutonomousView:AutonomousView=emptyDurableRunView()
@@ -50,7 +56,9 @@ export function readyAutonomousRunModel(detail:AutonomousDetail|null,agent:PgNat
   return agent&&binding?readyAutonomousModel({...agent,spec:{...agent.spec,model_binding:binding}},connections):undefined
 }
 export function autonomousApprovalReady(detail:AutonomousDetail|null,agents:PgNativeAgent[],connections:PgNativeModelConnection[],tools:PgNativeToolConnection[]=[],mcps:PgNativeMcpConnection[]=[],mcpEnabled=false){
-  const agent=agents.find(a=>a.id===detail?.run.agent_spec_id),model=readyAutonomousRunModel(detail,agent,connections),selected=autonomousModelBinding(detail,agent),pending=detail?.pending_effect
+  let agent=agents.find(a=>a.id===detail?.run.agent_spec_id)
+  if(agent&&detail?.original_role!==undefined)try{const pinned=originalRoleOwnerView(detail.original_role,{runId:detail.run.id,specId:agent.id,revision:Number(detail.run.checkpoint.spec_revision)});agent={...agent,revision:pinned.spec_revision,spec:pinned.spec_snapshot}}catch{return false}
+  const model=readyAutonomousRunModel(detail,agent,connections),selected=autonomousModelBinding(detail,agent),pending=detail?.pending_effect
   if(detail?.knowledge_outputs_available===false)return false
   if(!agent||!model||!readyAgentHttpTools(agent,tools)||!readyAgentMcpTools(agent,mcps)||agent.spec.mcp_tools?.length&&!mcpEnabled||detail?.run.status!=="awaiting_approval"||detail.run.checkpoint.spec_revision!==agent.revision||!pending)return false
   if(agent.spec.knowledge_retrieval&&(!knowledgeBindingCurrent(agent.spec.knowledge_retrieval,detail.knowledge)||!knowledgeToolScopeCurrent(agent.spec.knowledge_base_ids??[],detail.knowledge)))return false
@@ -94,8 +102,9 @@ export function createPgNativeAutonomousAgentSession(api:Api,options:{key?:()=>s
       const knowledge=api.getConfigCapabilities&&api.getKnowledgeEmbeddingConsent&&api.listKnowledge&&api.listSharedKnowledge?await optionalKnowledgeToolContext({getConfigCapabilities:api.getConfigCapabilities,getKnowledgeEmbeddingConsent:api.getKnowledgeEmbeddingConsent,listKnowledge:api.listKnowledge,listSharedKnowledge:api.listSharedKnowledge}):{enabled:false,consent:null}
       return {...detail,knowledge}
     },
-    submit:body=>body.rememberOutcome!==undefined?api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps,body.requirePlanReview,body.rememberOutcome):body.requirePlanReview===undefined?api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps):api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps,body.requirePlanReview),
+    submit:body=>body.originalRunOptions!==undefined?api.submitOriginalAutonomousAgentRun!({agentId:body.agentId,revision:body.revision,instruction:body.instruction,key:body.key,maxSteps:body.maxSteps,options:body.originalRunOptions,...(body.optimizationLineageId?{optimizationLineageId:body.optimizationLineageId,optimizationExpected:body.optimizationExpected}:{}),...(body.businessCase?{businessCase:body.businessCase}:{})}):body.taskPlanning!==undefined?api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps,true,body.rememberOutcome,body.optimizationLineageId,body.localDeviceId,body.businessCase,body.taskPlanning):body.businessCase!==undefined?api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps,body.requirePlanReview,body.rememberOutcome,body.optimizationLineageId,body.localDeviceId,body.businessCase):body.localDeviceId!==undefined?api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps,body.requirePlanReview,body.rememberOutcome,body.optimizationLineageId,body.localDeviceId):body.optimizationLineageId!==undefined?api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps,body.requirePlanReview,body.rememberOutcome,body.optimizationLineageId):body.rememberOutcome!==undefined?api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps,body.requirePlanReview,body.rememberOutcome):body.requirePlanReview===undefined?api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps):api.submitAutonomousAgentRun(body.agentId,body.revision,body.instruction,body.key,body.maxSteps,body.requirePlanReview),
     decide:(...args)=>api.decideAutonomousAgentNode(...args),cancel:id=>api.cancelAutonomousAgentRun(id),
+    ...(api.controlAutonomousAgentRun&&api.confirmAutonomousAgentRunControl?{controlRun:(id,action,request)=>api.controlAutonomousAgentRun!(id,action,request),confirmRunControl:(id,action,request)=>api.confirmAutonomousAgentRunControl!(id,action,request)}:{}),
     ...(api.respondAutonomousAgent?{respond:(id,choice)=>api.respondAutonomousAgent!(id,choice)}:{}),
     ...(api.confirmAutonomousAgentResponse?{confirmHumanResponse:(id,choice)=>api.confirmAutonomousAgentResponse!(id,choice)}:{}),
   },{...options,describe:autonomousError,submittedNotice:"多轮任务已提交，等待逐步审批。",
@@ -103,15 +112,42 @@ export function createPgNativeAutonomousAgentSession(api:Api,options:{key?:()=>s
     canApprove:detail=>!usesPaidKnowledge(detail.pending_effect)||knowledgeBindingCurrent(detail.pending_effect?.configuration.knowledge_retrieval,detail.knowledge)&&
       knowledgeToolScopeCurrent((detail.pending_effect?.configuration.knowledge_base_ids??[]) as string[],detail.knowledge),
     freezeDraft(draft){
-      const instruction=draft.instruction.trim()
+      const instruction=draft.instruction.trim(),originalRunOptions=draft.originalRunOptions===undefined?undefined:parseOriginalRunOptions(draft.originalRunOptions)
+      if(originalRunOptions&&(!api.submitOriginalAutonomousAgentRun||draft.requirePlanReview!==originalRunOptions.require_plan_review||(draft.localDeviceId??null)!==originalRunOptions.local_device_id||(draft.taskPlanning==='reviewed_v1')!==originalRunOptions.structured_planning||draft.rememberOutcome===true||draft.optimizationLineageId!==undefined&&(draft.taskPlanning!==undefined||draft.businessCase!==undefined)))throw Error('invalid_original_budget_draft')
       if(!uuid.test(draft.agentId)||!Number.isSafeInteger(draft.revision)||draft.revision<1||!instruction||instruction.length>2000||instruction.includes("\0")||
          !Number.isSafeInteger(draft.maxSteps)||draft.maxSteps<1||draft.maxSteps>30)throw Error("invalid_autonomous_draft")
       if(draft.requirePlanReview!==undefined&&typeof draft.requirePlanReview!=="boolean")throw Error("invalid_agent_plan_review")
       if(draft.rememberOutcome!==undefined&&typeof draft.rememberOutcome!=="boolean")throw Error("invalid_agent_memory_outcome_choice")
-      return {agentId:draft.agentId.toLowerCase(),revision:draft.revision,instruction,maxSteps:draft.maxSteps,...(draft.requirePlanReview!==undefined?{requirePlanReview:draft.requirePlanReview}:{}),...(draft.rememberOutcome!==undefined?{rememberOutcome:draft.rememberOutcome}:{})}
+      if(draft.localDeviceId!==undefined&&!uuid.test(draft.localDeviceId))throw Error("invalid_native_local_device_value")
+      if(draft.taskPlanning!==undefined&&draft.taskPlanning!=='reviewed_v1')throw Error('invalid_agent_task_planning')
+      const optimizationExpected=draft.optimizationExpected===undefined?undefined:originalOptimizationRetestSelection(draft.optimizationExpected)
+      if(optimizationExpected&&(optimizationExpected.acceptance_request_id!==draft.optimizationLineageId||optimizationExpected.spec_id!==draft.agentId||optimizationExpected.spec_revision!==draft.revision)||originalRunOptions&&Boolean(draft.optimizationLineageId)!==Boolean(optimizationExpected))throw Error('invalid_original_optimization_selection')
+      const lineage=draft.optimizationLineageId===undefined?undefined:optimizationRetestId(draft.optimizationLineageId)
+      const businessCase=draft.businessCase===undefined?undefined:parseOrdinaryCaseRunInput(draft.businessCase)
+      return {...(optimizationExpected?{optimizationExpected}:{}),...(originalRunOptions?{originalRunOptions}:{}),...(businessCase?{businessCase}:{}),...(draft.taskPlanning?{taskPlanning:draft.taskPlanning}:{}),agentId:draft.agentId.toLowerCase(),revision:draft.revision,instruction,maxSteps:draft.maxSteps,...(draft.taskPlanning||draft.requirePlanReview!==undefined?{requirePlanReview:draft.taskPlanning?true:draft.requirePlanReview}:{}),...(draft.rememberOutcome!==undefined?{rememberOutcome:draft.rememberOutcome}:{}),...(lineage?{optimizationLineageId:lineage}:{}),...(draft.localDeviceId!==undefined?{localDeviceId:draft.localDeviceId.toLowerCase()}:{})}
     },
     acceptDetail:result=>result.execution_mode==="agent_native_v2"&&result.run.kind==="agent"&&result.run.workflow_id===null&&uuid.test(result.run.agent_spec_id),
-    acceptSubmit:(result,body)=>result.run.agent_spec_id===body.agentId&&result.run.instruction===body.instruction&&
-      result.run.checkpoint.spec_revision===body.revision&&result.run.checkpoint.max_steps===body.maxSteps&&result.run.checkpoint.require_plan_review===body.requirePlanReview&&Boolean(result.outcome_memory?.enabled)===(body.rememberOutcome===true),
+    acceptSubmit:(result,body)=>originalOptimizationRetestSubmitMatches(result,body)&&originalRunOptionsSubmitMatches(result,body)&&result.run.checkpoint.task_planning===body.taskPlanning&&ordinaryCaseSubmitMatches(result,body)&&result.run.agent_spec_id===body.agentId&&result.run.instruction===body.instruction&&
+      result.run.checkpoint.spec_revision===body.revision&&result.run.checkpoint.max_steps===body.maxSteps&&result.run.checkpoint.require_plan_review===body.requirePlanReview&&Boolean(result.outcome_memory?.enabled)===(body.rememberOutcome===true)&&(body.localDeviceId===undefined?result.local_device_id==null:result.local_device_id===body.localDeviceId),
   })
+}
+
+export function ordinaryCaseSubmitMatches(result:PgNativeAutonomousAgentResult,body:AutonomousDraft):boolean{
+ if(body.businessCase===undefined)return result.ordinary_case_binding==null
+ try{const b=parseOrdinaryCaseRunBinding(result.ordinary_case_binding),input=parseOrdinaryCaseRunInput(body.businessCase)
+  return b.run_id===result.run.id&&b.spec_id===body.agentId&&b.spec_revision===body.revision&&b.case_id===input.case_id&&b.question_id===(input.question_id??null)
+ }catch{return false}
+}
+
+export function originalRunOptionsSubmitMatches(result:PgNativeAutonomousAgentResult,body:AutonomousDraft):boolean{
+ const raw=result.run.checkpoint.original_ui
+ if(body.originalRunOptions===undefined)return raw===undefined
+ if(!raw||typeof raw!=='object'||Array.isArray(raw))return false
+ const value=raw as Record<string,unknown>
+ try{return Object.keys(value).sort().join(',')==='options,protocol,source_sha256'&&value.protocol==='native_original_run_admission_v1'&&typeof value.source_sha256==='string'&&/^[a-f0-9]{64}$/.test(value.source_sha256)&&originalRunOptionsCanonical(value.options)===originalRunOptionsCanonical(body.originalRunOptions)&&Number.isSafeInteger(result.run.checkpoint.original_ui_model_calls)&&Number(result.run.checkpoint.original_ui_model_calls)>=0&&Number(result.run.checkpoint.original_ui_model_calls)<=body.originalRunOptions.max_model_calls}catch{return false}
+}
+
+export function originalOptimizationRetestSubmitMatches(result:PgNativeAutonomousAgentResult,body:AutonomousDraft):boolean{
+ if(body.optimizationLineageId===undefined)return !Object.hasOwn(result,'optimization_retest')
+ try{optimizationRetestProof(result.optimization_retest,{run_id:result.run.id,spec_id:body.agentId,spec_revision:body.revision,acceptance_request_id:body.optimizationLineageId});return body.optimizationExpected===undefined||originalOptimizationRetestProofMatches(result.optimization_retest,result.run.id,body.optimizationExpected)}catch{return false}
 }

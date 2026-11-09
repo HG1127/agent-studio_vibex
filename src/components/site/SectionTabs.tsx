@@ -1,86 +1,27 @@
 import { Link, useLocation } from "react-router-dom"
+import { ChevronRight } from "lucide-react"
+import { getStudioAccountInfo } from "@/lib/studioAuth"
+import { workspaceForPath } from "@/lib/studioNavigation"
 
-type SectionTab = { to: string; label: string }
-
-type SiteSection = {
-  key: string
-  tabs: SectionTab[]
-  extraPaths: string[]
-}
-
-// 站点四大分区：侧栏只露四个入口，分区内各页共用一条页签栏互相串联。
-const SITE_SECTIONS: SiteSection[] = [
-  {
-    key: "run",
-    tabs: [
-      { to: "/internal-overview", label: "内部总览" },
-      { to: "/internal-templates", label: "Agent 内部共享" },
-      { to: "/agent-collaboration", label: "多人 Agent 协作" },
-      { to: "/manager", label: "公司运行与审批" },
-      { to: "/agent-run", label: "助手试跑" },
-      { to: "/workflow-canvas", label: "工作流编排" },
-      { to: "/scheduled-tasks", label: "定时任务" },
-    ],
-    extraPaths: ["/run-detail"],
-  },
-  {
-    key: "capability",
-    tabs: [
-      { to: "/model-connections", label: "模型连接" },
-      { to: "/knowledge-bases", label: "知识库" },
-      { to: "/tool-connections", label: "工具连接" },
-      { to: "/plugin-market", label: "插件市场" },
-      { to: "/template-market", label: "模板市场" },
-      { to: "/tool-hub", label: "调试监控" },
-    ],
-    extraPaths: [],
-  },
-  {
-    key: "release",
-    tabs: [
-      { to: "/version-release", label: "版本发布" },
-      { to: "/integrate", label: "对外集成" },
-    ],
-    extraPaths: [],
-  },
-]
-
-function findSectionByPath(path: string): SiteSection | undefined {
-  return SITE_SECTIONS.find(
-    (section) =>
-      section.tabs.some((tab) => tab.to === path) || section.extraPaths.includes(path),
-  )
-}
-
+/**
+ * Context breadcrumb instead of a second eight-tab navigation bar.
+ * All direct links live in the five-space sidebar / mobile navigation.
+ */
 export function SectionTabs() {
-  const currentPath = useLocation().pathname
-  const section = findSectionByPath(currentPath)
-  if (!section) return null
-
+  const pathname=useLocation().pathname
+  const role=getStudioAccountInfo()?.role === "admin" ? "admin" : "employee"
+  const workspace=workspaceForPath(pathname,role)
+  if (!workspace || pathname === "/") return null
+  const current=workspace.children.find(item=>item.to===pathname)
   return (
-    <div
-      className="flex shrink-0 items-end gap-1 overflow-x-auto border-b border-border bg-card px-4 pt-2"
-      role="tablist"
-      aria-label="分区页签"
-    >
-      {section.tabs.map((tab) => {
-        const isActive = tab.to === currentPath
-        return (
-          <Link
-            key={tab.to}
-            to={tab.to}
-            role="tab"
-            aria-selected={isActive}
-            className={
-              isActive
-                ? "shrink-0 border-b-2 border-primary px-3 pb-2 text-sm font-medium text-primary"
-                : "shrink-0 border-b-2 border-transparent px-3 pb-2 text-sm text-muted-foreground transition hover:text-card-foreground"
-            }
-          >
-            {tab.label}
-          </Link>
-        )
-      })}
-    </div>
+    <nav aria-label="当前位置" className="hidden h-10 shrink-0 items-center gap-2 border-b border-border bg-card/60 px-5 text-xs text-muted-foreground lg:flex">
+      <Link to="/" className="hover:text-foreground">Agent Studio</Link>
+      <ChevronRight className="h-3.5 w-3.5"/>
+      <Link to={workspace.to} className="hover:text-primary">{workspace.label}</Link>
+      {current && current.to!==workspace.to && <>
+        <ChevronRight className="h-3.5 w-3.5"/>
+        <span aria-current="page" className="font-semibold text-foreground">{current.label}</span>
+      </>}
+    </nav>
   )
 }

@@ -83,7 +83,7 @@ jobs:
       - name: Actual browser / Cookie / SQL / private mTLS, synthetic model only
         env:
           AGENT_STUDIO_NATIVE_BROWSER_CI: "SYNTHETIC_GITHUB_ONLY"
-        run: pnpm test:pg18:employee-ui:ci
+        run: node node_modules/@playwright/test/cli.js test --config=tests/pg-native-browser/playwright.legacy-regression.config.mjs
       - name: Retain synthetic UI screenshots only
         if: always()
         uses: actions/upload-artifact@v4

@@ -8,6 +8,7 @@ import {fileURLToPath} from "node:url"
 import {spawnSync} from "node:child_process"
 import {createHash} from "node:crypto"
 import ts from "typescript"
+import {captureEmployeeUi078Sources,assertEmployeeUi078Snapshot,employeeUi078Plan} from "../services/pg-api/src/pg18-employee-ui078-source.mjs"
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..")
 const included=new Set([
@@ -15,6 +16,7 @@ const included=new Set([
   "services/pg-api/src/native-auth-repository.d.mts",
   "services/pg-api/src/native-auth-http.d.mts",
   "ops/baota-pg18-native-api-preflight.sh",
+  "docs/PG18_COMPLETE_069_PREPARATION.md",
 ])
 const assessmentAssets=[
   "ops/templates/agent-assessment-worker.service.example",
@@ -22,6 +24,20 @@ const assessmentAssets=[
   "ops/agent-assessment-logins.sql.example",
   "ops/agent-assessment-pg-hba.conf.example",
   "ops/agent-assessment-operator-plan.txt",
+]
+// Explicit server-side Executor operator/preflight only; never a desktop client
+// or an activation switch. Each asset is a fixed reviewed path, not a glob.
+const localExecutorOperatorSources=[
+  "services/pg-api/src/native-local-executor-service-preflight-cli.mjs",
+  "services/pg-api/src/native-local-executor-service-preflight.ts",
+  "services/pg-api/src/native-local-executor-operator-plan.mjs",
+  "services/pg-api/src/native-local-executor-operator-plan.d.mts",
+]
+const localExecutorOperatorAssets=[
+  "ops/templates/agentstudio-pg18-native-local-executor.conf.example",
+  "ops/templates/native-local-executor-pg-hba.conf.example",
+  "docs/PG18_NATIVE_LOCAL_EXECUTOR_OPERATOR_REVIEW.md",
+  "docs/PG18_NATIVE_LOCAL_EXECUTOR_OPERATOR_PLAN.json",
 ]
 const hash=raw=>createHash("sha256").update(raw).digest("hex")
 // All child programs share one environment boundary, including tar. Ambient
@@ -35,8 +51,18 @@ const thirdParty={
   "pdfjs-dist":"6.4.299",
 }
 function refuse(reason){throw Error("native_preflight_bundle_refused:"+reason)}
+const employeeUi078ReviewedPaths=new Set()
+const employeeUi078ReviewAssets=["deploy/postgres-staging/employee-ui078-install.example.json","deploy/postgres-staging/employee-ui078-hosted-genuine-plan.json","services/pg-api/pnpm-lock.yaml"]
+// These two existing Worker assets enter through an erased executor type edge.
+// Package their exact source bytes as data; this tool never executes SQL.
+const nativeWorkerSqlAssets=Object.freeze({
+  "db/postgres/008_claim_workflow_v2.sql":Object.freeze(["fa1f62bdda742c281d74ac50b01db1697402dda710c417437553828bf14c5ef1","4bc13f8da3d15ae11dfcb669242ad0babd54440fd93131c028c43369eb822519"]),
+  "db/postgres/009_claim_autonomous_agent.sql":Object.freeze(["b4188f7965c8329ea30e52eb420b799735616825887412796a402616072c4ab1","26312b65700a436a521cc5eff6af4bf8299f10a2e06c4bb9b5c99dff2e257830"]),
+})
 function validatedPath(rel){
-  if(typeof rel!=="string"||(!rel.startsWith("services/pg-api/src/")&&!["shared/schedule-time.mjs","shared/agent-role-limits.mjs"].includes(rel))||
+  if(typeof rel==="string"&&Object.hasOwn(nativeWorkerSqlAssets,rel))return rel
+  if(employeeUi078ReviewedPaths.has(rel)){if(!/^[A-Za-z0-9._/-]+$/.test(rel)||rel.includes("..")||!/^((services\/pg-api\/src|shared)\/.+\.(ts|mjs|mts|js)|db\/postgres\/.+\.sql)$/.test(rel))refuse("unexpected_employee_ui078_source");return rel}
+  if(typeof rel!=="string"||(!rel.startsWith("services/pg-api/src/")&&!["shared/mcp-inventory-pagination-contract.ts","shared/original-harness-contract.ts","shared/original-schedules-contract.ts","shared/schedule-time.mjs","shared/agent-role-limits.mjs","shared/original-version-release-contract.ts","shared/agent-internal-share-contract.ts","shared/approval-delegation-contract.ts","shared/agent-optimization-retest-contract.ts","shared/native-local-device-contract.mjs","shared/native-local-device-contract.d.mts","shared/agent-caller-contract.ts","shared/tool-hub-public-types.ts","shared/original-toolhub-activity.ts","shared/original-agent-create-read-contract.ts","shared/original-home-authoring.ts","shared/original-agent-catalog.ts","shared/original-internal-overview-contract.ts","shared/model-draft-probe-contract.ts","shared/model-connection-pagination-contract.ts","shared/tool-connection-pagination-contract.ts","shared/model-config-receipt-contract.ts","shared/original-tool-connections-contract.ts","shared/business-schemas.mjs","shared/business-schemas.d.mts","shared/monitor-semantics.mjs","shared/monitor-semantics.d.mts","shared/monitor-execution-budget.mjs","shared/monitor-execution-budget.d.mts","shared/ordinary-case-run-contract.ts","shared/original-run-interaction-contract.ts","shared/original-account-contract.ts","shared/original-staff-contract.mjs","shared/original-staff-contract.d.mts","shared/native-guided-contract.mjs","shared/original-agent-quality-contract.ts","shared/original-agent-run-options.ts","shared/original-role-execution-contract.mjs","shared/original-skill-ab-contract.ts","shared/original-skill-ab-execution-contract.ts","shared/skill-ab-compare.ts"].includes(rel))||
      !/^[A-Za-z0-9._/-]+$/.test(rel)||rel.includes("..")||
      !/\.(?:ts|mjs|mts|js)$/.test(rel))
     refuse("unexpected_dependency:"+(typeof rel==="string"&&/^[A-Za-z0-9._/-]{1,300}$/.test(rel)?rel:"invalid"))
@@ -44,7 +70,7 @@ function validatedPath(rel){
 }
 const visited=new Set()
 const foundExternals=new Set()
-function includeSource(rel){
+function includeSource(rel,includeEmployeeUi078=false){
   validatedPath(rel)
   if(visited.has(rel))return
   visited.add(rel)
@@ -52,6 +78,12 @@ function includeSource(rel){
   const source=path.join(repo,rel)
   if(!fs.existsSync(source)||!fs.lstatSync(source).isFile()||
      fs.lstatSync(source).isSymbolicLink())refuse("missing_source")
+  if(Object.hasOwn(nativeWorkerSqlAssets,rel)){
+    if(!nativeWorkerSqlAssets[rel].includes(hash(fs.readFileSync(source))))refuse("worker_sql_asset_changed")
+    return
+  }
+  // Reviewed SQL is data, never parsed as JavaScript or executed by this tool.
+  if(includeEmployeeUi078&&employeeUi078ReviewedPaths.has(rel)&&rel.endsWith(".sql"))return
   const code=fs.readFileSync(source,"utf8")
   const tree=ts.createSourceFile(rel,code,ts.ScriptTarget.Latest,true)
   const targets=new Set()
@@ -69,7 +101,11 @@ function includeSource(rel){
   }
   visit(tree)
   for(const target of targets){
-    if(target.startsWith("."))includeSource(path.posix.normalize(path.posix.join(path.posix.dirname(rel),target)))
+    // Only this explicit opt-in boundary is absent from the default bundle.
+    // The original service refuses selected078 if its profile files are absent.
+    if(!includeEmployeeUi078&&rel==="services/pg-api/src/native-employee-ui078-profile.ts"&&["./pg18-employee-ui078-source.mjs","./pg18-employee-ui078-audit.ts"].includes(target))continue
+    if(!includeEmployeeUi078&&(rel==="services/pg-api/src/native-employee-staff084-profile.mjs"&&["./employee-staff084-source.mjs","./employee-staff084-profile.mjs"].includes(target)||rel==="services/pg-api/src/native-employee-quality089-profile.mjs"&&["./employee-quality089-source.mjs","./employee-quality089-profile.mjs"].includes(target)||rel==="services/pg-api/src/original-staff-compatible084-audit.mjs"&&target==="./employee-staff084-profile.mjs"))continue
+    if(target.startsWith("."))includeSource(path.posix.normalize(path.posix.join(path.posix.dirname(rel),target)),includeEmployeeUi078)
     else if(!target.startsWith("node:"))foundExternals.add(target.split("/").slice(0,target.startsWith("@")?2:1).join("/"))
   }
 }
@@ -85,7 +121,7 @@ function checkFile(file){
      fs.lstatSync(file).isSymbolicLink())refuse("non_regular_source")
   return fs.readFileSync(file)
 }
-function build(output,includeKnowledgeIndex=false,includeAssessment=false){
+async function build(output,includeKnowledgeIndex=false,includeAssessment=false,includeLocalExecutorOperator=false,includeEmployeeUi078=false){
   if(typeof output!=="string"||!path.isAbsolute(output)||output.includes("\0"))
     refuse("absolute_output_directory_required")
   const pathNormalized=path.resolve(output)
@@ -95,7 +131,17 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false){
      relative!==".."&&!path.isAbsolute(relative)))
     refuse("output_inside_repo")
   fs.mkdirSync(pathNormalized,{recursive:true})
-  includeSource("services/pg-api/src/native-server.ts")
+  employeeUi078ReviewedPaths.clear()
+  let employeeUi078Snapshot=null
+  const packageDependencies={...thirdParty,...(includeEmployeeUi078?{typescript:"5.9.3"}:{})}
+  if(includeEmployeeUi078){
+    employeeUi078Snapshot=await captureEmployeeUi078Sources();assertEmployeeUi078Snapshot(employeeUi078Snapshot,employeeUi078Snapshot.source_sha256)
+    for(const pin of [...employeeUi078Snapshot.base.manifest.sources,...employeeUi078Snapshot.base.manifest.sql_sources,...employeeUi078Snapshot.manifest.extension_sql_sources])employeeUi078ReviewedPaths.add(pin.path)
+    for(const pin of employeeUi078Snapshot.base.manifest.sources)includeSource(pin.path,true)
+    for(const pin of [...employeeUi078Snapshot.base.manifest.sql_sources,...employeeUi078Snapshot.manifest.extension_sql_sources])included.add(validatedPath(pin.path))
+    for(const asset of employeeUi078ReviewAssets)included.add(asset)
+  }
+  includeSource("services/pg-api/src/native-server.ts",includeEmployeeUi078)
   if(includeKnowledgeIndex){
     includeSource("services/pg-api/src/knowledge-index-service.ts")
     included.add("ops/templates/agentstudio-pg18-knowledge-index.service.example")
@@ -105,24 +151,28 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false){
     includeSource("services/pg-api/src/agent-assessment-service.ts")
     for(const asset of assessmentAssets)included.add(asset)
   }
+  if(includeLocalExecutorOperator){
+    for(const source of localExecutorOperatorSources)includeSource(source)
+    for(const asset of localExecutorOperatorAssets)included.add(asset)
+  }
   for(const module of foundExternals){
-    if(!(module in thirdParty))refuse("unapproved_runtime_dependency:"+module)
+    if(!(module in packageDependencies))refuse("unapproved_runtime_dependency:"+module)
   }
   for(const required of ["pg","jszip","pdfjs-dist","mammoth"])
     if(!(required in thirdParty))refuse("incomplete_package")
   const date=new Date().toISOString().replace(/[-:]/g,"").replace(/\..*/,"")
   const archive=path.join(pathNormalized,
-    "agentstudio_pg18_native_api"+(includeKnowledgeIndex?"_index":"")+(includeAssessment?"_assessment":"")+"_preflight_v1_"+date+".tar.gz")
+    "agentstudio_pg18_native_api"+(includeKnowledgeIndex?"_index":"")+(includeAssessment?"_assessment":"")+(includeLocalExecutorOperator?"_local_executor_operator":"")+(includeEmployeeUi078?"_employee_ui078":"")+"_preflight_v1_"+date+".tar.gz")
   if(fs.existsSync(archive))refuse("archive_already_exists")
   const staging=fs.mkdtempSync(path.join(pathNormalized,
     "native-api-review-staging-"))
   try{
     const files={}
     for(const relativePath of [...included].sort()){
-      if(relativePath==="ops/baota-pg18-native-api-preflight.sh"||includeKnowledgeIndex&&[
+      if(relativePath==="ops/baota-pg18-native-api-preflight.sh"||relativePath==="docs/PG18_COMPLETE_069_PREPARATION.md"||includeKnowledgeIndex&&[
         "ops/templates/agentstudio-pg18-knowledge-index.service.example",
         "ops/templates/agentstudio-pg18-knowledge-index-broker.service.example",
-      ].includes(relativePath)||includeAssessment&&assessmentAssets.includes(relativePath)){
+      ].includes(relativePath)||includeAssessment&&assessmentAssets.includes(relativePath)||includeLocalExecutorOperator&&localExecutorOperatorAssets.includes(relativePath)||includeEmployeeUi078&&employeeUi078ReviewAssets.includes(relativePath)){
         files[relativePath]=checkFile(path.join(repo,relativePath))
         continue
       }
@@ -134,13 +184,25 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false){
       name:"agentstudio-pg18-native-api-operator-preflight",
       version:"0.0.0",private:true,type:"module",
       engines:{node:">=24"},
-      dependencies:thirdParty,
+      dependencies:packageDependencies,
     }
     files["services/pg-api/package.json"]=Buffer.from(
       JSON.stringify(pkg,null,2)+"\n")
     files["README_API_PREFLIGHT.txt"]=Buffer.from([
       "Agent Studio PG18 Native API — OPERATOR READ-ONLY PRE-FLIGHT V1",
       "This package contains source and dependency metadata only.",
+      "This is NOT the complete069 installer/preparer archive. Read docs/PG18_COMPLETE_069_PREPARATION.md before selecting a profile.",
+      "For complete069 use the independent ops/build-pg18-complete069-review-bundle.mjs source-review delivery; old050 activation/six-account/postcheck operations must not be applied to full069.",
+      "Its pinned14-package operator runtime and the business dependency tree below are different scopes; never filter an operator inventory to accept business extras.",
+      ...(includeEmployeeUi078?[
+        "Includes the separate complete069-employee-ui078 source/SQL profile. Original53 and old050/059/060 remain unchanged.",
+        "Use TWO separate extraction/source roots: an operator root with the externally reviewed strict14-package runtime, and a Native root with the business dependencies declared here.",
+        "Never run npm install from this business package in the strict operator runtime root. Never filter its inventory to accept extra business packages.",
+        "The operator root requires the original locked runtime manifest/lock/SHA, separate admin/API secret files, new explicit combination write approval and owned disposable physical tuple.",
+        "This source archive itself runs no SQL, account preparation, service or provider. It does not authorize deployment or serving.",
+        "After separately provisioning the pinned parser/runtime, run the independent CLI --plan/--verify; extracted combination plan was not executed by this bundler before dependency installation.",
+        "The original Native --preflight/--serve requires the explicit combination source/physical tuple markers; original employee pages remain the acceptance UI.",
+      ]:[]),
       "It has no passwords, .env, database records, npm lockfile or binaries.",
       ...(includeKnowledgeIndex?["Includes index/query daemon source and read-only service examples. No service is started.",
         "Index offline plan: node --experimental-strip-types services/pg-api/src/knowledge-index-service.ts --plan",
@@ -151,6 +213,14 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false){
         "Review offline plan/help: node --experimental-strip-types services/pg-api/src/agent-assessment-service.ts --plan (or --help)",
         "Optional056/057 and dedicated logins require separate review/provisioning. This archive applies no SQL or HBA changes.",
         "The login SQL.example deliberately ends ROLLBACK; neither preflight nor serve is authorized by this source package.",
+      ]:[]),
+      ...(includeLocalExecutorOperator?[
+        "Includes four server-side Executor operator/preflight modules and four exact review assets; no desktop client or secret is bundled.",
+        "Executor offline plan: node services/pg-api/src/native-local-executor-service-preflight-cli.mjs --plan",
+        "The optional feature remains disabled. This archive creates no LOGIN, activates no account, copies no secret, and changes no HBA/unit.",
+        "Read docs/PG18_NATIVE_LOCAL_EXECUTOR_OPERATOR_REVIEW.md before separately authorized preparation.",
+        "The drop-in references the final reviewed runtime directory; this extraction directory is a source-review directory, not an installed service.",
+        "The existing Native --preflight does not attest optional Executor readiness. The independent same-unit service preflight remains read-only.",
       ]:[]),
       "Use a NEW directory /opt/agentstudio-pg18-api-preflight-v1.",
       "Target: PostgreSQL 18 at 127.0.0.1:5333, agent_studio only.",
@@ -177,6 +247,11 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false){
       "Never start API Worker, run model jobs or switch PocketBase.",
       "",
     ].join("\n"))
+    if(employeeUi078Snapshot){
+      assertEmployeeUi078Snapshot(employeeUi078Snapshot,employeeUi078Snapshot.source_sha256)
+      if(hash(files["services/pg-api/pnpm-lock.yaml"])!=="eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a")refuse("employee_ui078_original_lock_required")
+      files["EMPLOYEE_UI078_SOURCE_REVIEW.json"]=Buffer.from(JSON.stringify({source_only:true,plan:employeeUi078Plan(employeeUi078Snapshot),runtime_authorization:false,Native_server_process_entry_verified:false,production_GO:false},null,2)+"\n")
+    }
     const manifestPaths=Object.keys(files).sort()
     for(const [rel,raw] of Object.entries(files)){
       if(/(?:^|\/)(?:\.env[^/]*|pb_data|node_modules|secrets?|credentials?)(?:\/|$)/i.test(rel))
@@ -253,19 +328,35 @@ function build(output,includeKnowledgeIndex=false,includeAssessment=false){
         for(const rel of ["agent-assessment-service.ts","agent-assessment-service-config.ts","agent-assessment-worker.ts","agent-assessment-client.ts","agent-assessment-broker.ts","agent-assessment-role.ts","agent-assessment-audit.ts","agent-assessment-audit-core.ts","agent-review-source.ts","model-broker-actor.ts","model-connection-crypto.ts"])
           if(!manifestPaths.includes("services/pg-api/src/"+rel))refuse("incomplete_assessment_runtime_closure")
       }
+      if(includeLocalExecutorOperator){
+        for(const source of [...localExecutorOperatorSources,...localExecutorOperatorAssets])
+          if(!manifestPaths.includes(source))refuse("incomplete_local_executor_operator_closure")
+        const env={...childEnvironment,DATABASE_URL:"postgres://forbidden-prod",CREDENTIALS_DIRECTORY:"/never/read/source-review",AGENT_STUDIO_PG18_LOCAL_DEVICES_AVAILABLE:"true",AGENT_STUDIO_PG18_LOCAL_DEVICES_WRITES_ENABLED:"true",AGENT_STUDIO_PG18_LOCAL_DEVICES_APPROVED:"REVIEW_REQUIRED"}
+        const run=args=>spawnSync(process.execPath,["--max-old-space-size=64","services/pg-api/src/native-local-executor-service-preflight-cli.mjs",...args],{cwd:verify,encoding:"utf8",timeout:18000,env})
+        const probe=run(["--plan"])
+        if(probe.status!==0||probe.stderr!=="")refuse("isolated_local_executor_operator_plan_failed")
+        const plan=JSON.parse(probe.stdout.trim())
+        if(plan.format!=="native_local_executor_operator_plan_v1"||plan.abi?.login!=="agentstudio_local_executor_login"||plan.service_preflight_read_only!==true||["network_used","secrets_read","writes_performed","services_started","production_cutover_allowed","activation_via_this_cli_supported"].some(key=>plan[key]!==false))refuse("local_executor_operator_plan_not_safe")
+        for(const args of [[],["--apply"],["--activate"],["--service-preflight"]]){
+          const result=run(args)
+          if(result.status!==1||result.stdout!==""||result.stderr!=="native_local_executor_preflight_refused\n")refuse("local_executor_operator_unapproved_not_refused")
+        }
+      }
     }finally{fs.rmSync(verify,{recursive:true,force:true})}
     return {
       archive,sha256:hash(fs.readFileSync(archive)),
       size_bytes:fs.statSync(archive).size,
       source_files:visited.size,
       packed_files:manifestPaths.length+1,
-      dependencies:thirdParty,
+      dependencies:packageDependencies,
       manifest_verified:true,
       offline_plan_verified:true,
       default_start_refused:true,
       contains_secrets:false,
+      ...(includeEmployeeUi078?{employee_ui078_source_review_included:true,employee_ui078_extracted_plan_verified:false,employee_ui078_parser_installation_required:true,employee_ui078_schema_installation_verified:false,employee_ui078_Native_process_verified:false}:{}),
       ...(includeKnowledgeIndex?{knowledge_index_service_included:true,index_default_plan_only:true}:{}),
       ...(includeAssessment?{assessment_service_source_included:true,assessment_default_enabled:false,assessment_offline_plan_verified:true,assessment_unapproved_modes_refused:true}:{}),
+      ...(includeLocalExecutorOperator?{local_executor_operator_source_included:true,local_executor_default_enabled:false,local_executor_offline_plan_verified:true,local_executor_unapproved_modes_refused:true,local_executor_activation_authorized:false}:{}),
     }
   }finally{fs.rmSync(staging,{recursive:true,force:true})}
 }
@@ -273,9 +364,9 @@ if(process.argv[1]&&path.resolve(process.argv[1])===
   fileURLToPath(import.meta.url)){
   try{
     const flags=process.argv.slice(4)
-    if(![4,5,6].includes(process.argv.length)||process.argv[2]!=="--output-dir"||new Set(flags).size!==flags.length||flags.some(flag=>!["--with-knowledge-index","--with-agent-assessment"].includes(flag)))
+    if(![4,5,6,7,8].includes(process.argv.length)||process.argv[2]!=="--output-dir"||new Set(flags).size!==flags.length||flags.some(flag=>!["--with-knowledge-index","--with-agent-assessment","--with-local-executor-operator","--with-employee-ui078-profile"].includes(flag)))
       refuse("exact_output_arguments_required")
-    process.stdout.write(JSON.stringify(build(process.argv[3],flags.includes("--with-knowledge-index"),flags.includes("--with-agent-assessment")))+"\n")
+    process.stdout.write(JSON.stringify(await build(process.argv[3],flags.includes("--with-knowledge-index"),flags.includes("--with-agent-assessment"),flags.includes("--with-local-executor-operator"),flags.includes("--with-employee-ui078-profile")))+"\n")
   }catch(e){
     process.stderr.write("PG18_NATIVE_API_BUNDLE_REFUSED:"+
       (e instanceof Error?e.message:"unknown")+"\n")

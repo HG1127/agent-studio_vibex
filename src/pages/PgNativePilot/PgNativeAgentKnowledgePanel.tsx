@@ -5,9 +5,9 @@ import {useKnowledgeToolContext} from "./useKnowledgeToolContext"
 import PgNativeKnowledgeToolMode from "./PgNativeKnowledgeToolMode"
 type Api=ReturnType<typeof createPgNativePilotApi>
 const field="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
-type Props={api:Api;agents:PgNativeAgent[];bases:PgNativeKnowledge[];active:boolean;enabled:boolean;onSaved:()=>Promise<void>;onExpired:()=>void}
+type Props={api:Api;agents:PgNativeAgent[];bases:PgNativeKnowledge[];active:boolean;enabled:boolean;onSaved:()=>Promise<void>;onExpired:()=>void;initialAgentId?:string}
 export default function PgNativeAgentKnowledgePanel(props:Props){
-  const [id,setId]=useState(""),[busy,setBusy]=useState(false)
+  const [id,setId]=useState(()=>props.agents.find(agent=>agent.id===props.initialAgentId)?.id??""),[busy,setBusy]=useState(false)
   const agent=props.agents.find(row=>row.id===id)
   return <section aria-label="Agent 知识库绑定" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
     <h2 className="font-semibold">Agent 知识库绑定</h2>

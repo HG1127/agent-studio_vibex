@@ -18,10 +18,46 @@ on:
       - 'pnpm-workspace.yaml'
       - 'pnpm-lock.yaml'
       - '.github/workflows/agent-studio-quality.yml'
+      # F07-only integration edits run their dedicated genuine workflow.
+      - '!services/pg-api/tests/helpers/agent-template-market-database-catalog-cases.mjs'
+      - '!tests/pg-native-template-market-genuine.spec.mjs'
   pull_request:
+    paths-ignore:
+      - 'services/pg-api/tests/helpers/agent-template-market-database-catalog-cases.mjs'
+      - 'tests/pg-native-template-market-genuine.spec.mjs'
   workflow_dispatch:
 
 jobs:
+  original-ui-contracts:
+    name: Original employee UI migration contracts (source only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked frontend dependencies without lifecycle scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Install locked API dependencies for source contracts
+        run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Verify original page contracts and exact recovery regressions
+        run: pnpm test:original-ui-contracts
+      - name: Verify current migration repair source regressions
+        run: node --test --test-concurrency=1 tests/original-toolhub-public-checkpoint-pure.test.mjs tests/original-toolhub-session-pure.test.mjs tests/staff031-quality015-observation-pure.test.mjs services/pg-api/tests/full069-native-realpath-source-pure.test.mjs services/pg-api/tests/pg18-source-utf8-native.test.mjs tests/pg-original-run-queued-history-policy-pure.test.mjs tests/original-agent-run-initial-route-pure.test.mjs tests/pg-original-run-queued-policy.test.mjs services/pg-api/tests/native-original-directory-pair-source-pure.test.mjs services/pg-api/tests/native-original-directory-shutdown-source-pure.test.mjs tests/native-login-status-contract-pure.test.mjs tests/native-login-status-host-policy-pure.test.mjs tests/original-directory-inventory-source-pure.test.mjs tests/original-toolhub-activity-readiness-pure.test.mjs tests/quality089-constraint-column-order-pure.test.mjs tests/original-agent-feedback-readiness-pure.test.mjs services/pg-api/tests/worker-heartbeat-runtime-native-path-source-pure.test.mjs services/pg-api/tests/pg18-full069-native-deadline-timing-source-pure.test.mjs services/pg-api/tests/worker-heartbeat-buffer-digest-source-pure.test.mjs tests/original-directory-inventory-wire-pure.test.mjs tests/staff084-complete078-compatibility-pure.test.mjs tests/original-harness-execution-pure.test.mjs tests/original-mcp-inventory-tool-entry-pure.test.mjs tests/original-resource-fresh-job-guard-pure.test.mjs tests/original-execution-count-scope-pure.test.mjs tests/original-resource-spki-pin-pure.test.mjs tests/original-agent-create-read-pure.test.mjs tests/pg-original-agent-create-fresh-source-pure.test.mjs tests/pg-original-agent-create-fixture-contract-pure.test.mjs tests/workflow-web-egress-guard-pure.test.mjs tests/workflow-web-search-parser-pure.test.mjs tests/workflow-web-citation-boundaries-pure.test.mjs tests/workflow-web-snippet-href-presence-pure.test.mjs tests/workflow-web-quoted-tag-boundary-pure.test.mjs tests/original-web-pages-terminal-data-pure.test.mjs services/pg-api/tests/worker-heartbeat-runtime-scalar-port-source-pure.test.mjs services/pg-api/tests/native-guided-audit-query-parameters-source-pure.test.mjs tests/quality089-release-parent-compatibility-pure.test.mjs tests/staff084-complete078-refusal-diagnostic-pure.test.mjs tests/original-web-spki-pin-pure.test.mjs tests/original-plugin-market-pure.test.mjs tests/original-plugin-market-terminal-data-pure.test.mjs tests/original-plugin-market-public-checkpoint-pure.test.mjs services/pg-api/tests/full069-live-trust-buffer-digest-source-pure.test.mjs tests/original-agent-create-native-design-bridge-pure.test.mjs tests/original-directory-live-telemetry-pure.test.mjs tests/original-page-registered-entry-pure.test.mjs services/pg-api/tests/quality089-named-release-ledger-source-pure.test.mjs services/pg-api/tests/named-policy-oid-json-source-pure.test.mjs tests/original-directory-terminal-recheck-pure.test.mjs tests/pg-original-agent-create-owned-pg-source.test.mjs tests/workflow-web-before-dial-cancel-pure.test.mjs tests/original-reviewed-member-admission-pure.test.mjs tests/original-schedules-weekday-window.test.mjs services/pg-api/tests/complete069-source-directory-cycle-source-pure.test.mjs services/pg-api/tests/full069-node-executable-stream-hash-source-pure.test.mjs services/pg-api/tests/original-create-parent-sequence-source-pure.test.mjs services/pg-api/tests/original-ui-unified-catalog-source-pure.test.mjs services/pg-api/tests/original-ui-unified-role-delta-source-pure.test.mjs services/pg-api/tests/quality089-release-trigger-integrity-source-pure.test.mjs services/pg-api/tests/staff084-statistics-api-source-pure.test.mjs services/pg-api/tests/worker-heartbeat-reader-directory-cycle-source-pure.test.mjs tests/profile-phases-source-pure.test.mjs services/pg-api/tests/original-statistics-selected-boundary-source-pure.test.mjs services/pg-api/tests/original-create-install-paths-and-legacy-bindings-source-pure.test.mjs tests/hosted-profile-known-failure-source-pure.test.mjs tests/original-directory-connector-metadata-pure.test.mjs tests/original-plugin-fixture-request-contract-pure.test.mjs tests/original-legacy-source-views-pure.test.mjs tests/original-directory-logout-navigation-pure.test.mjs tests/model-config-receipt075-hosted-phases-source-pure.test.mjs tests/original-create-knowledge-scope-source-pure.test.mjs tests/staff084-audit-cleanup.test.mjs tests/original-plugin-page-entry-pure.test.mjs tests/original-create-refresh-readiness-pure.test.mjs tests/original-create-draft-decision-source-pure.test.mjs tests/quality089-model075-parent.test.mjs tests/complete-service-fixed-refusal.test.mjs tests/quality089-worker-seed-tool-binding-pure.test.mjs tests/staff084-named-ledger-transport.test.mjs tests/original-page-cookie-and-routing-contract.test.mjs services/pg-api/tests/full069-source-fresh-digest-pure.test.mjs
+      - name: Verify fixed Staff diagnostic source phases
+        run: node --experimental-vm-modules --test --test-concurrency=1 tests/staff42501-fixed-stages-source-pure.test.mjs
+
   pg17-tcp-isolated:
     name: Real PostgreSQL 17 / RLS / multi-worker (ephemeral)
     runs-on: ubuntu-latest
@@ -694,7 +730,9 @@ jobs:
 
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The complete serial regression now exceeds the former 20 minute job cap.
+    # Keep every pnpm check/integration step and all application deadlines.
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4

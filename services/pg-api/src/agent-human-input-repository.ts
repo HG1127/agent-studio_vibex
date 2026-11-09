@@ -1,3 +1,4 @@
+import {assertOriginalUiEmployee} from './native-original-ui-preconditions.ts'
 import {HttpError,isUuid,type Identity,type SqlClient,type SqlPool} from "./contracts.ts"
 import {withActor} from "./repository.ts"
 import {durableV2Root,type DurableV2Mode} from "./durable-v2-root.ts"
@@ -23,12 +24,13 @@ export class AgentHumanInputRepository{
     if(row.run_id!==id||row.kind!==this.root.kind||row.mode!==this.root.mode||row.request_sha256!==humanResponseFingerprint(id,choice))throw new HttpError(409,"agent_human_response_request_conflict")
     return humanInputReceipt(id,choice,true)
   }
-  async change(identity:Identity,rawId:string,raw:unknown):Promise<HumanInputReceipt>{
+  async change(identity:Identity,rawId:string,raw:unknown,expectedEmployee?:string):Promise<HumanInputReceipt>{
     native(identity);const id=runId(rawId),choice=parseAgentHumanResponse(raw)
-    const prior=await withActor(this.pool,identity,async(db,owner)=>{await requireHumanInputSchema(db);return this.previous(db,owner,id,choice)})
+    const prior=await withActor(this.pool,identity,async(db,owner)=>{assertOriginalUiEmployee(owner,expectedEmployee);await requireHumanInputSchema(db);return this.previous(db,owner,id,choice)})
     if(prior)return prior
     if(!this.enabled)throw new HttpError(403,"agent_human_responses_disabled")
     return withActor(this.pool,identity,async(db,owner)=>{
+      assertOriginalUiEmployee(owner,expectedEmployee)
       await requireHumanInputSchema(db)
       await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,48))",[owner+":"+choice.request_id])
       const previous=await this.previous(db,owner,id,choice);if(previous)return previous

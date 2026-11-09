@@ -1,12 +1,318 @@
 # PostgreSQL 迁移前完成清单
 
-更新：2026-10-27。现有 PocketBase 仍是当前运行环境，正式切换 **NO-GO**。
+## dc1736d 原页面执行进展与后续修复（2026-11-02，新源码待封签）
+
+精确头dc1736d已获远端ACK。[F01](https://github.com/HG1127/agent-studio_vibex/actions/runs/41457717287)17/21，原排队RunDetail故事已通过，保留原404与身份来源断言。[定时Worker故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41457717152)已完成原员工登录、Agent/Workflow各一个真实run/job/occurrence成功和结果查看/重新核对身份后的复制，均使用合成TLS模型，尚非整个故事或独立CLI/在线心跳验收；随后人工重试因测试未处理原确认框而无POST。夹具现只接受该一次、类型与完整提示均核对的确认，不改变产品交互。
+
+[原078故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41457717122)已完成55历史分页、四种时间规则的完整暂停Agent表单往返及暂停Workflow表单；后续已有内容的textarea被精确标签定位漏掉。原发布页也推进到版本比较下拉框的同类定位问题，仅改测试的固定前缀。074独立凭据已通过，现把错误的1分钟测试draft改为原校验器要求的15分钟；077实际安装发现版本账本必填description被遗漏，仅补其最后一条INSERT，表与所有函数体、原53SQL不变。Root216项针对性纯检查及实际fixture表达式经原draft解析器检查通过，真实新头需重跑。
+
+发布完成的实际闭合观察已确认awaiting_input之前停为paused、error_category=effect_outcome_unknown。已证实夹具把Native external_subject与业务users.id错误比较，导致合法身份在进入Broker前拒绝；新补丁将真实Cookie会话身份与一条active业务owner映射绑定，再在model/tool两种派发中核对issuer和subject，user主键不能冒充subject。Root50项组合纯检查通过，包括原夹具红例与17项新反例；原租约解析器、未知ACK不重放及人工门槛保持，真实F01仍待新头。遥测仍通过Controller、短竞争8/8与原boot/claim/identity，六类停止清理在原5秒内未结束。Legacy Reader仍registry_mismatch，5063ms且剩余−62ms，guard4307ms；不能据此认定registry变化或租约根因。Final14这次为15秒样本预算超限：采集21245ms，native6446/runtime18588/companions907ms，不能沿用上一头的失败原因。所有原期限、新鲜度、身份、8/8与清零判定不变。
+
+v110新增内部WeakMap关联的闭合registry触发位置/原因，仅在原失败映射与Reader失败路径观察；Root159项纯检查、API类型通过，原SQL、哈希输入、判断条件、错误与清理次序保持，未证明根因或性能修复。两轮质量现均51/51作业通过，主回归4730/4730、原员工契约2440/2440，类型、构建与全部安全集成步骤通过；PB19为19/19、双Worker、72.2秒。该精确头19轮流程合计14成功、5失败，完整原系统及新源码验收仍分开记录。080四包只在私有目录组合审阅，UI兼容、有效权限、API完整catalog与081消费者/锁依赖/字体、最新桌面基线、完整组合安装、目标环境、备份恢复、长期Worker和员工UAT仍开放。正式迁移 **NO-GO**。
+
+## 0adf14d 质量全绿与第五轮集成（2026-11-02，后续源码待新头验证）
+
+精确提交0adf14d的18轮自动流程及追加原PB19均已结束，合计14成功、5失败。[质量push](https://github.com/HG1127/agent-studio_vibex/actions/runs/41445588089)与PR均51/51；根回归4696/4696、原员工契约2360/2360、类型与普通生产构建通过。[原PocketBase/SQLite并行E2E](https://github.com/HG1127/agent-studio_vibex/actions/runs/41449171316)19/19、默认双Worker、72.5秒；这是旧系统兼容回归，不是PG迁移或员工验收。
+
+[F01](https://github.com/HG1127/agent-studio_vibex/actions/runs/41445588087)16/20。监控074已越过原069前置安装，现因夹具128字符hex串不符合原80字符hex密码格式而拒绝；后续改为独立随机40字节并用原SCRAM函数纯检查，不放宽密码校验。原发布页宽正则同时命中两处当前版本文字，改精确文本；计划Worker已越过真实NOLOGIN/角色/044审计准备进入浏览器，修正原LoginPage使用next的接线；两个计划故事把包含选项文字的下拉标签改为前缀定位。原078已通过55表单/55历史分页阶段，当前保存故事尚未运行通过。原排队RunDetail额外404及发布完成故事的明确决定门槛继续独立诊断，不能删断言或将等待状态算成功。
+
+[遥测](https://github.com/HG1127/agent-studio_vibex/actions/runs/41445588121)Controller28项、短竞争8/8及原boot/claim-once/identity通过；四类ended仍超过原5秒停止清理期限，finally清零不能替代。Legacy和Final14目前实际primary均为native_heartbeat_unavailable。新v107仅在原失败路径增加闭合IO触发标记、允许错误码、有界耗时和三个分支结果；Root154项及另39项相关纯检查通过，原错误对象/优先级/等待顺序、期限、新鲜度、真实不在场及清理条件保持，未宣称性能修复。
+
+新增显式monitor074-ordinary077源码审计：原默认074仍拒绝额外对象；仅该具名组合收集指向全部14张074表的外部约束，严格接受077已有ordinary_case_runs_fk3的完整schema/table/OID/owner/key/actions/约束形状，再核对未过滤presence及原完整073/074/077审计。入口只在原普通业务明确开启时选择该profile；不能凭新名称启用执行。相关302项纯检查及API类型通过；未执行真实组合SQL，也不接受080/081外键，它们需要后续独立组合。
+
+原运行详情Hook现于首次绑定或恢复前记录当前路由键，避免对同一目标再次发起协议探测；原kind回退、来源重查、404负例账本及无额外POST保持。Root实际Hook/控制器与发布失败诊断46项纯检查、前端类型通过，真实浏览器仍待新头。发布诊断只输出五个源码错误码对应的固定类别，未知值仅other/has_error，不输出原错误串；保留原六次推进上限与明确决定/回复门槛，底层失败仍未修复。
+
+v109只复用由原构造器和递归冻结清单派生的预期目录/路径布局，每次guard仍新读全部文件、fd/path/祖先metadata、hash、实际inventory及模块descriptor，所有原guard和PG操作顺序不减。Root119项纯检查通过；不缓存授权、健康、不在场或清理结果，实际5秒清理改善尚未证明。另为074+077新增第21个F01作业，独立schema-only用途/精确头门禁；拟实际安装后验证默认074拒绝、具名组合完整审计，以及CASCADE漂移、未知incoming FK拒绝，不借用074执行/外部来源授权。
+
+最新preview.14桌面基线只读比较了220条迁移前端/shared路径，存在双方修改、独立新增及桌面已删除路径，须逐项整合，不能覆盖最新已验收交互。本轮来源封签尚待更新、真实CI需新头复跑；080/081、组合安装、目标环境/网络、备份恢复与回滚、长期Worker、员工UAT与签收仍未齐备，正式迁移 **NO-GO**。
+
+## 4675857 托管结果与第四轮源码修复（2026-11-02）
+
+已获远端ACK的4675857共18轮自动流程全部终止，10成功、8失败；公开调用页本轮已通过。[质量流程](https://github.com/HG1127/agent-studio_vibex/actions/runs/41435887987)根检查4688项中4666通过、22失败，原页面契约2352项中2337通过、15失败，不能视为全绿。后续源码修复覆盖嵌套071来源清单、Native两份固定SQL资产在Windows/Git LF的封闭哈希、原VM的真实函数依赖、员工会话隐私与两种显式探测用途；不放宽认证、角色或来源校验。
+
+[078](https://github.com/HG1127/agent-studio_vibex/actions/runs/41435887963)已越过权限安装错误并创建55份合成表单和55条合成历史，原浏览器停在同名隐藏option；仅修正为可见历史文字定位，仍需新头真实复跑。[计划Worker](https://github.com/HG1127/agent-studio_vibex/actions/runs/41435887764)进入真实夹具后被安装器的NOLOGIN默认拒绝；新夹具先以既有正确SCRAM证明真实拒绝，再绑定原已初始化数据库的实例/数据库OID/启动时间及精确角色权限，临时启用单次合成Worker，池关闭后恢复原密码验证器与NOLOGIN，生产默认不变。原044审计和执行回执不能替代或跳过。
+
+监控074真实安装因夹具缺少原069前置而失败；新准备步骤在真实admin事务中明确安装063–069并逐项检查完整未过滤账本及原审计，再执行原073/074。074的14张私有表仍仅API SELECT，三条封闭行锁RPC和十二项两事务实际锁验证保持；当前尚未获得新头真实成功结果。
+
+[完整069](https://github.com/HG1127/agent-studio_vibex/actions/runs/41435887910)仍失败：Legacy的prepare与knowledge_query观察分别已旧52082ms与69671ms，超出原45秒；已暴露的12次Reader租约均在原5秒内，但最终telemetry后端未清零。Final14只证明native_io，底层原因未知。新私有Stats分配优化通过262项纯检查，仍每次读取真实descriptor与文件；实际性能改善未证实，5/8/30秒、45秒新鲜度、8/8及三项清零判定均不变。
+
+最终员工交付需在最新已验收统一桌面基线上集成。只读观察到preview.14元数据与提交一致、三项祖先存在；本迁移尚未在该基线集成、运行桌面核验器或发布安装包。080解析host、081报告质量、组合安装真实故事、目标环境、备份恢复、长期Worker和员工UAT仍开放。本节是已失败精确头的证据与后续源码修复记录，不是新头运行验收；正式迁移 **NO-GO**。
+
+### 原员工页面独立安装组合源码
+
+- 新增独立`complete069-employee-ui078`安装/检查/核验入口，在已准备好独立API/认证账号及首位管理员、业务表为空的原完整069上，显式组合070/071/072/073/075/078和受限只读目录账本函数；原050/059/060、53份SQL及旧069标识不接受该组合的规则保留。074/076/077仍不选择。
+- 组合核验读取完整真实表/函数OID/角色/ACL/目录及每个版本说明，调用前先核对目录账本函数的实际源码、OID、owner、ACL；保留原069和各扩展审计、真实独立API登录、物理数据库身份及前后新事务观察。未知安装回执只核验，不自动重放；Native原入口在开启HTTP前检查显式组合。
+- 普通Native包只增加默认不启用的配置入口；显式打包选项才纳入组合SQL、完整源码及固定TypeScript解析器。操作器和业务运行目录分开，原锁和严格操作器依赖仍保留。此变更未生成归档或执行安装。
+- Root整合117项纯检查、后端类型检查通过；另修正新Worker故事的普通拒绝测试为清空子进程环境，37项检查通过。来源最终封签后仍需真实组合安装、Native原进程及原员工页面验收，不能把纯检查或计划当作安装成功。
+- 最终员工界面交付还须对齐最新已验收的main/desktop-release统一基线；当前PG实验UI故事不替代该最终集成。无本地SQL、Worker、服务、浏览器、宝塔改动或桌面发版，正式迁移NO-GO。
+
+### 第三轮原页面托管阻断修复
+
+- 精确头01a0d5d的原F01为16/18作业成功：原Agent反馈故事已通过；原Release越过pg加载后，因把存储输出字段require_approval回传给严格输入解析器而拒绝。现仅在测试夹具去掉该输出字段，其他未知字段继续拒绝，正式解析器仍强制审批；新计划Worker夹具的同类输入也已修正。
+- 078的109项纯检查通过，实际SQL已越过语法安装；随后API审计因to_regclass解析私有auth schema报权限不足。现只把政策查询改为系统目录按精确schema.table定位，保留完整角色、行数、USING/WITH CHECK校验，不增加schema权限或过滤实际目录。
+- 原Home073监控故事仍遇到登录导航期间CDP正文失效。现保留真实员工me校验，待首页显示后点原“刷新监测消息”控件读取真实inbox响应；不重试业务写入、不伪造响应或身份。
+- 修复前针对性74项中3项失败，修复后74/74；原计划Worker37/37（含实际夹具输入经原解析器检查）。无本地SQL、Worker、服务器或浏览器；最新精确头实际数据库/浏览器验收仍待回传，正式迁移NO-GO。
+
+### 原计划任务实际 Worker 链验证准备
+
+- 新增原 `/scheduled-tasks` 的受限托管验证源码，复用现有真实 scheduler、V2 Worker、租约身份、Broker、mTLS 请求及实际 SQL 审计；四条拟验路径为 Agent/Workflow 立即运行、四次真实启动失败后的原页面重试、真实 once 时钟触发。队列回执必须先证明尚无运行，不计执行完成。
+- 保留原 15/30/60 秒启动退避；不得手改运行状态、重试时间、结果或成功 DTO。原历史/结果弹窗与复制动作重新读取运行和当前员工，真实会话撤销后必须清空私有视图并保持原剪贴板。
+- 新工作流仅接受已授权迁移分支 push 或精确头手动触发，只连接单次合成 PG/固定本地合成模型；只上传闭合聚合观察，不上传原文、凭据、DOM、截图或日志。明确安装 058–073、075、078，不隐式安装074/076/077。
+- Root 整合后 36/36 纯检查通过，最终来源封签仅证明字节一致；未执行本地 SQL、Worker 或浏览器。实际四次成功、独立进程入口、长期心跳、真实供应商和正式迁移均未获得验收，NO-GO。
+
+## 2026-10-30 用户明确修正的交付策略（优先于下方历史记录）
+
+用户目标：**保留现有界面，只更换底层数据库与后端。**
+
+- 最终员工入口以现有 `src/main.tsx -> src/App.tsx` 为基准，复用当前页面、路由、导航、布局、组件与交互。允许为新后端修改认证、API 客户端、业务 Hook、数据格式及状态/错误映射；不把界面重做列为迁移目标。
+- 已实现的 PostgreSQL API、权限、Worker、知识检索和执行安全继续复用。`pg18-app -> PgNativePilotPage` 及相关面板保留为隔离验证/参考工具，不作为原员工界面的默认替代品，也不据此认定原页面迁移验收完成。
+- 下一阶段先逐页列出“原页面/实际操作 → 当前请求契约 → PG 接口/适配 → 缺口 → 原页面验收证据”，从登录及一个原有核心业务闭环接通，再按原菜单补齐；已实现的后端能力不重复开发。
+- 下方 Native 界面与隔离测试记录属于已有资产和历史证据，不能直接等同于本次目标已交付。后续进度按原页面真实闭环报告，不以新增面板或测试数量代替。
+- 保留既有工作及其他会话修改；不扩展无关新能力。正式切换仍需真实员工 UAT、权限、长期 Worker、备份恢复及回滚签收。本澄清不授权部署、切库、收费调用或 Git 上传。
+
+
+
+## 第二轮原页面托管失败修复（2026-11-02，当前待验证源码）
+
+`85fa4e0`的[078作业](https://github.com/HG1127/agent-studio_vibex/actions/runs/41404494317/job/125143346525)类型、两构建和104项纯检查通过；真实SQL安装越过此前policy语法错误后，仍在函数编译时报syntax error at end of input，尚未开始原页故事。Root按PG18解析器的IF表达式边界定位original_schedule_finish中的裸CASE，现只加括号保护CASE内部THEN，授权/值比较不变，其余19个函数正文和角色权限、044/旧53 SQL保持；同步整份SQL和该函数字面哈希。新增源检查覆盖所有078 PLpgSQL IF表达式，并验证字符串/注释/嵌套括号边界；它不是完整SQL解析或安装成功证据。
+
+078测试安装范围改为明确058–073、075、078，要求每项仅一次且实际应用顺序完整；不因以后074/076/077源文件合入而隐式扩展。已有精确源字节和安装前状态检查保留，未过滤实际catalog。仅在既有安装失败路径记录有界SQLSTATE/位置/例程/已知函数行号，禁止raw SQL、error message/detail/internalQuery/私有上下文，并重抛原错误。
+
+本轮[F01](https://github.com/HG1127/agent-studio_vibex/actions/runs/41404494140)16/18成功。新[原版本故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41404494140/job/125143346337)187纯通过且已越过来源门禁，随后因从根测试目录裸import pg而拒绝启动；现改为以API package.json为基准解析已锁定服务依赖。原用途/来源门禁仍在加载PG之前，真实Pool选项与生命周期代码经撤销该解析增量后逐字恢复。旧[原父运行故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41404494140/job/125143346794)27纯通过，但反馈真实403后过晚读取CDP正文失败；现提前在同一原响应事件捕获JSON，原403错误码、私有内容清除、原回执零值及无额外POST断言保持。
+
+078相关50/50、版本依赖解析45/45、原父运行源码14/14针对性检查通过；未运行本地SQL/Worker/浏览器，未声称本修复新头全量或原页验收通过。监控074 SQL1237行/14表/66函数已完成源码审阅，当前仍有三处装配冲突及078监控能力传递需处理；其SQL/产品源码尚未应用，材料/报告/质量、组合安装、Worker原期限和真实员工验收等缺口继续开放。正式切换 **NO-GO**。
+
+## 原版本故事显式来源完整性修复（2026-11-02，当前源码）
+
+`335c96b`的[F01](https://github.com/HG1127/agent-studio_vibex/actions/runs/41400827186/job/125132069481)现有17个作业全部通过，新增原版本故事在真实数据库/浏览器前被来源门禁拒绝：缺少其明确要求的旧SQL046哈希。该作业原186项纯检查通过，不能代表故事成功。Root源闭包收集只收了静态imports和新文件，遗漏非import字面要求；该拒绝门禁保持。
+
+修复完整保留原运行校验，将实际使用的同一66项来源表达式导出供纯检查读取；只补原SQL046对应的字面哈希，旧SQL字节不动。新增回归核对每个实际声明来源均有当前LF哈希，修前49项中48通过1失败；源门禁代码在还原表达式提取后与父提交逐字一致。新精确头仍需真正运行原页故事，不能把来源完整性、等待审批或合成队列计作当前Worker成功或整页完成。正式迁移保持 **NO-GO**。
+
+## 原定时任务078首次托管安装修复（2026-11-02，当前源码）
+
+已ACK的`335c96b`包含106文件；统一2339/2339、封签后147/147、前后端类型及两种原员工界面构建通过。首个[078真实PG故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41400827301/job/125132069395)已在GitHub hosted真正执行：该作业类型、两构建及103项纯检查通过，但later SQL在078安装时报syntax error near FOR，原页面故事未开始；安装回滚后清理查询不存在的original_schedule_forms也被保留为附加失败，不能计清理成功。
+
+Root仅把新增078审计policy的FOR INSERT移到TO之前，保留原角色和owner/actor WITH CHECK，更新整份迁移SHA；20个函数正文、角色/授权/谓词和完整069旧53 SQL保持。新增源权限语法回归修前12项中11通过1失败，修后12/12。该针对性源检查不等同实际数据库安装成功；本批不需要运行本地SQL，也未部署，仍需新精确头真实托管复跑。此前335c96b的2339全量纯检查是父头证据，本修复尚未声称新全量2340通过。
+
+其他原页面、组合安装、Worker原期限、074/077、材料/报告/质量合同、目标网络与安装、备份恢复/回滚、长期合格运行及员工UAT签收仍未齐备，正式切换 **NO-GO**。
+
+## 原页面托管验收准备与Worker性能候选（2026-11-02，待新提交验证源码）
+
+统一纯检查 **2339/2339、0跳过**，保留原员工页面入口；普通构建105资源/PG匹配0，显式原PG构建108资源。已接入原版本发布与078计划任务的真实Cookie、owner/CAS、实际已提交响应断流和精确GET回执恢复的托管故事源码；原版本故事当前只到真实父运行等待审批，不能计当前Worker成功或整页完成。078故事以真实事务队列、暂停及删除保留历史为范围，55条导入历史明确为合成数据，实际运行/jobs/effects必须为0，不能计Worker执行。源包需Root封签并核对精确Git字节；独立078未在本地安装。
+
+计划任务与版本发布都修复了pending后身份核验失败但POST尚未派发、以及原POST完整明确拒绝后旧标记永久阻塞的问题。计划37项、版本54项新回归核对实际控制器/API/身份链和完整持久描述；版本页还区分API内部capabilities预读与真正POST派发。未知网络结果、ACK后身份失败或GET404仍保留标记，晚到旧epoch/旧控制器不得清理新标记，无自动POST重放；五种版本操作各自的源/CAS/正文指纹保持。Root另修正托管fixture入口函数名、审计查询occurred_at列，保留原工具故事完整workflow校验；常规质量流程新增独立curated原页面纯检查作业，旧28项定义未改。新078工作流仅对既有授权迁移分支push首次运行，或携带精确头手动运行，仍限定GitHub hosted合成PG、无Worker/provider和真实数据。
+
+已ACK父提交`bc7c871`的16轮自动CI均已终止：15成功，完整069失败；[质量](https://github.com/HG1127/agent-studio_vibex/actions/runs/41389334069)50/50、根4677/4677及后续步骤通过，[F01](https://github.com/HG1127/agent-studio_vibex/actions/runs/41389333984)17/17；它们不覆盖新增两套原页故事或新curated作业。[遥测](https://github.com/HG1127/agent-studio_vibex/actions/runs/41389334164)真实控制器28项、Writer27项、严格短竞争8/8及停止后owned清理通过。完整069 Legacy仍在Reader finish失败：5041ms，112次完整runtime检查共4118ms；原包装code为null/kind为other，不能改称lease_expired。Final14完整检查组22537ms，超过原15000ms样本期限，独立ACL13及三项最终零值仍未得到结果。
+
+v98候选减少每次实际检查中的临时分配和重复UTF8转码，仍在每次调用重读当前descriptor和绑定文件字节，不缓存授权；新增58项UTF8/descriptor/文件变化/原错误对象与期限反例通过。仅在既有失败路径增加闭合分支耗时观察。原5秒Reader/Writer、8秒Native、30秒Worker、15秒样本、45秒新鲜度、源/身份/ACL/队列/实际清理与前驱审计均不放宽。真实耗时改善仍待新精确头托管CI。
+
+074/077尚未应用，原员工UI完整组合安装、材料/报告/质量合同、实际Worker完成链、长期合格运行、目标安装与网络访问、备份恢复/回滚、员工UAT和签收继续开放。保留PocketBase可恢复，正式迁移 **NO-GO**；本批未运行本地SQL/业务Worker/浏览器，未部署或修改生产数据库。
+
+## 原定时任务078与Native实际准入（2026-11-02，当前待验证源码）
+
+以已ACK的`bc7c871`为基线，精确整合29文件、7个父文件/50处唯一可逆增量、22个新文件，保留原`/scheduled-tasks`表单、五次时间预览、D布局/焦点/监测提示、历史筛选及结果复制。独立078仅新增源码2私有表/20函数，044原调度函数不改；完整069的53 SQL、19步骤、55版本、133表不改。保存默认暂停；启用另核对指令、时间、目标/模型版本、费用、期限/次数/动作范围；使用原044权限和occurrence事务。未知写仅GET核对精确原回执，无POST自动重放；删除保留历史，分页声明实时部分列表，队列确认和合成历史不等同Worker实际执行。
+
+Root补齐一次API类型收窄，并修正纯测试同一授权对象调用两次Date.now造成的毫秒差偶发失败。70项原计划纯检查、Native准入与相关98项、统一2064/2064及前后端类型通过；普通构建105资源且PG匹配0，显式原PG构建108资源；Native380/完整069414源码。未执行本地SQL/Worker/浏览器，078尚未安装。
+
+同时修复真实Native外层允许列表遗漏原Release/Schedules接口的缺口：精确路径/方法，版本发布写仍需configuration、验收另需autonomous；关闭新写入后GET原回执仍可达。Schedules共用operation端点保留本人暂停入口，实际仓库在SQL前独立拒绝未授权保存/执行；实际Cookie、协议头、预期员工、owner/CAS及schema门禁不绕过。纯反例经过实际outer handler并保留原req/query；真实托管原页面故事仍待执行。074/077、075组合安装、材料/报告/质量合同、Worker原期限资格、目标安装/备份恢复/回滚、员工UAT及签收继续开放，正式切换 **NO-GO**。
+
+## 清理测试依赖接线修复（2026-11-02，已推送bc7c871源码）
+
+`d681882`已获远端ACK；其[遥测CI](https://github.com/HG1127/agent-studio_vibex/actions/runs/41387833226/job/125092505550)在纯检查293项中284通过、9失败，旧VM抽取函数未接入新增诊断辅助函数而报ReferenceError，尚未执行该作业的真实控制器。Root补齐三个原纯测试作用域的真实辅助函数与私有WeakMap/计数器，保留原后端identity、实际缺席、清理未知容量、SQL身份、期限及错误对象断言；产品运行代码未修改。
+
+owned/Reader两套原函数反例先复现16项中13失败，修后16/16；原runtime25/25，完整原遥测纯检查加新增相关用例359/359，统一1985/1985、0跳过。将这些原套件加入常规curated命令，避免只跑新增测试遗漏旧抽取作用域。本次仍需新精确头托管验证，不代表Worker原清理或Native就绪故障已解决，也不替代原版本页真实浏览器、074/077/078整合、075安装、员工UAT或正式切换签收。正式切换保持 **NO-GO**。
+
+## 原版本发布适配与最新隔离证据（2026-11-02，已推送d681882源码）
+
+保留原`/version-release`页面、三张流水线卡、历史、完整对比和确认对话框，带入原D页面的布局、全局编辑刷新及验收返回恢复。适配现有046仓库：真实Cookie/事务owner/预期员工、source/version/release-head CAS、当前test_current、明确未测发布确认、8-500字符恢复说明、仅草稿删除。未知写仅存owner/IDs/revisions/hashes与指纹；原页面仅GET核对精确回执，不盲重发POST。历史明确为最近100版本/10验收，另取更早active_version_id，发布表只表示已加载版本的最近发布状态。
+
+临时身份不可用立即隐藏禁用，同员工新验证并复查当前资源后恢复内存输入；真实/me401或403、换员工、签出和处置永久清除。刷新现在重取本人模型清单，模型版本/可用性或source/head变化撤销旧确认，不默换模型，保留未提交文字；部分清单不能证明缺失。9项回归先复现8个刷新失败和1个恢复后旧初始化短暂重发catalog，再通过相关57项检查。合并Worker诊断后的统一1944/1944纯检查、前后端类型通过；原版本页独立真实PG浏览器故事仍待执行，不能计整页验收。
+
+上一精确头`571946e`的[质量](https://github.com/HG1127/agent-studio_vibex/actions/runs/41379665812/job/125067465104)50/50作业、根4677/4677及后续集成步骤全部通过；[PB19](https://github.com/HG1127/agent-studio_vibex/actions/runs/41379961123/job/125068450146)19/19、双Worker72.8秒；[F01](https://github.com/HG1127/agent-studio_vibex/actions/runs/41379665747)17/17，包括此前失败的原父运行页与工具251分页故事；[F08](https://github.com/HG1127/agent-studio_vibex/actions/runs/41379665796)通过。它们不覆盖本批新版本发布页，也不等于原20页/30组操作全验收。
+
+同头[遥测](https://github.com/HG1127/agent-studio_vibex/actions/runs/41379665786/job/125067464593)八种Writer短竞争全部成功，原boot、claim-once和identity断言均通过，原5秒期限未延长；组耗时5365ms含启动，不能当成单项期限。整体转而在停止后owned-cleanup观察失败，最后finally清理通过不能替代该失败。[完整069](https://github.com/HG1127/agent-studio_vibex/actions/runs/41379665837)Legacy八项绑定均完成、无assessment自退，所有进程停止前存活且最终graceful/absent，但Native未就绪且telemetry后端未清零；Final14在controller_reader_audit报heartbeat_unavailable，13项独立ACL结果及三项清零仍缺。正在修复这些新的具体阻断。
+
+Worker补入v93独立闭合诊断通道：固定4KiB Root观测预算、原Reader分段耗时、停止时缺少ended记录种类、Native原始未就绪状态投影；删除诊断标记后Root与Native原代码逐字恢复，原SQL/identity/5秒与8秒期限/实际清理判定保留。补齐既有纯测试真实解析器依赖，相关86项通过。当前只是可观测性增强，尚未取得新精确头真实运行结果，不能宣称底层失败已修复。
+
+074三包仍未应用，当前只读重放仍有HTTP与Native入口两段上下文待合并；077普通业务case、078原定时任务及075完整安装兼容继续独立准备。源码重封、新精确头真实CI、目标安装、长期Worker/合格24小时、备份恢复/回滚、员工UAT与签收尚未完成，正式切换仍 **NO-GO**。本批未运行本地SQL/业务Worker/浏览器，未部署或改动生产数据。
+
+## 身份恢复、计划员工围栏与等待修复（2026-11-02，已推送571946e源码）
+
+`a7125ea` 的[F01隔离组](https://github.com/HG1127/agent-studio_vibex/actions/runs/41372270564)现为15/17：原Home设计、模型元数据/草稿/075回执及运行详情指定故事通过；[F08原分享故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41372270615)通过。[PB19双Worker](https://github.com/HG1127/agent-studio_vibex/actions/runs/41372372637/job/125045374576)19/19、73.3秒。[质量](https://github.com/HG1127/agent-studio_vibex/actions/runs/41372270795/job/125045065582)49/50、根4664/4665，唯一旧Reader立即拒绝断言已按原帧期限修正；后续被跳过步骤不能计通过。这些故事不等于原20页/30组操作全部验收。
+
+原工具故事实际完成251条owner分页的创建和清理、6次分页GET及502条种子审计；整段仍在最终元数据审计因fixture误用不存在的created_at列失败，未取得最终业务基线。现改用原不可变DDL的occurred_at，并增加对真实DDL列的校验；直接工具测试、工具精确回执及MCP/Smithery原页仍缺。
+
+父运行页真实身份查询暂时不可用时立即隐藏并禁止操作，仅保留原内存草稿供同员工重新核实后恢复；真实/me401、403、签出、换员工及处置永久清除，业务source403原围栏保留。测试端必须核对完整实际/me200和员工、真实响应头/首字节/write callback/销毁，再核对同一浏览器GET的requestfailed，保留原5秒隐藏断言与8秒请求期限。新版本发布候选发现同类暂失联清空表单问题，正在独立纠正，26文件候选未应用。
+
+计划列表、历史、草稿和实际启停/立即运行/重试等入口新增员工前置条件：在真实事务身份映射后、业务SQL之前检查，未携带条件的参考调用保持。原定时任务完整界面适配、未启用指令/模型持久化、完整历史和未知写确认仍在补齐，不能计为原页完成。
+
+当前Writer/Reader忙等待只核对真实Root/请求的私有状态，退出等待后必须重跑完整来源/身份门禁，并在原deadline内才可claim/open/注册lease；并发失效和错误优先级反例保留，原I/O、审计与清理主体保持。原5秒、Native8秒及八次全部成功要求不变。仅诊断固定进程上限从4KiB改16KiB，覆盖前序案例和八项结果，不授予运行资格。
+
+`a7125ea`[遥测](https://github.com/HG1127/agent-studio_vibex/actions/runs/41372270691)短竞争4成功/4期限拒绝；仅prepare与knowledge_index有耗时，其他6项未知。[完整069](https://github.com/HG1127/agent-studio_vibex/actions/runs/41372270648)本次Legacy的assessment在heartbeat_open/writer_deadline自行退出，Reader为finish/无已知code，telemetry后端未清零；Reader清零与四队列空成立。Final14为native_io/controller_reader_audit，缺13项独立ACL结果和三项清理零值，不能沿用03的gap或清理结论。
+
+前后端类型及默认/显式PG两种原index/main/App构建已通过，默认102资源/PG匹配0，PG104资源。当前源码、纯检查及构建仍须重封来源并以新精确提交运行真实CI。074实时监控三包未应用，普通业务case、原定时任务、075完整安装/Native进程兼容、长期Worker、合格24小时、目标安装、备份恢复/回滚及员工UAT仍未完成。旧PocketBase保持可恢复，正式迁移继续 **NO-GO**；没有部署或生产变更。
+
+## 原页面分页与 Worker 竞争修复（2026-11-02，已推送a7125ea源码批次）
+
+原 ToolConnections 页面保留现有布局、入口和 PB 默认分支，新增本人 keyset 分页、加密游标、完整列表指纹与微秒排序；owner、版本漂移、过期、重复或乱序页均拒绝，不发布半份列表。旧服务继续明确 partial。独立 CI 故事将通过真实 owner 仓库创建、读取并删除251条合成工具，逐项检查502条审计及全表清理基线；尚无该新故事的真实通过证据。直接同步测试、精确工具写回执、MCP/Smithery 原页面仍缺，不能计整页完成。
+
+Reader 在同一真实已接收帧起始时间的原5秒内等待 Writer，然后执行原身份、RR只读、完整catalog、snapshot、ROLLBACK及清理；等待期间没有 lease、连接或SQL，状态、peer、request、epoch、policy、publication、断线与额度重新核对。89个原函数及原实际I/O/清理主体逐字节保持。Native8秒、Writer八次全部成功、原15秒采样上限及全部owner/零门禁未放宽。新增有界观测仅定位拒绝，不授予就绪或运行资格。
+
+原Home响应改为到达即读业务JSON；模型断线代理将实际独立数据库行转换为HTTP JSON表示后全字段比较，保留owner、版本和原审计核对。运行父页/详情代理补齐实际缺失的两个helper导入，纯测试改为链接host实际imports，缺导入反例立即失败。F08故事显式触发原focus回调并等待真实Cookie的目标员工响应，只读取一次实际body，不伪造身份或释放迟到旧请求。
+
+当前本地1681/1681纯检查、前后端TypeScript通过；实际默认构建102个资源且PG匹配0，原页面PG构建104个资源。Native源码收集372文件、完整069源码403文件/53个原SQL输入保持，均未执行本地数据库、Worker或浏览器。来源DAG待本批精确提交重新验证；这些结果不代替新提交真实CI。
+
+`03b716c` [quality](https://github.com/HG1127/agent-studio_vibex/actions/runs/41122512040/job/124292139822)49/50，根4489/4491：旧配置测试误拒绝明确授权的单条Tool删除、旧自主运行测试仍期待过时提示；现保留范围门禁并修正断言，纳入curated。[PB19双Worker](https://github.com/HG1127/agent-studio_vibex/actions/runs/41122980899/job/124294029148)19/19、73.4秒通过。[F01组](https://github.com/HG1127/agent-studio_vibex/actions/runs/41122512217)12/16，原模型草稿通过；[075原模型页](https://github.com/HG1127/agent-studio_vibex/actions/runs/41122512217/job/124292140761)真实提交/审计/MAC与仅GET恢复覆盖创建、修改、停用、启用、删除，换账号围栏及清理通过，两张原页安全截图已目视核对。完整069标识器接受075及全Native进程安装仍未完成。原Home、普通模型元数据、两个运行控制故事仍失败，上述源码修复须下一精确头复验。
+
+同头[遥测](https://github.com/HG1127/agent-studio_vibex/actions/runs/41122512386)21个Writer案例及4次owned清理通过；期限耗尽8拒绝，短竞争首项成功但八次全成功失败，旧日志无各kind结果及耗时，不能猜测。[完整069](https://github.com/HG1127/agent-studio_vibex/actions/runs/41122511912)Legacy仍prepare/control_busy，后端/Reader/队列三项清零成立；Final14本次为warm_sample/observation_gap，进程组退出而三项清理零值缺证据，不沿用上一头native_io结论。新有界错误映射将区分进程身份变化与原15秒采样超时。
+
+原20页/30组操作完整验收、074实时监控、普通Agent删除、全Worker稳定运行、合格24小时、目标环境正式安装、备份恢复与回滚签收、员工UAT仍未完成。旧PocketBase保持可恢复，正式切换继续 **NO-GO**。本批没有部署或生产变更。
+
+## 原工具页与原控制恢复准备（2026-10-31，历史源码与证据）
+
+保留原ToolConnections页面、布局和PB默认分支，接入现有Native SDK元数据CRUD。严格分支核对实际Cookie/事务owner/预期员工、公开掩码DTO及删除版本锁；沿用同事务本人安全审计。账号/表单版本围栏隔离迟到结果，未知写只保存有限元数据、只读刷新且不重发请求头密钥。列表明确最多50条、不是完整清单；直接测试入口明确拒绝，不隐式保存、排队或对外调用。完整分页、直接测试、精确工具回执、MCP/Smithery原页和真实浏览器故事仍缺，不能计整页完成。
+
+原运行页恢复测试现先观察同一真实POST断线，再检查控件。取消要求完整真实200、独立owner终态和实际首字节write callback/销毁；暂停须原8秒真实关闭、原operation/state对应的真实负确认和独立审计零行，才转发保留的原字节一次。超时/清理不授予释放权限，GET终态不声称本次取消的因果证明。原405分发两项回归保留，实际Node8秒取消链纯检查已执行，Chromium/SQL仍待下一精确提交。
+
+`c400669`[质量](https://github.com/HG1127/agent-studio_vibex/actions/runs/41115318014/job/124267906430)49/50，根4442/4443；唯一失败为已审阅v80 integration改动后消费者仍固定旧hash。现同步明确pin并将原10项cleanup纯检查加入curated，未删除门禁；当时pnpm check失败、后续安全/Worker步骤跳过，不能认定质量通过。[PB19双Worker](https://github.com/HG1127/agent-studio_vibex/actions/runs/41115506345/job/124268568977)19/19、73.7秒通过。
+
+[F01组](https://github.com/HG1127/agent-studio_vibex/actions/runs/41115318130)11/16通过，原Home/登录/总览/历史监控指定故事通过。075在SQL前因来源清单漏complete-profile拒绝，现按实际46项必需路径及完整字面依赖闭包补齐；原模型/草稿故事在过晚读取Playwright响应体时失败，现到达时即读实际body，保留原状态/错误。两个运行故事已越过405，后在POST未结算时提前要求按钮可用而失败；修复仍须真实复验。
+
+[F08原页](https://github.com/HG1127/agent-studio_vibex/actions/runs/41115318198/job/124267905499)真实前缀断线已成立：完整上游200/535字节、只转发原首字节、实际write callback及销毁均在8秒内，真实requestfailed/受控计数1；意外API/PB/清理失败均0。整体仍因测试要求未知状态按钮消失而失败；原实际controller客户端不完整200 body纯回归确认应保留预览且所有写入口禁用，刷新只确认原意图、不再显示分享码，现按此修正。
+
+[遥测](https://github.com/HG1127/agent-studio_vibex/actions/runs/41115317986/job/124267904781)真实期限耗尽8拒绝/1claim及owned清理通过；短竞争7请求已等待、原期限内释放锁、首个成功，但八次全成功失败，21案后停止，要求未放宽。[legacy](https://github.com/HG1127/agent-studio_vibex/actions/runs/41115317922/job/124267904790)明确Reader prepare/control_busy；assessment清理前内核谓词真、未观察自行退出，本次后端/Reader清零且四队列空。[final14](https://github.com/HG1127/agent-studio_vibex/actions/runs/41115317922/job/124267904362)在warm_sample以native_io/controller_reader_audit失败，清理失败保留，仍无13个真实ACL负例验收。
+
+当前源码、类型、实际构建及纯检查不等于真实原页完成。075原完整069/全Native进程兼容、074实时监控、普通Agent删除、其余旧操作、完整Worker/长期运行、目标环境正式安装、备份恢复/回滚与员工UAT/签收仍未完成；生产继续 **NO-GO**，旧PocketBase可恢复。没有本地SQL、业务Worker、浏览器、部署或生产变更。
+
+## 模型精确回执、实际断线与并发绑定源码批次（2026-10-31）
+
+075源码已合入原模型页面，保留原布局、交互和默认PB分支：模型写入、本人安全审计和原request_id回执同事务完成；域隔离HMAC与带盲值的密钥承诺用于核对原意图，未知写入仅GET原回执，不重发密钥或用列表猜测成功。校验实际owner/OID、完整21条表/列及2条函数显式授权边。默认缺表关闭，已安装回执在禁止新写时仍可查询。独立真实PG18故事已准备，但075尚未获得真实CI、原完整069标识器/全Native进程兼容或安装验收；密钥轮换未实现，恢复需保留既有加密密钥。
+
+模型及F08断线改为先取得完整真实成功回复并独立核对本人已提交台账，再发送原头和一个实际body字节，实际write callback及socket销毁后才计受控断线；不把上游ECONNRESET记为成功，preview不能消耗create注入。原8秒、共享回执5/最终7及全部零门禁保留，Chromium真实行为待重跑。两个原运行页失败由同一测试主机将Home代理错误包进通用OwnOps allowlist造成GET405；已按既有Home主机顺序修正并通过27项针对性检查，真实页面仍待复验。
+
+Worker v80将旧并发断言拆成真实短竞争和期限耗尽两案：前者须原期限内八次全部成功、实际绑定身份匹配并清零，后者须八次闭合拒绝且仅一次claim、无重试。Root wait_started仅为原owned进程的排程观察，不授予身份、SQL或就绪资格。Final14仍执行全部14个原审计，仅串行准入并保留固定顺序首个失败；Reader仅新增闭合诊断，原预算和安全边界保留。以上仍需同提交真实验证。
+
+`343e537`[质量CI](https://github.com/HG1127/agent-studio_vibex/actions/runs/41108914084)50/50通过，根必需检查4166/4166；[原PB双Worker](https://github.com/HG1127/agent-studio_vibex/actions/runs/41108981316/job/124246047983)19/19、73.3秒通过。[F01组](https://github.com/HG1127/agent-studio_vibex/actions/runs/41108914101)12/15通过，原Home073响应体修复获得真实通过；新运行父页/详情故事GET405及模型8秒requestfailed超时均保留失败。[F08原页](https://github.com/HG1127/agent-studio_vibex/actions/runs/41108914110/job/124245869646)同样8秒等待失败，参考故事通过。
+
+同提交[遥测](https://github.com/HG1127/agent-studio_vibex/actions/runs/41108914132/job/124245869039)仍在旧并发案失败，此前20案和4次owned清理通过，旧日志不能确定具体断言位置。[完整069 legacy](https://github.com/HG1127/agent-studio_vibex/actions/runs/41108914054/job/124245869751)实际assessment在heartbeat_open以writer_deadline自行exit1，未请求停机；本次清理后遥测后端未清零、Reader为0且四队列空。[final14](https://github.com/HG1127/agent-studio_vibex/actions/runs/41108914054/job/124245869431)到warm_sample后失败，尚无13个实际ACL负例通过。新旧结果严格区分。
+
+当前只完成源码、纯检查和构建准备；074/076仍为独立候选。完整原20页、员工UAT、合格24小时、目标环境正式安装及备份恢复/回滚签收均未完成，正式切换 **NO-GO**，旧PocketBase继续可恢复。
+
+## 原员工页面适配准备（2026-10-30，原页面验收待执行）
+
+当前页面对照表为 [PG18_ORIGINAL_UI_API_MAP.json](PG18_ORIGINAL_UI_API_MAP.json)，覆盖原有20页、30组操作；页面数量不是验收完成量。最终入口继续使用原 `index.html -> main.tsx -> App.tsx`。首页、目录、草稿、登录及账户菜单已有PG适配源码；未适配的旧后端请求会被明确拒绝并计入浏览器验收失败。
+
+当前候选纯回归1479/1479通过，前端TypeScript6/API TypeScript5通过；原入口实际普通构建102资源且PG匹配0，显式原PG构建104资源。Native源码收集369文件，完整069源码403文件/原53项SQL输入，仅做来源核对。新增075 SQL仅为可选源码，未本地执行，未纳入默认完整069安装。没有运行本地SQL、浏览器、业务Worker或完整`pnpm check`；以上结果不能替代真实原页验收。
+
+已合流原团队共享页的业务Hook，保留原JSX、导航、布局和PB分支；写入及确认固定发送发起时员工ID，服务端先验证实际Cookie和owner，再在任何台账写入前比较。焦点恢复会先验证Cookie，即使旧读取或写回仍未返回也隔离旧账号。独立原页host/E2E复用fresh F08，包含创建、兑换、撤销、真实写后断线与原回执恢复、换账号迟到响应；Native代理保持8秒，全部PB/网络/身份及收费调用零门禁保留，安全成功截图仅写合成CI私有artifact。原页故事仍待执行。
+
+原个人总览`/internal-overview`保留布局、筛选及刷新，新增本人八项真实计数、待办与近期Agent/Workflow运行读取；以实际Cookie和事务内owner核对预期员工，迟到响应不得进入新账号。历史标题未落库时明确显示未记录，不把当前资源名冒充历史标题；原main Worker健康状态缺少等价来源，明确显示未知。这些语义缺口仍未关闭。独立host/E2E源码已合流，保持原AdminGate，通过真实员工管理API授予合成Bob管理员身份后，分别核对两人本人数据、完成的真实迟到响应、实际依赖撤销503/恢复及Cookie Bob/expected Alice409。每个matrix leg使用独立fresh PG18，保留8秒Native与全部零门禁；固定两张安全PNG仅在全故事、业务行快照及清理检查通过后保存。16项纯策略通过，真实原页验收仍待执行。
+
+可选070/071提供作者元数据、本人目录分页搜索收藏及真实owner资源数量；072提供严格审计后的共享知识统计。`53fd7f8`的[070/071/072真实复验](https://github.com/HG1127/agent-studio_vibex/actions/runs/41028235290)已通过57个编号场景；其[遥测控制/Writer](https://github.com/HG1127/agent-studio_vibex/actions/runs/41028234927/job/123971512774)通过28+26场景与清理，但此前file_changed未复现，原因仍未定。
+
+最近已上传`1df512a`的[070/071/072复验](https://github.com/HG1127/agent-studio_vibex/actions/runs/41044735632)再次通过；[F08真实流程](https://github.com/HG1127/agent-studio_vibex/actions/runs/41044735607/job/124025955111)15个测试节点通过，含六个Cookie Bob/expected Alice写入及确认拒绝、全量计数未变化；[原PocketBase19项双Worker回归](https://github.com/HG1127/agent-studio_vibex/actions/runs/41045033368/job/124026922004)19/19通过，73.6秒；[质量工作流](https://github.com/HG1127/agent-studio_vibex/actions/runs/41044735586)50作业通过，包含必需`pnpm check`及安全/Worker检查。这些结果只属于该精确提交，不能转用于当前未封存的新源码。
+
+可选073仅为隔离历史监控元数据、本人分页及已读回执。`1df512a`的[真实073 TCP](https://github.com/HG1127/agent-studio_vibex/actions/runs/41044735632/job/124025955883)、原登录及原Home故事在严格约束审计失败，未进入业务步骤。后续修复按PG18 CHECK表达式首次引用次序保留精确conkey，纠正reads_valid_ck的[4,3]预期，SQL与ACL不变；新增反序/遗漏/重复及约束属性篡改拒绝回归，仍须实际复验。来源ACL、实时采集、事件生成和复核/基线属于另行074工作，完整监控验收为0。
+
+完整069已越过旧记录路径语法错误；[1df512a真实短CLI](https://github.com/HG1127/agent-studio_vibex/actions/runs/41044735639/job/124025955499)在8项准备、Review预检、原Control/HBA后拒绝owned_process_changed；[final14](https://github.com/HG1127/agent-studio_vibex/actions/runs/41044735639/job/124025955714)在独立受保护打包阶段拒绝，尚未执行12个真实ACL修改/回滚负例。两个失败均保留，未取得运行资格。该阶段完整ACL比较仍核对OID/owner/grantor/可转授和PUBLIC默认权限，参见[PG18默认权限](https://www.postgresql.org/docs/18/ddl-priv.html)；Reader5秒、Native8秒、Worker30秒加发送5秒、UID128、四空队列及实际后端清理要求不变。
+
+后续源码已统一final14生成端/消费端的11项固定必需文件，遗漏、别名或字节冲突仍拒绝；17项针对性纯回归通过。短CLI失败仅新增原受保护记录的布尔字段和固定entry投影，读取/解析/输出失败仍保留原错误，不输出路径、PID或凭据，也不改变身份谓词。具体失败entry与原因、final14运行及ACL负例仍须真实复验。
+
+尚缺首页自然语言生成/修改的完整原页验收及未保存草稿/多模型/持久关联缺口、普通删除、部分质量/能力及运行页动作、其余原菜单适配、完整监控与Worker同提交运行验证。真实宝塔目标环境、正式安装、备份恢复/回滚、长期运行和员工签收尚未完成。原完整页面验收0、合格24小时0、员工签收0，正式切换 **NO-GO**；旧PocketBase保留可恢复。
+
+`e002475`的真实073已通过结构/约束审计，随后TCP及原Login/Home在合成种子的`sha256`列检查失败。修复后的两个实际种子入口只接受已审计五表及完整列清单，值仍参数化；11项纯策略回归覆盖两个实际构造器的93行计划，SQL/ACL/业务审计不变。原团队共享故事则因host遗漏传入浏览器模式而在旧F08门禁拒绝；现显式传入`browserMode:true`，保留真实job、原guard和全部零门禁，并补实际纯admission前缀的正反调用验证。这两项均仍待真实复验，原页验收0。
+
+完整069的`e002475`已越过受保护打包冲突，完成Executor LOGIN/预检、Review8和Plan9；final14随后在`runtime_open`以依赖错误拒绝，实际ACL负例尚未执行。legacy受限诊断确认未取得warm/last观察，清理后真实遥测后端及Reader为0、四个业务队列为空；停止结果不能区分提前退出与身份比较失败，原因仍待定位，未放宽任何原进程谓词。
+
+另经[PG18 initdb官方源码](https://github.com/postgres/postgres/blob/REL_18_STABLE/src/bin/initdb/initdb.c#L1939)核对，两个模板库的PUBLIC CREATE/TEMPORARY会被撤销；[新库创建实现](https://github.com/postgres/postgres/blob/REL_18_STABLE/src/backend/commands/dbcommands.c#L1395)不复制模板数据库ACL。因此本轮纠正旧比较器的模板预期为完整51行，而不是要求不存在的两个TEMPORARY授权；postgres与业务库原默认权限保留，全部实际行仍参与精确比较/哈希。新增给两个模板额外TEMP的真实拒绝用例（合计13个），必须实际修改、检测并回滚；没有为通过检查修改数据库权限。55项针对性纯目录回归通过，真实同提交运行继续待验。
+
+`9b42e39`批前端/共享及API TypeScript源码没有变化，复用`e002475`前后端类型检查和两种各100资源的实际构建基线；这不是新原页面验收。当前正式切换仍 **NO-GO**。
+
+后续启动诊断源码现已合流：final14仅记录实际抛出对象关联的固定阶段/服务键，保留原错误对象及真实审计顺序；只在原exact CI绑定、UID、argv、Node及批准门禁内输出。legacy仅记录实际私有ChildProcess退出/信号、封闭服务错误枚举和内核身份谓词的布尔分量，在清理前捕获、通过原受保护记录读取后投影。诊断IPC使用独立回调处理异步发送错误，不改变关键IPC或原退出结果。新增阶段观察5项、原路径25项及进程观察20项纯回归通过；API类型检查再次通过，实际进程原因和新同提交复验仍待完成。上述观察不构成运行许可、健康证明、重试权限或迁移通过。
+
+`9b42e39`的[原Login/App故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629732/job/124052190715)、[原Home监控元数据/已读故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629732/job/124052191084)及[073真实TCP](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629732/job/124052191155)已通过。下载的观察记录和安全截图已核对：真实Alice/Bob身份与管理员差异、登录/退出断线恢复、账号切换均保留；Alice未读14→13且回执0→1，Bob未读3及回执0不变。两故事全部PB/意外API/外部网络/伪身份头/收费调用及清理失败计数均为0；业务运行台账不变。这只验证原认证故事和历史监控收件箱，不是完整Home、实时监控、原20页或员工UAT验收。
+
+同提交[原团队共享故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629622/job/124052190318)已到达真实创建、Bob兑换独立无绑定副本、外owner拒绝、撤销及写后断线；六个Bob Cookie/expected Alice负例保持台账不变。随后测试误要求结果未知时的确认按钮仍在DOM中禁用，实际原页已清除预览并隐藏该按钮。后续仅修正测试为按钮不存在、预览和兑换入口均禁用；保留全量回执/原意图刷新/账号切换及全部零门禁。完整故事仍失败，刷新恢复和迟到响应后续步骤须重跑。
+
+`9b42e39`的[legacy完整运行](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629596/job/124052190890)确认五个业务Worker在就绪前自行exit1，非清理触发；Native、knowledge、assessment在清理前的全部内核身份谓词通过。根因仍待沿原启动审计定位。其[final14](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629596/job/124052190548)已越过runtime_open，到runtime_preflight/数据库权限负例前段失败，尚无13负例通过证据。正式切换仍 **NO-GO**。
+
+后续仅为实际权限负例新增固定阶段、既有负例名与五字符SQLSTATE诊断，仍以原抛出对象关联观察并原样重抛；没有输出错误正文、SQL、路径或凭据。既有13个真实修改/回滚负例、8秒预算、精确全量ACL比较、Opaque trust及原CI输出门禁不变。新增3项纯安全回归通过；实际失败原因和完整13负例仍待新同提交运行。
+
+`9b42e39`的[质量工作流](https://github.com/HG1127/agent-studio_vibex/actions/runs/41052629710)为49/50作业通过；根必需检查3631项中3628通过、3项失败，原因均为Native源码包拒绝遗漏的`shared/original-internal-overview-contract.ts`。现仅将该精确契约加入既有明确清单，任意shared路径仍拒绝。用实际源码收集函数完成350个文件的组合入口依赖遍历，未执行模块、生成交付包或启动服务；实际三项打包和完整质量须同提交复验。[同提交原PocketBase19项双Worker](https://github.com/HG1127/agent-studio_vibex/actions/runs/41053973662/job/124056725296)通过。
+
+共享原页在`02597d0`[重跑](https://github.com/HG1127/agent-studio_vibex/actions/runs/41054656457/job/124059025969)越过按钮断言后，未知结果步骤收到意外503，实际回执4而预期5，受控写后断线计数为0；这是新失败，不能算已提交丢ACK。原预期回执5及最终7、意外API零门禁保持不变，根因待继续定位；该故事仍未通过。
+
+后续首页窄适配源码已合流，继续使用原生成/修订控件：F01只读预览后明确确认，未知结果仅查询原请求，按实际Cookie和编辑版本隔离迟到结果；实际完成结果先保存到本人本标签恢复草稿，再标记已应用。模型工具名称只保留为描述建议，须明确选择才成为执行绑定；手动保存继续使用070/071。F01 submit/confirm/control/save增加预期员工并发条件，实际Cookie/withActor仍是身份来源。未保存/脏草稿修订、多模型选择及F01请求到手动保存的持久关联未完成；原Home生成故事仍待独立host/真实浏览器验证。
+
+五个原Worker入口仅增加实际启动阶段和白名单SQLSTATE/Node码诊断，配置、凭据、原审计顺序、退出结果、IPC保护及原预算保留。原同提交启动失败原因仍须下一次实际CI定位。`1b33ff3`的final14再次在runtime_open失败；父进程误把诊断事件名当成主错误且未转发该诊断，本批修正为只选择独立主错误行、单独解析固定形状观察。新增回归验证事件/正文不能覆盖主错误，未知字段/秘密/授权标志及重复观察不予转发；原进程监督和清理保持。
+
+`1b33ff3`的[原个人总览首次故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41057326210/job/124068033154)已到真实依赖撤销503，随后测试读取已取消的浏览器响应体失败；后续恢复/换账号未执行，未保存成功截图，仍为失败。同提交[原Login、Home历史监控及070/071/072、F01流程](https://github.com/HG1127/agent-studio_vibex/actions/runs/41057326210)其余9作业通过；这些结果不用于新首页适配或完整监控验收。
+
+总览测试现仅对明确预期且实际来自上游的本人503，在4096字节内核对完整固定错误正文，完成后才消耗一次预期失败。原状态、过滤后的头及字节原样转发；错误正文、超量、中断、代理自造503或员工不符仍失败，8秒Native不变。原页面未知状态/恢复、409、账号迟到围栏、全业务行镜像、收费/PB/网络零门禁及成功后才保存图片条件保留；25项纯策略通过，实际故事待复验。
+
+`807c166`的[完整质量工作流](https://github.com/HG1127/agent-studio_vibex/actions/runs/41061079515)50/50通过，根必需检查3718/3718通过；[原PocketBase双Worker回归](https://github.com/HG1127/agent-studio_vibex/actions/runs/41061276891/job/124081354372)19/19通过。[F01真实流程](https://github.com/HG1127/agent-studio_vibex/actions/runs/41061079507/job/124080668689)18个节点通过，含六个实际Cookie Bob/expected Alice写入及确认拒绝。这些同提交证据不能作为本批新候选的验收。
+
+同提交[五个原Worker](https://github.com/HG1127/agent-studio_vibex/actions/runs/41061079622/job/124080669456)均在`worker_import`以`ENOENT`退出，尚未就绪且未收到停止请求。已定位部署清单遗漏原执行模块读取的七个SQL003–009，现补入精确资源清单并在部署封存后核对存在性、属性及SHA256；原438个源码输入和53个安装SQL输入保留。8项离线打包回归复现五个缺失首次读取并验证补齐字节，未执行SQL或导入Worker；真实启动仍待复验。[final14](https://github.com/HG1127/agent-studio_vibex/actions/runs/41061079622/job/124080668966)主错误现正确保留，实际观察为`service_target/plan_workflow_dispatch`，根因尚未确定。后续仅增加目标核对后的独立稳定性阶段及三个闭合错误分类，保留原错误、14池并发、全部审计和预算。
+
+原Home独立浏览器故事源码已接入F01矩阵，要求原页面真实生成、写入后丢回复、刷新查询原意图、070/071手动保存、干净来源修订/CAS及忙碌中真实换账号迟到围栏。19项host策略通过，完整清理后重查全部零门禁；仅成功后保存固定安全图片，观察文件上限1MiB。旧`authoring:null`修订后手动保存另有两个最小产品补丁及15项纯回归，保留描述重复项和全部绑定/审批；普通更新不伪造旧来源，不声称F01到手动保存的服务器关联。该旧记录分支尚未获得真实浏览器验收，多模型与未保存/脏草稿修订仍未完成。
+
+`807c166`[原总览](https://github.com/HG1127/agent-studio_vibex/actions/runs/41061079507/job/124080668405)已越过真实503恢复、实际完整迟到回复及账号切换，随后Node测试请求未信任合成证书而失败。现改为已验证证书的真实浏览器同源fetch，保留实际Cookie和8秒预算，不关闭TLS校验；27项纯策略通过，409、最终业务镜像、零门禁和成功图片须重跑。[原分享](https://github.com/HG1127/agent-studio_vibex/actions/runs/41061079466/job/124080668583)仍在未知结果步骤收到意外POST503，回执4而预期5、受控断线0。新增固定代理来源/Node码与实际业务完成/200销毁计数以定位下一次失败，预期5/最终7及8秒不变；仍未通过。
+
+`aa475fc`的[质量工作流](https://github.com/HG1127/agent-studio_vibex/actions/runs/41066764981)50/50通过，根必需检查3776/3776；[原PB双Worker](https://github.com/HG1127/agent-studio_vibex/actions/runs/41067206593/job/124101637908)19/19通过。[原总览完整故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41066764791/job/124100071994)首次通过，已核对实际观察和两张安全截图：真实503/恢复、真实Cookie换账号与迟到回复围栏、预期员工409、全业务行镜像及基础台账不变、全部PB/意外请求/外部调用/清理零门禁均通过。这不补齐历史标题、Worker健康或链接目标页，完整原20页和员工UAT仍为0。
+
+同提交[Home生成故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41066764791/job/124100071423)已完成真实生成与已提交丢回复后的原意图恢复，并通过实际手动创建字段检查，随后测试误要求INSERT有045 edited历史而失败。045冻结触发器只在UPDATE记录前后历史。后续测试改为创建必须有实际本人070创建审计且无编辑历史；修订必须有本人更新审计及对应text bigint revision/描述历史，原最终history+2保留。21项host纯检查通过，整体真实Home仍待重跑。
+
+[legacy完整069](https://github.com/HG1127/agent-studio_vibex/actions/runs/41066764741/job/124100070819)未再观察到先前五个ENOENT退出，其清理前内核身份谓词全真；评审Worker内核不可读，尚无已送达的退出观察，整体仍失败。遥测后端/Reader清理为0且四队列为空。后续仅在原停止等待后增加独立退出数据，保留清理前失败、全部进程谓词及原停止/超时，不将停止结果写成健康。[final14](https://github.com/HG1127/agent-studio_vibex/actions/runs/41066764741/job/124100071352)本次越过runtime_open，随后ACL负例准备再次领取原operator runtime而被一次领取保护拒绝。现复用同一opaque runtime及相同trust中的真实原能力，继续经原load/assert；没有接受caller Pool或改原loader、13负例、权限、8秒预算，真实负例仍待验。
+
+[原分享](https://github.com/HG1127/agent-studio_vibex/actions/runs/41066764971/job/124100072244)的新观察收窄为代理ECONNRESET、尚无上游HTTP状态、业务后回调未完成、实际丢回复未完成，仍是失败。已发现断线注入原先按共享POST路由选择请求，可能消耗稍迟到的只读preview。现仅同一请求实际create完成后才消耗注入，preview原样转发并保留待触发状态；用真实解析回调复现先preview后create的顺序。原回执5/最终7、8秒及所有零门禁保持，实际根因和故事重跑继续待验。
+
+模型连接严格后端源码已合流：实际Cookie/事务内owner后核对可选员工并发条件；原页DELETE闭合revision并在同事务锁定核对；配置创建/更新/启停/删除写本人安全审计，审计失败回滚。Native只根据HTTP实际使用的同一个repository自有协议标记宣传新合同；配置写和provider probe仍独立开关。26项纯检查、API TS5通过；原页面client/host另批准备，未知写入精确回执、保存前probe及大账户分页未实现。本批src/shared前端源码与aa未变，复用其TS6和各101资源实际构建基线，不能据此称原ModelConnections已验收。SQL、权限、旧PB与生产状态未变，正式切换继续NO-GO。
+
+当前新源码接通原`/model-connections`页面的本人配置读取、创建、编辑、启停和删除，保留原路由、布局、表单和PB分支。写入使用实际Cookie、预期员工条件、owner版本锁和同事务安全审计；账号/编辑版本围栏阻止迟到回复进入新表单。结果未知只保存本人本标签的有限元数据并阻止重放，读取配置不冒充精确回执。独立第六个matrix故事复用真实fresh PG18/Native Cookie后端，保留8秒、真实owner/CAS/审计与全部PB/网络/清理零门禁；固定成功PNG须全故事及清理后再写。53项纯回归及前端TS/实际构建通过，真实原模型页CI尚未执行。精确未知写入回执、保存前草稿测试、模型发现及大账户分页仍未完成。
+
+`9679a48`的[原PB双Worker](https://github.com/HG1127/agent-studio_vibex/actions/runs/41074829665/job/124128115855)19/19通过，[质量工作流](https://github.com/HG1127/agent-studio_vibex/actions/runs/41073666775)观察时49/50作业通过且主任务仍在运行，PG核心SQL/JWT/RLS已通过。[F01组](https://github.com/HG1127/agent-studio_vibex/actions/runs/41073666901)10/11通过；原Home实际手动保存后，验证脚本引用不存在的审计`created_at`而失败，现改为冻结表实际`occurred_at`并补离线结构核对，业务审计和history+2断言保留，完整故事仍待重跑。
+
+同提交[原分享](https://github.com/HG1127/agent-studio_vibex/actions/runs/41073666868/job/124124025433)仍为实际回执4/要求5，ECONNRESET、无上游状态、业务后完成未观察到且注入仍待触发；受控丢回复计数0，根因继续分析，没有改判成功。[完整Worker](https://github.com/HG1127/agent-studio_vibex/actions/runs/41073666965)新观察确认assessment自行exit1、未请求停机且固定stderr类别为service_refused；final14现越过先前重复领取阶段，到warm_sample因Native heartbeat不可用失败，均未通过。[遥测控制](https://github.com/HG1127/agent-studio_vibex/actions/runs/41073666794)在139项纯检查中因一处独立认证源码指纹陈旧而失败，未进入控制器；当前仅同步该指纹，九个封存门禁均保留并加入本地检查。公开调用参考故事另有iframe轮询按钮不可见/不稳定失败，原因待查。
+
+以上结果只属于各精确提交；源码、纯检查和构建不等于原页真实验收。完整原20页0、完整实时监控0、员工UAT0、合格24小时0，生产仍NO-GO。默认050、冻结059/060、完整069与070–073 SQL及权限未改，074独立包仍待审；没有部署或连接公司数据库。
+
+`06748d9`的[完整质量](https://github.com/HG1127/agent-studio_vibex/actions/runs/41078229456)50/50通过，根必需测试3863/3863；[原PB双Worker](https://github.com/HG1127/agent-studio_vibex/actions/runs/41078695786/job/124141725994)19/19通过。[遥测控制](https://github.com/HG1127/agent-studio_vibex/actions/runs/41078228783/job/124140070569)实际控制器/非root Native IPC通过，先前独立认证pin修复已得到真实验证。
+
+同提交[原Home完整指定故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41078229059/job/124140071655)通过，实际观察和两张安全截图已核对：原生成/已提交断线后的原意图恢复、070071手动创建与修订、真实stale CAS409、外owner404、预期员工submit/confirm409、Cookie换人及已完成旧结果围栏全部通过。实际新Agent+1、edited历史+2、F01 saves/业务runs/旧effects不变；三次合成provider请求及三次实际凭据读取，无真实收费请求；PB/意外API/外部网络/伪头/清理均0。这只接受该指定故事，未补齐多模型选择、未保存/脏草稿修订、旧null作者记录新增工具建议或F01到070持久关联，完整原Home/20页与员工UAT仍未完成。
+
+[原模型页首次真实CI](https://github.com/HG1127/agent-studio_vibex/actions/runs/41078229059/job/124140071586)在finally读取try内`normalAudit`时ReferenceError，可能遮蔽原始失败，未保存可接受的完整观察。现将观察变量放到共同作用域，并以实际finalizer加内存端口回归验证早期失败仍保留同一个主错误对象、不写成功PNG。没有把首次故事改判成功，真实CRUD/换号/未知写入仍待重跑。
+
+本批另接入原表单的保存前显式测试和模型发现源码：独立`native_model_draft_discovery_v1`来自真实同一Repository实例，同时要求原配置写/模型probe许可。只允许官方只读模型清单端点，完整分页后才采用结果，超量/错误/超时不采用部分清单；不保存连接、不执行生成，手工ID优先。实际事务owner/CAS检查与准入/结果审计、密钥请求作用域和账号围栏保留。HTTP额外拒绝重复JSON、编码/传输歧义和非精确路径。39项纯回归及类型/构建通过，但独立合成host仍在装配，真实SQL/原页、实际服务商DNS/TLS及自定义地址兼容未验收。已按[OpenAI官方列表接口](https://developers.openai.com/api/reference/resources/models/methods/list)、[Claude列表接口](https://platform.claude.com/docs/en/api/models/list)及[Gemini模型接口](https://ai.google.dev/api/models)核对查询形状；保留原Anthropic版本头属于兼容选择，不宣称已通过真实服务商请求。
+
+完整Worker当前仍失败。新源码只在assessment既有启动边界记录有限阶段/安全SQLSTATE或Node码，通过原nonce/entry退出IPC传送；final14将真实Native Reader负向阶段与原异常对象关联再转发，并原样重抛。未知、重复、getter/proxy及含额外字段的观察均拒绝，诊断失败不得取代主错误或授予健康/运行资格。32项纯回归通过，5秒Reader/8秒Native/原Worker预算、权限、租约、13负例、全审计、四空队列与停止门禁不改。内部分享和实际Worker原因继续定位，未认定迁移完成。
+
+以下为历史准备与隔离组件证据，不能转用于上述新候选。
+
+更新：2026-10-29。现有 PocketBase 仍是当前运行环境，正式切换 **NO-GO**。
 旧数据已由使用者确认为测试数据，可以采用全新初始化；这不免除功能对照、
 员工验收、备份恢复、运行环境及回滚签收。
 
 本表按员工操作和后台执行语义记录进度。PocketBase 路由数量、SQL 表数量、
 历史导入脚本或通过的 CI 项目数量均不能换算成迁移完成百分比。
 本表仍须随着逐项源代码核查继续补全，不是“其余项目均已验收”的声明。
+
+## 当前准备状态（2026-10-29）
+
+最新功能源码核对见[可达功能基线](PG18_FEATURE_BASELINE_20261029.json)：覆盖19条业务路由、31组能力。它记录工作树源码与页面操作的对应关系，不代表浏览器执行、功能等价或正式验收。13组已有Native实现，应继续复用和验证；12组仍有具体既有功能缺口；5组D工作树新增能力须核对来源与保留范围，不能仅因尚未提交就删掉或忽略。另1组不属于已确立的活动功能基线。
+
+12组缺口分别是自然语言创建/修改角色、方案转工作流、模板中心、单次内部模板分享、调用钥匙/本人试调用、嵌入与公开授权运行、公共MCP目录详情、独立内置/HTTP工具试调、MCP独立试调及日志、跨任务工具统计/Harness、当前单步骤委托审批、同一Agent任务暂停/恢复。编号、实际旧页面回调、Native对应实现与后续动作均在基线中保留。已实现的付费评审、生成描述接受、公司管理员概览等不再作为“完全未实现”的功能重做；尚未覆盖的来源类型、保留范围和运维验收仍需单独核对。
+
+公司管理员概览的最近整轮组件验收基线为`a19fcc371963caa785948949355e30e386c8db88`，见[PR28](https://github.com/HG1127/agent-studio_vibex/pull/28)：七类隔离检查67作业成功，根1,330项、主浏览器23项、同提交PocketBase19项/双worker、三张最终公司页面图和交付源码核对完成。这证明该组件的隔离结果，不证明其余功能或正式迁移完成。
+
+后续Worker遥测组件在已上传提交`f63c98bcdac34a5113fa8e751265329024755644`通过四类自动隔离检查61作业：[质量50作业/根1,784项](https://github.com/HG1127/agent-studio_vibex/actions/runs/40735145765)、[九作业/284个真实TCP子场景](https://github.com/HG1127/agent-studio_vibex/actions/runs/40735145950)、[原可选059工具](https://github.com/HG1127/agent-studio_vibex/actions/runs/40735145755)及[控制器20个真实场景](https://github.com/HG1127/agent-studio_vibex/actions/runs/40735146039)。控制器覆盖关闭启动、真实管理员身份、签名启用、快照、轮换、租约/容量、停用、实际COMMIT确认丢失后的只读核实和新签名恢复；轮换用例证明轮换后旧快照被拒绝，尚未单独区分epoch变化与自然到期的因果作用。原5秒读取租约和8秒Native读取预算未放宽。
+
+受保护HTTP接口已形成后续本地提交`b8562599370cb8ec51961e439fbb814e64053444`：默认关闭、固定GET、一个共享真实authPool/Facade、管理员配置提示。17项定向纯测试及实际API5.9.3/根6.0.3窄依赖图类型检查通过；该提交在本节记录时尚未上传，新HTTP真正例与实际Worker发送链仍在并行集成，不能计入上面的f63证据。Worker接入须具有真实启动身份、当前发布generation和未知确认后的停止边界，配置提示或ACK不代表Worker已就绪。
+
+后续本地`73d9f489356256211a464bc9955d42a2c9f2c6fc`已接通严格SDK、员工/API作用域会话和管理员页面：相关60项纯测试/静态渲染及实际H双编译器窄图通过；新模块另通过开启未检查索引保护的根编译器检查。到期、隐藏、退出、换账号、权限变化、错误和迟到响应均清除旧展示。新增浏览器故事仅用合成遥测响应检查界面，不能证明真实Worker、H3或数据库权限；独立真实HTTP夹具已扩至28个待运行场景，原20个测试主体未改。迟到清理负例用同一真实池的固定1秒持有和精确自有丢包规则建立可观测窗口，生产超时不变；错过窗口属于夹具未建立，不能归因为生产缺陷。这些后续脚本的托管结果仍待核对。
+
+`ops/pg18-fresh-cutover-gate.mjs`现为只读源码清单：旧PB引用只作为文本线索，14项外部/最终验收条件标为未评估，固定拒绝切换。它不连接数据库、读取现场验收或接受环境变量中的GO声明，也不把所有源码引用消失当成功能完成。最终候选仍须完成完整初始化范围/权限与交付闭包、同提交整体验证、真实目标、员工UAT、至少24小时Worker运行、备份恢复/完整旧入口回滚和明确签收。默认fresh050及原SQL001–061保留；遥测是独立`telemetry_v1`域。
+
+后文按原提交保留历史记录；其中“最新”“当前”“待完成”描述的是相应历史阶段，后续状态以本节及其精确提交证据为准。
 
 ## 已有实现与隔离证据
 
@@ -23,7 +329,7 @@
 | 完整版本与发布 | 所有者完整快照、单调版本号、发布 / 归档、草稿删除、资源重校验后的完整恢复、专用验收及员工页面 | [完整版本](PG18_NATIVE_AGENT_RELEASES.md)。046已纳入全新初始化及默认关闭时的权限检查。实际 PG18 验证完整中文角色的快照、恢复、专用验收与发布；浏览器验证原请求恢复、模型 B 审批、删除预览清理和退出 / 员工切换隔离。历史测试事实与当前有效性分开；旧知识来源不能生成新的通过证明。 |
 | 新库准备 | 真实 SQL 顺序、源文件指纹、初始化回执、六类独立服务登录准备、分阶段只读检查和审查包 | [新库初始化](PG18_FRESH_RUNTIME_INITIALIZATION.md)、[迁移后检查](PG18_RUNTIME_PREPARATION_POSTCHECK.md)。没有在真实目标执行初始化、启用登录或启动服务。 |
 
-最新完整隔离基线为提交`bfe9c0a63763f45339a66972b1ee262ee4db0a57`。
+2026-10-27的历史完整隔离基线为提交`bfe9c0a63763f45339a66972b1ee262ee4db0a57`。
 
 `bfe9c0a` 已通过：
 
@@ -201,3 +507,44 @@ S1 模型提供字段的 Native 接受在精确提交 `c64c39a74dffc61091fbe1da3
 本候选仅汇总稳定诊断并进入相同提交的七类完整门禁：质量与根pnpm check、真实PG18七作业、浏览器四作业、原CLI、可信059、S1两作业及Company两作业，另须规范PB19/双worker、同提交截图及交付包源码核对。尚未完成这些最终检查前，不将CT03写为完整验收。Worker纯契约/报告序列和060受控工具在独立范围继续实现，没有纳入本候选或冒称已部署。
 
 真实员工UAT、网络/访问控制、备份恢复、长期Worker签收和其余活动PB功能仍未完成；未初始化真实目标、未合并或部署，整体正式迁移保持NO-GO。
+
+## 原模型分页、独立草稿故事及真实失败修复（2026-10-31）
+
+- 原模型页保留既有布局、表单、CRUD与PB分支，接入独立分页能力。实际owner读取在单条SQL内取得公开元数据、总数和全量快照指纹；加密游标固定owner、页长、快照及有效期。客户端只发布完整且一致的列表，旧PG后端的部分列表明确提示。已准备251条合成连接、至少6次实际GET及清理后的原页故事；真实SQL性能和浏览器分页仍待CI。
+- 独立第7个`original-model-draft-discovery`故事复用原ModelConnections页面、真实Cookie、PG18、同owner/CAS与审计。只在实际已选中的双审批策略下组装草稿测试；元数据故事仍关闭服务商探测。验证未保存测试不改模型列或元数据审计、显式保存加密密钥及发现的IDs、实际Bob POST完成后换Alice账号不接纳旧结果。两浏览器页均检查旧接口访问；所有8秒/6秒预算、零门禁与清理条件保留。仅合成DNS/流端口，没有真实服务商兼容性验收。
+- `98ceff0`的[PB19双Worker回归](https://github.com/HG1127/agent-studio_vibex/actions/runs/41085640302/job/124165963097)19/19通过，73.5秒。[质量工作流](https://github.com/HG1127/agent-studio_vibex/actions/runs/41085430850/job/124165222333)49/50作业通过；根回归3910/3911，唯一失败为旧final14纯测试仅匹配3个转发解析器。新增真实闭集Reader解析器后现为4个，已精确更新AST测试并验证原错误对象及全部拒绝条件，未改运行策略。[完整069](https://github.com/HG1127/agent-studio_vibex/actions/runs/41085431045)因此未进入实际Worker/权限负例；不得认定新诊断已解决运行根因。
+- 同提交[原模型故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41085431028/job/124165222836)首个POST实际返回405：全局OwnOperations策略缺配置审批。后续源码现使用原审批选择器、相同Native能力与外层业务策略，并仅在合成元数据步骤带原批准标记；没有硬编码放行、绕过策略或打开探测。实际201仍待新提交验证。
+- F08丢回包注入现只匹配同请求实际已完成记录的create/redeem/revoke动作、HTTP200及真实连接销毁；预览和未完成响应原样转发。新增有界闭集阶段观察用于定位原故事，保留回执5/最终7及全部身份、台账和清理断言。原故事根因与完整通过仍未证明。
+
+此前`06748d9`的原Home指定故事、质量50作业、PB19与真实遥测已通过，属于该精确提交的证据。当前模型元数据/分页/草稿故事、原团队共享及完整069都需同提交复验。完整20页、普通Agent删除、运行详情、可选074/075/076、宝塔真实环境、备份恢复、24小时Worker和员工签收仍未完成；正式切换保持 **NO-GO**，旧PocketBase保留可恢复。
+
+## 原运行页/详情源码接通及 af94d8f 实际复验（2026-10-31）
+
+- `af94d8f`[质量50/50](https://github.com/HG1127/agent-studio_vibex/actions/runs/41094810229/job/124197715104)通过，根回归4015/4015，包含必需`pnpm check`；[PB19](https://github.com/HG1127/agent-studio_vibex/actions/runs/41095039217/job/124198486156)19/19、双Worker73.7秒通过；[真实遥测控制/非root Native IPC](https://github.com/HG1127/agent-studio_vibex/actions/runs/41094810192/job/124197713617)与心跳回归通过。这些结果只属于该精确提交。
+- [原模型草稿/发现故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41094810222/job/124197714361)通过，已核对实际观察和两张原页安全PNG：未保存发现不改模型列/元数据审计，显式保存才加密存储密钥及IDs，真实已完成Bob POST在Cookie切换Alice后不进入新表单。2次合成清单请求、真实owner准入/结果审计及全部零门禁通过；没有真实服务商DNS/TLS或收费兼容性验收。
+- 同提交[原模型元数据故事](https://github.com/HG1127/agent-studio_vibex/actions/runs/41094810222/job/124197714499)整体失败：实际251条临时连接、252条本人总量、至少6次GET到最旧记录及251条清理已完成，原CRUD/CAS/安全审计/换号围栏步骤也完成；随后真实已提交创建丢回复1次，恢复按钮5秒内未出现。当前改为先等待同一真实POST的requestfailed、仍用原8秒预算，再断言原UI；时序原因尚须复验，没有精确回执或整页通过结论。
+- [原分享](https://github.com/HG1127/agent-studio_vibex/actions/runs/41094810196/job/124197713664)仍失败，回执4/要求5、ECONNRESET、无上游状态/实际注入完成；同提交参考故事通过。没有相对耗时证据，不能断言初始延迟根因。新源码仅修复已证实的清理竞争：先在原清理预算内排空实际Native handler，再关闭authPool；过期/已断开的回复不得冒充受控丢回复，404保留原未知写入，安全PNG只在全故事及清理零门禁后落盘。真实原分享仍待重跑。
+- [完整069 legacy](https://github.com/HG1127/agent-studio_vibex/actions/runs/41094810181/job/124197714083)已完成10项准备，但assessment在heartbeat_open/binding_refused自行exit1、非停机触发；清理后Reader0及四空队列通过，遥测后端清零失败保留。[final14](https://github.com/HG1127/agent-studio_vibex/actions/runs/41094810181/job/124197713441)在warm_sample失败，没有13项实际ACL负例通过证据。新源码使Root准入竞争在原5秒消息期限内等待并重核绑定、保留原Writer错误对象和封闭错误码；不是唯一根因证明，更未取得运行资格。
+- 原`/agent-run`及`/run-detail`已接入独立PG Hook/session/transport，原页面、路由、布局、卡片及PB分支保留。使用实际UUID/revision、全量模型快照、四种真实运行读取和公开step元数据；身份不确定、401/403/404、owner变化或来源ACL失效时隐藏正文与草稿。未知提交只查询、不重发；pause/resume在POST前保存原request/state hash，缺回执继续阻止操作；cancel后读到终态不冒称本次取消因果。公共展示值拆成无后端模块，普通构建继续要求PG资源0。
+- 上述新运行页仍缺同提交原页真实hosted验收、完整历史/事件、历史名称/配置、部分审批费用预览、临时覆盖与评价/优化等旧操作；074、075、076各独立冻结候选尚未合入或执行。完整20页0、完整实时监控0、员工UAT0、合格24小时0；目标环境未核验，未部署/切库，正式迁移继续 **NO-GO**，旧PocketBase可恢复。
+
+## 原运行页/详情独立真实验收主机（2026-10-31，源码已准备）
+
+新增两个独立fresh PG18作业`original-agent-run-queued`/`original-run-detail-queued`，保留原七故事。16个目标中15个create-only，使用真实Native Cookie、原审批选择器/角色/审计，读取四类真实入队运行、61条本人模型分页、原pause精确负/正回执和真实来源ACL撤销；真实Worker执行、非空输出/事件与完整历史仍不在本轮验收范围。继承F01两个合成就绪探针，新增provider探针/收费调用为0。四张固定安全PNG仅全故事与清理零门禁后写入，尚无这两个原页的真实通过证据。
+
+`472de31`[PB19](https://github.com/HG1127/agent-studio_vibex/actions/runs/41104427754/job/124230019969)19/19、双Worker72.9秒通过；[质量](https://github.com/HG1127/agent-studio_vibex/actions/runs/41104233880)50/50成功，实际日志确认根4137/4137、必需`pnpm check`及后续安全/Worker集成检查通过。[F01](https://github.com/HG1127/agent-studio_vibex/actions/runs/41104233192)11/13通过，Home/登录/总览/草稿指定故事通过；原模型未知结果故事在exact requestfailed8秒等待超时，前四步骤完成、真实丢回复1次、零门禁及清理通过。没有实际浏览器自动重试计数，部分响应断线候选尚未合入，不能断言旧失败原因。
+
+[原Home073](https://github.com/HG1127/agent-studio_vibex/actions/runs/41104233192/job/124229225783)本次在登录跳转后读Playwright已失效Response失败；新测试在响应到达时立即读取两个实际body，保留owner/分页/已读计数与全部零门禁，截图只在全故事清理后保存。[原分享](https://github.com/HG1127/agent-studio_vibex/actions/runs/41104233874/job/124229227205)仍失败，但新增时序证明测试需修正：原controller在POST发出时即显示pending提示，测试提前读到回执4后清理；实际服务器后续558毫秒提交、561毫秒完成响应，外层76毫秒已观察客户端关闭。新测试等待同一真实POST requestfailed及实际受控断线1后，才检查原回执5，8秒预算和最终7不变，仍须真实重跑。
+
+[完整069 legacy](https://github.com/HG1127/agent-studio_vibex/actions/runs/41104233561/job/124229226237)前清理八进程内核谓词均真，未再观察assessment自行退出；主拒绝仍为`full069_worker_live_native_heartbeat_unavailable`。本次后端/Reader清零及四空队列通过，不等于就绪。[final14](https://github.com/HG1127/agent-studio_vibex/actions/runs/41104233561/job/124229226644)在`runtime_open/service_target/review_worker/connection_timeout`失败。[遥测控制](https://github.com/HG1127/agent-studio_vibex/actions/runs/41104233376/job/124229225552)20个实际场景及4次owned清理通过，随后并发8绑定场景的运行断言失败；没有13个真实ACL负例通过证据，均继续定位。
+
+当前新增批次不改产品、SQL或原预算；074/075/076独立候选继续审查。完整原20页、员工UAT、合格24小时及目标环境正式安装/备份恢复/回滚签收尚未完成，正式切换继续 **NO-GO**。
+
+
+Prepared original interaction and business combination (base fad3351)
+
+The current isolated source candidate preserves the original employee pages and adds exact run-interaction receipts, employee-scoped business components, and optional monitor074/ordinary077 integration. The combined source tests passed 990/990, schedules078/caller corrections passed 32/32, and four actual Native bundle closure checks passed; none is a current PostgreSQL or browser acceptance claim. The final frontend type check passed. The API type check passed before the pending private monitor row-lock RPC increment.
+
+The hosted verification source now includes an independent monitor074 TCP purpose and the original release completion story. Final source sealing and hosted execution remain pending. Material parsing, artifact/quality contracts, the latest accepted desktop baseline, full069/telemetry acceptance, target installation, employee UAT and qualifying long-running Worker observation remain open. Production status remains NO-GO.
+
+The monitor074 private row-lock increment is now integrated: three closed lock/read functions preserve all 66 original function bodies and SELECT-only API ACLs on all 14 tables. Final combined pure checks passed 1081/1081 across 53 files, the post-increment API type check passed, and the original employee UI build passed. Hosted source additionally checks both lock modes across commit and rollback with real competing transactions. Those PostgreSQL checks have not run yet.

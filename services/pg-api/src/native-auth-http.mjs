@@ -3,10 +3,12 @@
 // Uses server-verified HttpOnly sessions; never trusts forwarded user headers,
 // PocketBase tokens or synthetic OIDC claims.
 import {createHash} from "node:crypto"
+import {originalAccountPasswordProtocol,parseOriginalAccountExpectedOwner} from "../../../shared/original-account-contract.ts"
 import {NATIVE_SESSION_COOKIE,buildNativeSessionCookie,
   clearNativeSessionCookie} from "./native-employee-auth.mjs"
 
 const prefix="/api/native-auth"
+const nativeLoginStatusProtocol="native_employee_login_status_v1"
 const maxBody=8192
 function abort(status,code){const e=Error(code);e.status=status;throw e}
 function respond(res,status,body,extra={}){
@@ -25,6 +27,20 @@ function respond(res,status,body,extra={}){
 function publicProfile(profile){
   return {id:profile.id,email:profile.email,
     display_name:profile.display_name,is_admin:profile.is_admin===true,...(typeof profile.share_enabled==="boolean"?{share_enabled:profile.share_enabled}:{})}
+}
+// Public login state only; the existing repository verifies current Cookie,
+// revocation/expiry, enabled account and active employee on every token read.
+async function readNativeLoginStatus(req,auth){
+  const token=nativeSessionToken(req)
+  if(!token)return {protocol:nativeLoginStatusProtocol,authenticated:false,user:null}
+  const profile=await auth.getSessionProfile(token)
+  if(profile===null)return {protocol:nativeLoginStatusProtocol,authenticated:false,user:null}
+  if(!profile||typeof profile!=="object"||Array.isArray(profile)||typeof profile.id!=="string"||
+     !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(profile.id)||
+     typeof profile.email!=="string"||!profile.email||profile.email.length>254||
+     typeof profile.display_name!=="string"||profile.display_name.length>80||typeof profile.is_admin!=="boolean"||
+     profile.share_enabled!==undefined&&typeof profile.share_enabled!=="boolean")throw Error("native_login_profile_unavailable")
+  return {protocol:nativeLoginStatusProtocol,authenticated:true,user:publicProfile(profile)}
 }
 export function nativeSessionToken(req){
   const raw=req.headers.cookie
@@ -119,15 +135,24 @@ export class NativeLoginLimiter{
   }
 }
 export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
-    allowConfigurationWrites=false,allowModelProbe=false,allowMcpDiscovery=false,allowMcpToolExecution=false,allowSmitheryManagement=false,allowKnowledgeSharing=false,allowKnowledgeEmbeddingSettings=false,allowKnowledgeEmbeddingConsent=false,allowKnowledgeIndexRuntime=false,allowKnowledgeQueryRuntime=false,allowKnowledgeToolExecution=false,
+    allowConfigurationWrites=false,allowModelProbe=false,allowOriginalModelConnections=false,originalModelConfigReceiptsProtocol=undefined,allowModelConfigReceiptWrites=false,originalModelDraftProbeProtocol=undefined,originalModelPaginationProtocol=undefined,allowMcpDiscovery=false,allowMcpToolExecution=false,allowSmitheryManagement=false,allowKnowledgeSharing=false,allowKnowledgeEmbeddingSettings=false,allowKnowledgeEmbeddingConsent=false,allowKnowledgeIndexRuntime=false,allowKnowledgeQueryRuntime=false,allowKnowledgeToolExecution=false,
     allowRunSubmission=false,allowBoundRunSubmission=false,
     allowWorkflowValidation=false,allowWorkflowExecution=false,
-    allowWorkflowV2Submission=false,allowAutonomousAgentSubmission=false,allowScheduleRuntime=false,allowAgentCollaboration=false,allowAgentReleases=false,allowAgentHumanInput=false,allowAgentMemory=false,allowAgentMemoryRuntime=false,allowAgentDerivedMemory=false,allowAgentDerivedMemoryWrites=false,allowAgentOutcomeMemory=false,allowAgentOutcomeMemoryAdmission=false,allowAgentFeedback=false,allowAgentFeedbackSubmission=false,allowAgentFeedbackLessons=false,allowAgentOptimization=false,allowAgentOptimizationAcceptance=false,
+    allowWorkflowV2Submission=false,allowAutonomousAgentSubmission=false,allowScheduleRuntime=false,allowAgentCollaboration=false,allowAgentReleases=false,originalQualityProtocol=undefined,originalRunInteractionProtocol=undefined,originalRunOptionsProtocol=undefined,allowAgentHumanInput=false,allowAgentMemory=false,allowAgentMemoryRuntime=false,allowAgentDerivedMemory=false,allowAgentDerivedMemoryWrites=false,allowAgentOutcomeMemory=false,allowAgentOutcomeMemoryAdmission=false,allowAgentFeedback=false,allowAgentFeedbackSubmission=false,allowAgentFeedbackLessons=false,allowAgentOptimization=false,allowAgentOptimizationAcceptance=false,
     allowAgentReview=false,allowAgentReviewHistory=false,allowAgentReviewSubmission=false,
     allowAgentGeneratedAcceptance=false,allowAgentGeneratedAcceptanceWrites=false,
+    allowAgentDesign=false,allowAgentDesignSubmissions=false,allowAgentDesignSaves=false,
+    allowAgentPlanWorkflow=false,allowAgentPlanWorkflowSubmissions=false,allowAgentPlanWorkflowSaves=false,
+    allowAgentTemplateMarket=false,allowAgentTemplateMarketWrites=false,
+    allowInternalShare=false,allowInternalShareWrites=false,
+    allowLocalDevices=false,allowLocalDeviceWrites=false,
+    allowApprovalDelegations=false,allowApprovalDelegationWrites=false,
+    allowAgentCallers=false,allowAgentCallerWrites=false,allowAgentCallerRuns=false,
     allowAgentDescriptivePatch=false,allowAgentDescriptivePatchWrites=false,
+    allowOwnerToolHub=false,allowOwnerToolTrials=false,allowPublicMcpRegistry=false,
     allowOwnOperations=false,
     allowCompanyOverview=false,
+    allowCompanyWorkerHeartbeats=false,
     allowEmployeeProvisioning=true,allowEmployeeGovernance=false,
     limiter=new NativeLoginLimiter()}){
   if(!auth||typeof auth.login!=="function"||
@@ -137,6 +162,9 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
      typeof businessHandler!=="function"||
      !validOrigin(allowedOrigin))
     throw Error("invalid_native_http_dependencies")
+  // Advertise only with the existing startup governance schema/ACL gate and
+  // the explicit owner-bound repository port. A legacy method cannot opt in.
+  const accountPasswordAvailable=allowEmployeeGovernance===true&&auth.accountPasswordProtocol===originalAccountPasswordProtocol&&typeof auth.changePasswordForOwner==="function"
   const authenticateRequest=async req=>{
     verifyNativeOrigin(req,allowedOrigin,!["GET","HEAD"].includes(req.method))
     if(req.headers.authorization!==undefined)
@@ -161,6 +189,15 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
       verifyNativeOrigin(req,allowedOrigin,!["GET","HEAD"].includes(method))
       if(req.headers.authorization!==undefined)
         abort(401,"native_cookie_only")
+      if(pathname===prefix+"/login-status"){
+        if(method!=="GET")abort(405,"method_not_allowed")
+        if(req.url!==prefix+"/login-status"||req.headers["transfer-encoding"]!==undefined||
+           req.headers["content-length"]!==undefined&&req.headers["content-length"]!=="0")
+          abort(400,"invalid_login_status_request")
+        if(["x-rh-user-id","x-rh-token","x-agentstudio-user-id","x-agentstudio-expected-employee"].some(key=>req.headers[key]!==undefined))
+          abort(400,"login_status_cookie_only")
+        return respond(res,200,await readNativeLoginStatus(req,auth))
+      }
       if(pathname===prefix+"/login"&&method==="POST"){
         const body=await readJson(req)
         exactKeys(body,["email","password"])
@@ -197,11 +234,25 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
           mode:"native_pg18",
           ...(allowOwnOperations===true?{own_operations_available:true}:{}),
           ...(allowCompanyOverview===true&&profile.is_admin===true?{company_overview_available:true}:{}),
+          ...(allowCompanyWorkerHeartbeats===true&&profile.is_admin===true?{company_worker_heartbeats_available:true}:{}),
           ...(allowEmployeeGovernance===true?{employee_governance_available:true,employee_governance_enabled:allowConfigurationWrites===true}:{}),
+          ...(accountPasswordAvailable?{original_account_password_protocol:originalAccountPasswordProtocol,original_account_password_available:true,original_account_password_enabled:allowConfigurationWrites===true}:{}),
           config_writes_enabled:allowConfigurationWrites===true,
+          ...(originalQualityProtocol==='native_original_agent_quality_v1'?{original_agent_quality_protocol:originalQualityProtocol}:{}),
+          ...(allowOriginalModelConnections===true?{original_model_connections_protocol:'native_model_connections_owner_cas_v1'}:{}),
+          ...(originalModelConfigReceiptsProtocol==='native_model_config_receipts_v1'?{original_model_config_receipts_protocol:originalModelConfigReceiptsProtocol,model_config_receipt_writes_enabled:allowConfigurationWrites===true&&allowModelConfigReceiptWrites===true}:{}),
+          ...(originalModelPaginationProtocol==='native_model_connections_paging_v1'?{original_model_pagination_protocol:originalModelPaginationProtocol}:{}),
+          ...(allowOwnerToolHub===true?{owner_tool_hub_available:true,owner_tool_trials_enabled:allowConfigurationWrites===true&&allowWorkflowV2Submission===true&&allowOwnerToolTrials===true,public_mcp_registry_enabled:allowPublicMcpRegistry===true}:{}),
           ...(allowAgentReview===true?{agent_review_available:true,agent_review_submission_enabled:allowConfigurationWrites===true&&allowAgentReviewSubmission===true}:{}),
           ...(allowAgentReview===true&&allowAgentReviewHistory===true?{agent_review_history_available:true}:{}),
           ...(allowAgentGeneratedAcceptance===true?{agent_generated_acceptance_available:true,agent_generated_acceptance_enabled:allowConfigurationWrites===true&&allowAgentGeneratedAcceptanceWrites===true}:{}),
+          ...(allowAgentDesign===true?{agent_design_available:true,agent_design_submissions_enabled:allowConfigurationWrites===true&&allowAgentDesignSubmissions===true,agent_design_saves_enabled:allowConfigurationWrites===true&&allowAgentDesignSaves===true}:{}),
+          ...(allowAgentPlanWorkflow===true?{agent_plan_workflow_available:true,agent_plan_workflow_submissions_enabled:allowConfigurationWrites===true&&allowAgentPlanWorkflowSubmissions===true,agent_plan_workflow_saves_enabled:allowConfigurationWrites===true&&allowAgentPlanWorkflowSaves===true}:{}),
+          ...(allowAgentTemplateMarket===true?{agent_template_market_available:true,agent_template_market_writes_enabled:allowConfigurationWrites===true&&allowAgentTemplateMarketWrites===true}:{}),
+          ...(allowInternalShare===true?{internal_share_available:true,internal_share_writes_enabled:allowConfigurationWrites===true&&allowInternalShareWrites===true}:{}),
+          ...(allowLocalDevices===true?{local_devices_available:true,local_device_writes_enabled:allowConfigurationWrites===true&&allowLocalDeviceWrites===true}:{}),
+          ...(allowApprovalDelegations===true?{approval_delegations_available:true,approval_delegations_writes_enabled:allowConfigurationWrites===true&&allowApprovalDelegationWrites===true}:{}),
+          ...(allowAgentCallers===true?{agent_callers_available:true,agent_callers_writes_enabled:allowConfigurationWrites===true&&allowAgentCallerWrites===true,agent_callers_runs_enabled:allowConfigurationWrites===true&&allowAutonomousAgentSubmission===true&&allowAgentCallerRuns===true}:{}),
           ...(allowAgentDescriptivePatch===true?{agent_descriptive_patch_available:true,agent_descriptive_patch_enabled:allowConfigurationWrites===true&&allowAgentDescriptivePatchWrites===true}:{}),
           ...(allowAgentOptimization===true?{agent_optimization_available:true,agent_optimization_acceptance_enabled:allowConfigurationWrites===true&&allowAgentOptimizationAcceptance===true}:{}),
           ...(allowAgentFeedback===true?{agent_feedback_available:true,agent_feedback_submission_enabled:allowConfigurationWrites===true&&allowAgentFeedbackSubmission===true,agent_feedback_lesson_storage_enabled:allowConfigurationWrites===true&&allowAgentFeedbackSubmission===true&&allowAgentFeedbackLessons===true}:{}),
@@ -212,7 +263,10 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
           ...(allowAgentHumanInput===true?{agent_human_input_available:true,agent_human_responses_enabled:allowConfigurationWrites===true&&(allowAutonomousAgentSubmission===true||allowWorkflowV2Submission===true)}:{}),
           ...(allowAgentCollaboration===true?{agent_collaboration_available:true}:{}),
           ...(allowAgentReleases===true?{agent_releases_available:true,agent_release_acceptance_enabled:allowConfigurationWrites===true&&allowAutonomousAgentSubmission===true}:{}),
+          ...(allowAgentReleases===true&&originalRunInteractionProtocol==='native_original_run_interaction_v1'?{original_run_interactions_protocol:originalRunInteractionProtocol}:{}),
+          ...(allowConfigurationWrites===true&&allowAutonomousAgentSubmission===true&&originalRunOptionsProtocol==='native_original_run_options_v1'?{original_run_options_protocol:originalRunOptionsProtocol}:{}),
           model_probe_enabled:allowConfigurationWrites===true&&allowModelProbe===true,
+          ...(allowConfigurationWrites===true&&allowModelProbe===true&&originalModelDraftProbeProtocol==='native_model_draft_discovery_v1'?{original_model_draft_probe_protocol:originalModelDraftProbeProtocol}:{}),
           ...(allowConfigurationWrites===true&&allowMcpDiscovery===true?{mcp_discovery_enabled:true}:{}),
           ...(allowConfigurationWrites===true&&allowMcpToolExecution===true?{mcp_tool_runs_enabled:true}:{}),
           ...(allowConfigurationWrites===true&&allowSmitheryManagement===true?{smithery_management_enabled:true}:{}),
@@ -248,13 +302,21 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
         const profile=await auth.getSessionProfile(token)
         if(!profile)abort(401,"session_required")
         const passwordRoute=pathname===prefix+"/change-password"
+        let expectedOwner
+        if(passwordRoute&&req.headers["x-agentstudio-expected-owner"]!==undefined){
+          try{expectedOwner=parseOriginalAccountExpectedOwner(req.headers["x-agentstudio-expected-owner"])}catch{abort(400,"invalid_expected_owner")}
+          if(profile.id!==expectedOwner)abort(401,"session_changed")
+          if(!accountPasswordAvailable)abort(503,"original_account_password_unavailable")
+        }
         if(!passwordRoute&&!profile.is_admin)abort(403,"admin_required")
         const body=await readJson(req)
         if(passwordRoute)limiter.admit(req.socket?.remoteAddress,profile.id)
         try{
           if(passwordRoute){
-            const result=await auth.changePassword(token,body)
-            return respond(res,200,result,{"Set-Cookie":clearNativeSessionCookie()})
+            const result=expectedOwner===undefined?await auth.changePassword(token,body):await auth.changePasswordForOwner(token,body,expectedOwner)
+            // Revocation is committed for A in the transaction. A late response
+            // must not clear the browser Cookie after another tab logs in as B.
+            return respond(res,200,result,expectedOwner===undefined?{"Set-Cookie":clearNativeSessionCookie()}:{})
           }
           if(pathname.endsWith("/create"))return respond(res,201,{user:await auth.createGovernedEmployee(token,body)})
           const result=pathname.endsWith("/confirm")?await auth.confirmEmployeeChange(token,body):await auth.changeEmployee(token,body)
@@ -263,7 +325,7 @@ export function createNativeAuthHttpHandler({auth,allowedOrigin,businessHandler,
           if(err?.code==="23505")abort(409,"employee_already_exists")
           const code=err?.message
           if(code==="admin_session_required")abort(403,"admin_required")
-          if(code==="session_required")abort(401,code)
+          if(code==="session_required"||code==="session_changed")abort(401,code)
           if(code==="invalid_current_password")abort(403,code)
           if(["invalid_employee_governance_input","invalid_employee_display_name","invalid_employee_password","invalid_employee_email","employee_password_unchanged"].includes(code))abort(400,code)
           if(["cannot_disable_self_admin","last_active_admin_required","employee_revision_changed","employee_request_conflict"].includes(code))abort(409,code)

@@ -23,6 +23,11 @@ const HOW_IT_WORKS = [
   },
 ]
 
+const NATIVE_HOW_IT_WORKS=[
+  {title:'保存本人配置',desc:'保存只写入本人配置和加密密钥，不测试连接、不调用模型。'},
+  {title:'明确测试后保存',desc:'开放草稿测试时，可查询官方服务商模型列表；会使用密钥，可能产生费用。测试不会保存或生成内容。'},
+  {title:'明确选择后使用',desc:'模型 ID 由你配置；保存或测试均不会启动 Agent，也不会设为默认模型。'},
+]
 export function ModelConnectionsPage(p: ReturnType<typeof useModelConnections>) {
   const editingRow = p.connectionList.find((row) => row.id === p.editingId) || null
 
@@ -46,14 +51,14 @@ export function ModelConnectionsPage(p: ReturnType<typeof useModelConnections>) 
               接入你自己的模型服务，<span className="text-primary">让助手用你的密钥跑</span>
             </h1>
             <p className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
-              支持 OpenAI 兼容、Anthropic、Gemini 三种接口：填好 Base URL 与 API Key 当场测连通、拉模型清单；启用后出现在试跑页模型选择器。
+              {p.nativeMode?'支持 OpenAI 兼容、Anthropic、Gemini。保存本人配置后，再明确选择是否测试已保存的服务商连接；不会自动选择默认模型。':'支持 OpenAI 兼容、Anthropic、Gemini 三种接口：填好 Base URL 与 API Key 当场测连通、拉模型清单；启用后出现在试跑页模型选择器。'}
             </p>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={p.openAddForm}
-                disabled={!p.isLoggedIn || p.formOpen}
+                disabled={!p.isLoggedIn || p.formOpen || p.nativeMode&&p.writeBlocked&&!p.nativePending}
                 className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg transition hover:bg-primary/90 hover:shadow-xl hover:scale-105 focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Plus className="h-4 w-4" />
@@ -70,7 +75,7 @@ export function ModelConnectionsPage(p: ReturnType<typeof useModelConnections>) 
             </div>
         </section>
 
-        {!p.isLoggedIn && <McLoginGate onLoginClick={p.onLoginClick} />}
+        {!p.isLoggedIn && !p.nativeUnavailable && <McLoginGate onLoginClick={p.onLoginClick} />}
 
         {p.isLoggedIn && p.needsRhLogin && (
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border-l-4 border-primary bg-card p-4 shadow-md">
@@ -122,7 +127,7 @@ export function ModelConnectionsPage(p: ReturnType<typeof useModelConnections>) 
           </div>
         )}
 
-        {p.isLoggedIn && (
+        {p.isLoggedIn && !p.nativeUnavailable && (
           <section className="py-10">
             <div
               className={`grid items-start gap-6 ${p.formOpen ? "lg:grid-cols-[2fr_3fr]" : "grid-cols-1"}`}
@@ -142,6 +147,8 @@ export function ModelConnectionsPage(p: ReturnType<typeof useModelConnections>) 
                     onFormBaseUrlChange={p.setFormBaseUrl}
                     onFormApiKeyChange={p.setFormApiKey}
                     onFormManualModelsChange={p.setFormManualModels}
+                    nativeMode={p.nativeMode} canTest={p.formProbeEnabled} nativePending={p.nativePending}
+                    saveActionLabel={p.saveActionLabel} probeNotice={p.probeNotice}
                     onTest={p.handleTestForm}
                     isTestingForm={p.isTestingForm}
                     formTestResult={p.formTestResult}
@@ -164,6 +171,7 @@ export function ModelConnectionsPage(p: ReturnType<typeof useModelConnections>) 
                     <button
                       type="button"
                       onClick={p.openAddForm}
+                      disabled={p.nativeMode&&p.writeBlocked&&!p.nativePending}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-primary px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary"
                     >
                       <Plus className="h-3.5 w-3.5" />
@@ -182,6 +190,7 @@ export function ModelConnectionsPage(p: ReturnType<typeof useModelConnections>) 
                       isBusy={p.busyId === row.id}
                       isExpanded={p.expandedId === row.id}
                       isPendingDelete={p.pendingDeleteId === row.id}
+                      nativeMode={p.nativeMode} canMutate={!p.writeBlocked} canProbe={p.probeEnabled}
                       onRetest={p.handleRetest}
                       onToggleEnabled={p.handleToggleEnabled}
                       onEdit={p.startEdit}
@@ -199,7 +208,7 @@ export function ModelConnectionsPage(p: ReturnType<typeof useModelConnections>) 
 
         <section className="pb-16">
           <div className="grid gap-4 sm:grid-cols-3">
-            {HOW_IT_WORKS.map((item, itemIndex) => (
+            {(p.nativeMode?NATIVE_HOW_IT_WORKS:HOW_IT_WORKS).map((item, itemIndex) => (
               <div
                 key={item.title}
                 className="flex h-full flex-col rounded-2xl border border-border bg-card p-5 shadow-md"
@@ -228,7 +237,7 @@ export function ModelConnectionsPage(p: ReturnType<typeof useModelConnections>) 
       <footer className="relative z-10 mt-4 border-t border-border py-10 text-center">
         <p className="text-sm font-medium text-card-foreground">Agent Studio · 模型连接</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          自定义模型走你自己的服务与密钥，不产生额外平台费用。
+          {p.nativeMode?'保存配置不会访问服务商；主动测试或运行可能产生费用。':'自定义模型走你自己的服务与密钥，不产生额外平台费用。'}
         </p>
       </footer>
     </div>

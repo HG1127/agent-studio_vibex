@@ -1,12 +1,15 @@
 import {useEffect, useRef, useState} from "react"
+import CompanyWorkerHeartbeatsPanel from "./CompanyWorkerHeartbeatsPanel"
+import type {PgNativeCompanyWorkerHeartbeatsApi} from "@/lib/pgNativeCompanyWorkerHeartbeats"
 import {companyEmployeeIsActive, type PgNativeCompanyOverviewApi, type CompanyOverview} from "@/lib/pgNativeCompanyOverview"
 import {createPgNativeCompanyOverviewSession, emptyCompanyOverviewView,
   type PgNativeCompanyOverviewSession, type PgNativeCompanyOverviewSessionView} from "@/lib/pgNativeCompanyOverviewSession"
 
-type Props = {api: PgNativeCompanyOverviewApi; employeeId: string; currentAdmin: boolean; available: boolean; active: boolean; onExpired: () => void}
+type Props = {api: PgNativeCompanyOverviewApi; employeeId: string; currentAdmin: boolean; available: boolean; active: boolean; onExpired: () => void
+  workerHeartbeatsApi?: PgNativeCompanyWorkerHeartbeatsApi; workerHeartbeatsAvailable?: boolean}
 type Binding = {api: PgNativeCompanyOverviewApi; employeeId: string; model: PgNativeCompanyOverviewSession; view: PgNativeCompanyOverviewSessionView}
 type PresentationProps = Pick<Props, "currentAdmin" | "available" | "active"> & {
-  view: PgNativeCompanyOverviewSessionView; bound: boolean; onRefresh: () => void; onFirstPage: () => void
+  view: PgNativeCompanyOverviewSessionView; bound: boolean; workerHeartbeatsAvailable?: boolean; onRefresh: () => void; onFirstPage: () => void
   onNextPage: () => void; onPageSize: (limit: number) => void
 }
 const button = "min-h-10 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40"
@@ -15,7 +18,7 @@ const totalLabels = {employees: "员工账号总数", active: "可用员工账�
 const totalKeys = Object.keys(totalLabels) as (keyof CompanyOverview["totals"])[]
 
 /** Validated read-state presentation; these UI flags confer no backend authorization. */
-export function CompanyOverviewPresentation({view, currentAdmin, available, active, bound,
+export function CompanyOverviewPresentation({view, currentAdmin, available, active, bound, workerHeartbeatsAvailable = false,
   onRefresh, onFirstPage, onNextPage, onPageSize}: PresentationProps) {
   if (!active) return null
   // Close at render time, before effect cleanup, when profile/capability props change.
@@ -39,7 +42,7 @@ export function CompanyOverviewPresentation({view, currentAdmin, available, acti
       <dl className="grid grid-cols-2 gap-3 md:grid-cols-3">{totalKeys.map(key => <div key={key} className="rounded-xl bg-slate-50 p-3">
         <dt className="text-xs text-slate-600">{totalLabels[key]}</dt><dd className="mt-1 text-xl font-semibold">{overview ? overview.totals[key] : "未知"}</dd>
       </div>)}</dl>
-      <p role="status" className="text-sm text-slate-600">Worker 心跳暂不可用（尚未接入真实遥测）。</p>
+      {!workerHeartbeatsAvailable && <p role="status" className="text-sm text-slate-600">Worker 心跳暂不可用（尚未接入真实遥测）。</p>}
     </section>
     <section aria-label="员工运营统计当前页" className="space-y-3">
       <h3 className="font-semibold">员工运营统计当前页</h3>
@@ -70,7 +73,7 @@ export function CompanyOverviewPresentation({view, currentAdmin, available, acti
   </section>
 }
 
-export default function CompanyOverviewPanel({api, employeeId, currentAdmin, available, active, onExpired}: Props) {
+export default function CompanyOverviewPanel({api, employeeId, currentAdmin, available, active, onExpired, workerHeartbeatsApi, workerHeartbeatsAvailable = false}: Props) {
   const callbacks = useRef({api, employeeId, onExpired})
   callbacks.current = {api, employeeId, onExpired}
   const [binding, setBinding] = useState<Binding | null>(null)
@@ -94,7 +97,9 @@ export default function CompanyOverviewPanel({api, employeeId, currentAdmin, ava
   const run = (action: (session: PgNativeCompanyOverviewSession) => void) => {
     if (active && currentAdmin && available && view.available && !view.forbidden && model?.matchesScope(api, employeeId)) action(model)
   }
-  return <CompanyOverviewPresentation view={view} active={active} currentAdmin={currentAdmin} available={available} bound={Boolean(model)}
+  return <><CompanyOverviewPresentation view={view} active={active} currentAdmin={currentAdmin} available={available} bound={Boolean(model)} workerHeartbeatsAvailable={workerHeartbeatsAvailable}
     onRefresh={() => run(session => {void session.refresh()})} onFirstPage={() => run(session => {void session.refreshEmployees()})}
     onNextPage={() => run(session => {void session.nextPage()})} onPageSize={limit => run(session => {session.setPageSize(limit); void session.refreshEmployees()})}/>
+    {workerHeartbeatsAvailable && <CompanyWorkerHeartbeatsPanel api={workerHeartbeatsApi} employeeId={employeeId}
+      currentAdmin={currentAdmin&&!view.forbidden} available={workerHeartbeatsAvailable} active={active&&Boolean(model)} onExpired={onExpired}/>}</>
 }

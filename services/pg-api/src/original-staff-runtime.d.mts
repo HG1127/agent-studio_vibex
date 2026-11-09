@@ -1,0 +1,5 @@
+import type {IncomingMessage,ServerResponse} from 'node:http'
+import type {SqlPool} from './contracts.ts'
+import type {OriginalStaffEmployee,OriginalStaffReceipt,OriginalStaffList} from '../../../shared/original-staff-contract.mjs'
+export function selectOriginalStaff084(env:Record<string,string|undefined>):Readonly<{profile:'native047-original-staff084'}>|null
+export function prepareOriginalStaffRuntime(input:{pool:SqlPool;env:Record<string,string|undefined>;allowedOrigin:string;configurationWrites?:boolean;employeeProvisioning?:boolean;listen?:boolean}):Promise<null|Readonly<{protocol:'native_original_staff_owner_cas_v1';repository:{authorize(token:string,owner:string,admin?:boolean):Promise<string>;me(token:string,owner:string):Promise<{user:OriginalStaffEmployee}>;list(token:string,owner:string,params:URLSearchParams):Promise<OriginalStaffList>;receipt(token:string,owner:string,id:string,params:URLSearchParams):Promise<OriginalStaffReceipt>;mutate(token:string,owner:string,action:'create'|'update'|'reset',target:string|null,raw:unknown):Promise<OriginalStaffReceipt>};handler:(req:IncomingMessage,res:ServerResponse)=>Promise<boolean>}>>

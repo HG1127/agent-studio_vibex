@@ -1,0 +1,807 @@
+{
+  "format": "original-role-ab-sql-sources.v1",
+  "profile": "original-role-ab-sql-v1",
+  "predecessor_profile": "unchanged fresh050 then unchanged 051/052/053; independent new optional namespaces",
+  "SQL_installed_locally": false,
+  "provider_execution": false,
+  "original_page_E2E_verified": false,
+  "production_GO": false,
+  "files": [
+    {
+      "path": "db/postgres/001_stage_schema.sql",
+      "sha256": "af29a65a28c3dbde02bde8723b726f5493886d6d155142bc3bf00fd127be0f58"
+    },
+    {
+      "path": "db/postgres/010_pg18_native_auth_proposed.sql",
+      "sha256": "a079eb21b4b568fc217c685b5754186c83f25c920a8ffa4e3cbb43337204e695"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_019_model_connections.sql",
+      "sha256": "8cc09710963b293351fe940c3b9816eefdd4e74169e63df519963c616ec48165"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_020_model_credential_broker.sql",
+      "sha256": "8b1f89474764f8b778794f640b5a8097a74a6ce2dc72d04e419cb99f4d455c6d"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_021_tool_connections.sql",
+      "sha256": "b4813598d2425796807437711c850c69c7a7a19440d8e7dce9d7e87c70e88d7b"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_022_schedule_draft_fence.sql",
+      "sha256": "d0dc31be66d536174412bc4b6d880154c42099dc208858152e3edeaa18a4bcfe"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_023_workflow_safe_worker.sql",
+      "sha256": "86cd4687f4b8d7e5a069edee1de5a2346e9a5b99fac12c9d0ba0ef7d8d8fbf7d"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_024_bound_dispatch_identity.sql",
+      "sha256": "014d1ccb4e20a79a7470a1d1af0c3decf847fd4980278070b88e86382a07ee5c"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_025_workflow_model_identity.sql",
+      "sha256": "e381465d120fb4db72ef2ef5fb1234ee384df051197e327db3f341f53956af3f"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_026_workflow_tool_identity.sql",
+      "sha256": "fbd3ca935c8042035dd912a22653e9d4e89ed2f90dac7433d341da21328ba602"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_027_workflow_agent_identity.sql",
+      "sha256": "a2328b832557e2798d2ee28a6d4ff04085ab7dd5e43f34427083d375d4608266"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_028_autonomous_agent_identity.sql",
+      "sha256": "61252ea7a1cd07e82a32c03f9cad729741ed3598aa4041b5738858971398b58b"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_029_mcp_connections.sql",
+      "sha256": "b05d813d1f360c4f41cf8c7c89537a0deb4c97112ff218ec38ed909859a3b25c"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_030_mcp_tool_identity.sql",
+      "sha256": "2f9d84779b88e07864fa9dc5684097afeb80a17d9e999fc7580ec8bb7e7da31d"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_031_smithery_managed.sql",
+      "sha256": "97cb633de97819dee8cc23e5b2560e52f42c7aa41b2bd772987513cc73aae094"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_032_knowledge_access.sql",
+      "sha256": "214661d3da9bfe664f882c81a7e183b1381f610cf820fdab65426c9545a59327"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_033_knowledge_content.sql",
+      "sha256": "2106ee6b54d3a76c6dd668aa39567d759e31b30d4b4ed7095afe11fd184e4f6c"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_034_knowledge_runtime.sql",
+      "sha256": "96d311946f7ff4edb9e2f676090f194ff78f4688a34af0f89ee406e29a08b4ce"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_035_knowledge_embedding_state.sql",
+      "sha256": "1017a4837a8fbed996ce0976e0e23499181f79bfab4edb2ad18e60509580776a"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_036_knowledge_embedding_consent.sql",
+      "sha256": "a80f2574b7daccdd828e9e4554b86dd2306096ff250e735eea627b567d6a8474"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_037_knowledge_index_runtime.sql",
+      "sha256": "c52881b111c9e0b642d4c57bc95a7788fd55532d1a7c00503fd27298753f5e9c"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_038_knowledge_query_runtime.sql",
+      "sha256": "aade721ad2d592c07bc016627fa68f765366877fad2876db1ace02685b6fa848"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_039_knowledge_execution_source.sql",
+      "sha256": "f1a63f4a3858baf4d58b16c3b44b28b1ad44255f19186a71ed2591ab8bfb0d76"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_040_approved_semantic_tools.sql",
+      "sha256": "872709dc884656a756cd0ebf16413bb4353f50b7f0bcf9f9826ce3510a513b4a"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_041_keyword_observations.sql",
+      "sha256": "15d00b287e2b8a094a77e6b6d50ecd46a5ff5f28e5442120da4f967a993746f5"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_042_agent_knowledge_observations.sql",
+      "sha256": "d1430704ff5484b5e534fe10a7099ad78c84b4b19a0f56eaba20d344b17718ee"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_043_workflow_sample_lineage.sql",
+      "sha256": "4b6c340b5be4cc85e36e541d31f94cadc838d9cbb46bf271b7468ffe8455aa2f"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_044_schedule_execution.sql",
+      "sha256": "6069d9e556a12fac57ee11556b573d1a51e4638dc2d453d1b72fb53743449de7"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_045_agent_collaboration.sql",
+      "sha256": "cd26ccd3ebdaa1f6e727a4563a13c39e7abdd4c0901e136413b8789b3a37b872"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_046_agent_releases.sql",
+      "sha256": "95b89d0d904e8130963378e3ef03874fc6e4cdcd43c6d56b38db2ccfda3c9dfa"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_047_employee_governance.sql",
+      "sha256": "a766ec0adf05ea04fe72550f5a0fd24dad383f02c0134f6b38b3c4e1f6f06022"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_048_agent_human_input.sql",
+      "sha256": "57ac90dbe6fe73d6653e249d9bb94c1364c289799e979f38c41c6da107cc7fd8"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_049_agent_memory.sql",
+      "sha256": "963f8e6fbfe9a18796579931a989e3d47b5c4b54492343acc2142f5e1575d2e3"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_050_agent_memory_context.sql",
+      "sha256": "d7889f7dc7be4cd6a8d6d00d2895a1c954c29da6d66d1b55ba02534e43275c89"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_051_agent_memory_derived.sql",
+      "sha256": "2d23d26f11cd2c86e603a59e0355706a76d082a9a97261dfd9aa4522e30d7de1"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_052_agent_memory_outcome.sql",
+      "sha256": "ae6d8d0d2d61c8887e4807313d218d4d89f8fdfdf482f5a28907c81ef08642cf"
+    },
+    {
+      "path": "db/postgres/migrations/pg_v9_053_agent_memory_failure_source.sql",
+      "sha256": "c8df98a50f5a22245031bea13182a668016f7b5548fe92e76d6022833bcd25c4"
+    },
+    {
+      "path": "db/postgres/optional/original_roles_v2.sql",
+      "sha256": "2b6ccda32e940b3a59e3501cc39231ec595f22537020786b368e9db8e7176ac0"
+    },
+    {
+      "path": "db/postgres/optional/original_skill_ab_v1.sql",
+      "sha256": "bef180a82ee9ebdaf9a897d9f9748b8d45e1513804030a4eccd9fa4e41db712d"
+    },
+    {
+      "path": "package.json",
+      "sha256": "6218339204da539cc21f89c3d4616218f1e75ec147001be60707d5863b3d7afe"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "3fd98a23c6ea82d7aad3a745458a8c1a0f43e15f86fddd9c7994b9ab33f0e00a"
+    },
+    {
+      "path": "services/pg-api/package.json",
+      "sha256": "90488a84c79a53a83efea6440062941f08668765f76b7effd97bf6a33e4b9d58"
+    },
+    {
+      "path": "services/pg-api/pnpm-lock.yaml",
+      "sha256": "eb56da11d2713724419f938ef874991fd50fc082dda09837b779ee5841a21c6a"
+    },
+    {
+      "path": "services/pg-api/src/agent-assessment-audit-core.ts",
+      "sha256": "87740182730dbb644cfbc31cb689a4fb80da4636452ef2a209f1cc2559acfd09"
+    },
+    {
+      "path": "services/pg-api/src/agent-assessment-audit.ts",
+      "sha256": "a1e1f0d65e50187388217fbbe8062182a1c2bf280395ed32561fa6c8d3c85ae4"
+    },
+    {
+      "path": "services/pg-api/src/agent-caller-runtime-policy.ts",
+      "sha256": "833c62ed047a46ad2a66a10f60286dcee741738ca605432017a86aba60925223"
+    },
+    {
+      "path": "services/pg-api/src/agent-collaboration-audit.ts",
+      "sha256": "419dcfbbf694e178009a2775469f0f1049edd924ffe464cb51b0f93bb0f550dd"
+    },
+    {
+      "path": "services/pg-api/src/agent-descriptive-patch-audit-core.ts",
+      "sha256": "9c6ff4ab6247b40877b17c33fc87e90d007963a118101879eec6a4f58b067d6f"
+    },
+    {
+      "path": "services/pg-api/src/agent-descriptive-patch-audit.ts",
+      "sha256": "0b5e935ceae27502d2a1d567c265ad86ed3185b72896263bfb1910ea380fde79"
+    },
+    {
+      "path": "services/pg-api/src/agent-design-audit-core.ts",
+      "sha256": "31d99e0f28c9d04402ec1b75db3714a41947c296cfba74a99d3dabcdf182a872"
+    },
+    {
+      "path": "services/pg-api/src/agent-design-audit.ts",
+      "sha256": "1efe6de5bea8e14fa4b957e050edddcfee9a595f438d636f9a4046cce0921f78"
+    },
+    {
+      "path": "services/pg-api/src/agent-design-predecessor-audit-core.ts",
+      "sha256": "5edd52d341068256567775b9234abe0a3bf39194ca51ac6b40933062d6e4c988"
+    },
+    {
+      "path": "services/pg-api/src/agent-feedback-audit.ts",
+      "sha256": "b06c833d2caefbc79d683ee3831a7a58e0c0d6410119d728fba3e113ed05fe43"
+    },
+    {
+      "path": "services/pg-api/src/agent-generated-audit-core.ts",
+      "sha256": "0907c803fb132c56bbe6c71bf5cf865404e35743e0fd6d5f4a36fb164803cf87"
+    },
+    {
+      "path": "services/pg-api/src/agent-generated-audit.ts",
+      "sha256": "f6797d9e1302c6278feaaa20617f8b834e0c279dcad45993198dada268c9f3b4"
+    },
+    {
+      "path": "services/pg-api/src/agent-http-tools.ts",
+      "sha256": "7842a30631c605366b668ce2a237a6417301daa4e15e835e451cf240ea017cb8"
+    },
+    {
+      "path": "services/pg-api/src/agent-human-input-audit.ts",
+      "sha256": "0d8c1bc917b98c708d6d25870c5fb4f381a072d7417f7e30de0e92069d398a89"
+    },
+    {
+      "path": "services/pg-api/src/agent-human-input-policy.ts",
+      "sha256": "ac50ff7cdf68f523db52a404752d16598f2199f551990cf0b78ef67c60f8bc1b"
+    },
+    {
+      "path": "services/pg-api/src/agent-internal-share-audit-core.ts",
+      "sha256": "a179b261b50ebd3cf8fd6cc6186454a7f37d2755c46d8cdc24c26b1993dfb434"
+    },
+    {
+      "path": "services/pg-api/src/agent-internal-share-audit.ts",
+      "sha256": "7eac9cca88280e746a96daf272f2831797913dca827bb2833e239779ea3d367d"
+    },
+    {
+      "path": "services/pg-api/src/agent-memory-audit.ts",
+      "sha256": "2413ad71030947ad704c8e1281984de375d86fe099e13ed029951a1a0ef8d765"
+    },
+    {
+      "path": "services/pg-api/src/agent-memory-context-audit.ts",
+      "sha256": "b1d6e80c3adc42707a0f808830a700a905e7da29cd8869bfeffc993ccf97ef56"
+    },
+    {
+      "path": "services/pg-api/src/agent-memory-context-policy.ts",
+      "sha256": "e5974fa2742cdd3c4cc76320be83d7dc8e976404a1a9825f6803f24b21d5b3c1"
+    },
+    {
+      "path": "services/pg-api/src/agent-memory-context.ts",
+      "sha256": "9c73a6cab2cb9fb86bb3e0899989130f88b6936442c454865ae023d5e671bae6"
+    },
+    {
+      "path": "services/pg-api/src/agent-memory-contract.ts",
+      "sha256": "6ddf3b0734c4afc3f9f106e3eef4a759d4b78b1dcafea811e9f4651120dad75d"
+    },
+    {
+      "path": "services/pg-api/src/agent-memory-derived-audit.ts",
+      "sha256": "297b5bfc090c87708e581189c52c35fdbf6c1f114b5801384ace881e1046c2d3"
+    },
+    {
+      "path": "services/pg-api/src/agent-memory-failure-source-audit.ts",
+      "sha256": "748b86d58226c1b7b3d0c389b7c38038559024486791073c310517285be1e8c5"
+    },
+    {
+      "path": "services/pg-api/src/agent-memory-outcome-audit.ts",
+      "sha256": "75df7b6a7ab4341887efec2ae34a416a9c138cbdf962268588508824023eba0a"
+    },
+    {
+      "path": "services/pg-api/src/agent-memory-relation-acl.ts",
+      "sha256": "432ce7769d43ad8f2f0475908200c5056c69400dbe5a5da19615091054c0df0f"
+    },
+    {
+      "path": "services/pg-api/src/agent-memory-repository.ts",
+      "sha256": "98e1b3df70be458001c80a1c9b668b9e3eb03604886778003ab911c7ad5081d4"
+    },
+    {
+      "path": "services/pg-api/src/agent-memory-selection.ts",
+      "sha256": "b11aa714e16ce77aad4a41c30f8f8354b1d12cf55149cb5a0aec48ad4a46df86"
+    },
+    {
+      "path": "services/pg-api/src/agent-opinion-audit-core.ts",
+      "sha256": "2532390479de818bdf8b9d7cc43dd2c8fa46964834635475c066f88a1e67391c"
+    },
+    {
+      "path": "services/pg-api/src/agent-opinion-audit.ts",
+      "sha256": "418e4e6878dc9bfa173209b2e0ccddbdf4a8b32776e25a0270aec89d159cf453"
+    },
+    {
+      "path": "services/pg-api/src/agent-optimization-audit.ts",
+      "sha256": "6c9648b8f965e2f2420e1199779cdfdeb89ac969d31f7d5afc647e9e4d4ca08e"
+    },
+    {
+      "path": "services/pg-api/src/agent-plan-workflow-audit-core.ts",
+      "sha256": "96385b5f918ce0dccc7850aeed38cc65aad5811dbeedeb2291bc6a94d8203b42"
+    },
+    {
+      "path": "services/pg-api/src/agent-plan-workflow-audit.ts",
+      "sha256": "e36302d24fb1cd13599eb551f6604dea0681d9de01a16939f3942ad7b5f6dbf1"
+    },
+    {
+      "path": "services/pg-api/src/agent-plan-workflow-predecessor-061-audit-core.ts",
+      "sha256": "7e41e4f9662db2fd021587cb930b76e01974e3ff0acf10b6f3c3e41df991542b"
+    },
+    {
+      "path": "services/pg-api/src/agent-plan-workflow-predecessor-062-audit-core.ts",
+      "sha256": "761c136844c59b3824f78bc57e9f8a9a3ec7f2c69bd65ee545406046b4ae8566"
+    },
+    {
+      "path": "services/pg-api/src/agent-release-audit.ts",
+      "sha256": "648afdba50b772d0551d889c88f6aa04473bcca240d3a79e8e32b35638f9aea6"
+    },
+    {
+      "path": "services/pg-api/src/agent-review-audit-core.ts",
+      "sha256": "c6837ffd2a53db63e8ab3c47860a27d0e91e03867bcb8770e4cfd028bef35dc7"
+    },
+    {
+      "path": "services/pg-api/src/agent-review-audit.ts",
+      "sha256": "d95afdd657024907f9196799f3983d24a2bf03699d88bd1856b15873505a7b80"
+    },
+    {
+      "path": "services/pg-api/src/agent-run-control.ts",
+      "sha256": "fa018e968096ac539f1aeb90cd8cb01c9716d1097c9f3284d57bd338d8c439e1"
+    },
+    {
+      "path": "services/pg-api/src/agent-template-market-audit-core.ts",
+      "sha256": "1f2c8edd622d4ade4f4198e0a7bd1c64e71be18944682b3b892fa37c87565e65"
+    },
+    {
+      "path": "services/pg-api/src/agent-template-market-audit.ts",
+      "sha256": "6fbc677dc83b845ab39ad7bb893309c8f1f2efc4be7eb41fff11d37255ff6d37"
+    },
+    {
+      "path": "services/pg-api/src/agent-template-market-contract.ts",
+      "sha256": "345d339ad6a7499a7c64005dfa429ff1187c24c3a285a356a992f675a2c2e819"
+    },
+    {
+      "path": "services/pg-api/src/autonomous-agent-graph.ts",
+      "sha256": "6d7003b827669f5d07475d7fc67bfc9e24058cf754c3c3bf7395701a5eb397ad"
+    },
+    {
+      "path": "services/pg-api/src/baota-pg18-fresh-init.mjs",
+      "sha256": "b8f2c750f7ee3c4aa9640e0efcddaa669d6520d4333b3db904f7c22cc771de44"
+    },
+    {
+      "path": "services/pg-api/src/bound-worker-mtls.ts",
+      "sha256": "fc21fae1a545ee56f63ac7a8ed855222ddd1055b22b082bc6a75331108c5bcea"
+    },
+    {
+      "path": "services/pg-api/src/company-overview-audit-core.ts",
+      "sha256": "d4eb6c17d5c67a8a4084df304f13485a63f134f1c6d635fea3d4c14a9aedcc3e"
+    },
+    {
+      "path": "services/pg-api/src/contracts.ts",
+      "sha256": "7aa7b9d3332e8200f2d3dd78f88c62acf4b7363b83fdfd41dfa5b04b7c887935"
+    },
+    {
+      "path": "services/pg-api/src/durable-v2-root.ts",
+      "sha256": "03fa6ff4a9144f69cee8829079bf0f197519baca28b9157c8a14b8a2133d4fe4"
+    },
+    {
+      "path": "services/pg-api/src/knowledge-agent-audit.ts",
+      "sha256": "d4b5e9d1506c5f5bef14d5cfccb5ff2e28744c082940c40133b34eb673d3935e"
+    },
+    {
+      "path": "services/pg-api/src/knowledge-content-privileges.ts",
+      "sha256": "728af1d91a02ea892bf5b2ff4adf85c068b72d65e81eed90d1025aaa4154c2bf"
+    },
+    {
+      "path": "services/pg-api/src/knowledge-embedding-privileges.ts",
+      "sha256": "d0e28e6aff2ecbf0fb4f390d55724bc3dca4a386093d8460d0bf88603f13953d"
+    },
+    {
+      "path": "services/pg-api/src/knowledge-execution-audit.ts",
+      "sha256": "d364861931b7a45af550f97d88f08936a0cd6c9107e5d609a6c2d2bd3f0ef04c"
+    },
+    {
+      "path": "services/pg-api/src/knowledge-index-audit.ts",
+      "sha256": "e185c52f220bd3677dad2062961d4110d08e37be6461347846418efed77f0401"
+    },
+    {
+      "path": "services/pg-api/src/knowledge-keyword-audit.ts",
+      "sha256": "63b3d93907d07dd1a0ef7172fd552a12255ed1019d26eb8e55bae01dbd6d8ee8"
+    },
+    {
+      "path": "services/pg-api/src/knowledge-lineage-audit.ts",
+      "sha256": "26c09303d58852684bd969ed8aabdf11863e0c3a9839c2f64f9cf920f47e4e59"
+    },
+    {
+      "path": "services/pg-api/src/knowledge-observation-policy.ts",
+      "sha256": "34834d4f87a3d1f0f10f1850b32d509bd35f8e34e15b0ee87f27506f187593df"
+    },
+    {
+      "path": "services/pg-api/src/knowledge-query-audit.ts",
+      "sha256": "86c78d2c6d000cd43cf5af88a442b948fb0b1a26544e62b6dfe2be2d8d2dc84e"
+    },
+    {
+      "path": "services/pg-api/src/knowledge-retrieval-binding.ts",
+      "sha256": "9f6a60cb925535ccc1b70f1d0a7ad6d08935a0e89ec339b2e09ab1d7ef25480c"
+    },
+    {
+      "path": "services/pg-api/src/knowledge-retrieval-policy.ts",
+      "sha256": "5e1b9bba27f153bc2d3516825ca693ad80de4facf9274cef7fff7d93a88e61fa"
+    },
+    {
+      "path": "services/pg-api/src/knowledge-runtime-scope.ts",
+      "sha256": "cf0b770cef03354194d300d63cac3c39b3fbd275310893b3aafc915aa1184857"
+    },
+    {
+      "path": "services/pg-api/src/knowledge-scope-policy.ts",
+      "sha256": "7f99b7a3160f16d4b8a4c71082834299ab3abdcfe457860795862288cad2a991"
+    },
+    {
+      "path": "services/pg-api/src/mcp-binding-resources.ts",
+      "sha256": "44a797de2f61081fde7e13a2fd59edb8978a59519a3b7081e74cf802cf081701"
+    },
+    {
+      "path": "services/pg-api/src/mcp-binding.ts",
+      "sha256": "44294108896a8a377fd928de858c99e1ca1cbaebc8c9841b6316a208b377cedd"
+    },
+    {
+      "path": "services/pg-api/src/mcp-catalog.ts",
+      "sha256": "358373e672a45928ca37d9be0c8d1c50a8a928d4df6329ba111386e153ba47e9"
+    },
+    {
+      "path": "services/pg-api/src/mcp-validation.ts",
+      "sha256": "a66304822fc84700f8137c6713db31394d4195a355cd156039b0fceddce715fe"
+    },
+    {
+      "path": "services/pg-api/src/model-broker-actor.ts",
+      "sha256": "bfcaa8d76ec028b571f2a16e92be38073f3a0ed0740833d925c4cb7f61058522"
+    },
+    {
+      "path": "services/pg-api/src/model-connection-crypto.ts",
+      "sha256": "2f00edf8254539997c8f4771cd70227d479c6bb5a42466ec2c5f39ed568af3ec"
+    },
+    {
+      "path": "services/pg-api/src/model-connection-page-cursor.ts",
+      "sha256": "42350485eb767064df95b7506ec3c94fa6e0c0160c88fad032f437807f0aa02c"
+    },
+    {
+      "path": "services/pg-api/src/model-connection-pagination.ts",
+      "sha256": "224df07f1eab5f5d36d7a60f69150c4a2f3dbab328f07182a23fe6e4cc6d82dd"
+    },
+    {
+      "path": "services/pg-api/src/model-connection-probe.ts",
+      "sha256": "ff5b6bb27b181cc7054f97b8164598c8ee3b0f07f05bd08f829a99bba1b78ea8"
+    },
+    {
+      "path": "services/pg-api/src/model-connection-repository.ts",
+      "sha256": "c93724685537302d085164eb90af0cccb747b38c6d541c55ccf269a3714f02ef"
+    },
+    {
+      "path": "services/pg-api/src/native-auth-repository.mjs",
+      "sha256": "3c030654c6aff5a13125cac7ddb78c75c4b92a94a8b9281ed1f8a19a9d988a37"
+    },
+    {
+      "path": "services/pg-api/src/native-employee-auth.mjs",
+      "sha256": "96cc6b4978faae6c285335f364b1da89eded8319699ae4599aab98244804dfee"
+    },
+    {
+      "path": "services/pg-api/src/native-employee-governance-audit.mjs",
+      "sha256": "ff01bd91b44d4c84d2c2a1332a8768e182e70a00bdecb177757839c6818bc238"
+    },
+    {
+      "path": "services/pg-api/src/native-employee-governance.mjs",
+      "sha256": "4a75e23de28d88cb29e7c00ab9c4b4c25a6e9b74fd9cedf339987068c02a0983"
+    },
+    {
+      "path": "services/pg-api/src/native-local-agent-contract.ts",
+      "sha256": "76c1ed1c587bdb5d5d8e0c06b39771b1efa8d20e4de777367d8a573d49c66c5b"
+    },
+    {
+      "path": "services/pg-api/src/native-local-agent-resources.ts",
+      "sha256": "b55d540428348a8cf8f867fff283634451eafb1aafe4519aab143253e9515e5f"
+    },
+    {
+      "path": "services/pg-api/src/native-local-device-audit-manifest.ts",
+      "sha256": "854bf8a9f7634763335d9d0f9613d71d6ec32dc2653264f4d76c087fd3c4d2c3"
+    },
+    {
+      "path": "services/pg-api/src/native-local-device-audit.ts",
+      "sha256": "b001feede675315f6d216c3d3d7c21bdaf66f125a6ab8f43980f59dbdb408d9a"
+    },
+    {
+      "path": "services/pg-api/src/native-monitor-agent-binding.ts",
+      "sha256": "b6ec498b9cd921afb36d558c926fad12bf012168de93f380d06bf4633d746e03"
+    },
+    {
+      "path": "services/pg-api/src/native-monitor-business-contract.ts",
+      "sha256": "58038f822f6fa62b01b74ae956d39ab812b42cfe537f305cad3c46d4186ea3ca"
+    },
+    {
+      "path": "services/pg-api/src/native-monitor-business-data.ts",
+      "sha256": "40cf64bdb17469adc5ae7cd79732e5efc0e1d99082071c2d583fa427f018b076"
+    },
+    {
+      "path": "services/pg-api/src/native-monitor-employee-authority.ts",
+      "sha256": "e614324bbcd38f72a4b1e41fa5cdd72af26bb908b87c1ca37d745917a8283cf7"
+    },
+    {
+      "path": "services/pg-api/src/native-monitor-row-lock.ts",
+      "sha256": "3bdfcb3195ad508956fe9a0acf9b23f7e5dd9c3d61478734710400e234af91e0"
+    },
+    {
+      "path": "services/pg-api/src/native-monitor-source-access.ts",
+      "sha256": "cf26f9ff95d2c50f7efaf22084b25db62ca75139ceff1cbbe26a7348f2115073"
+    },
+    {
+      "path": "services/pg-api/src/native-monitor-source-contract.ts",
+      "sha256": "a0e81a19f9de6f87d27883aa851e8ffc4335e63cd04b485881c6f45287102acd"
+    },
+    {
+      "path": "services/pg-api/src/native-ordinary-case-binding.ts",
+      "sha256": "b799fdeeeb7b04a8b230247ba89bf7706de863d8b4e332a8a5a97cc8e8c56d3b"
+    },
+    {
+      "path": "services/pg-api/src/native-ordinary-case-observation-policy.ts",
+      "sha256": "a4276df332228568b1c3339d4f1ec403433407cdbcffcf5eb5bb43a122b88cd1"
+    },
+    {
+      "path": "services/pg-api/src/native-original-ui-preconditions.ts",
+      "sha256": "4217fcb81669794d0617771e5bf5ab7bc16497f1ba9048874dbefb9e1e1c79be"
+    },
+    {
+      "path": "services/pg-api/src/optional-credential-boundary.ts",
+      "sha256": "f019c3f541223ebb1b699dd1a795e64293ff603f396cd44aceb05e453b80633a"
+    },
+    {
+      "path": "services/pg-api/src/original-agent-run-options-policy.ts",
+      "sha256": "707135abad7cb0d6c43b328f2115eb6d6fcdae4a14ed8fe263ab245b1fd429a0"
+    },
+    {
+      "path": "services/pg-api/src/original-role-capabilities.ts",
+      "sha256": "d0c815a903d7b2128770054252ef07975810a67fa8df68248b334e2c94cb55df"
+    },
+    {
+      "path": "services/pg-api/src/original-role-catalog.mjs",
+      "sha256": "292c68bc41254d81264845474036312867887c8e4b4e80c6ec5e438e5c7e7daa"
+    },
+    {
+      "path": "services/pg-api/src/original-role-evidence.ts",
+      "sha256": "98aaf9dd04e810c40b44e918c73ad6a54a91632dec60f81e41bfcea758434d67"
+    },
+    {
+      "path": "services/pg-api/src/original-role-execution.mjs",
+      "sha256": "b1f8d304c027d1a23e0107e97e79d5f5869d125e5cbab8a4cf792d9fdb06dc27"
+    },
+    {
+      "path": "services/pg-api/src/original-role-history.ts",
+      "sha256": "9e28c757679210429c8a885dec16796dfe1b5d37291d527543b15f1e5bba519c"
+    },
+    {
+      "path": "services/pg-api/src/original-role-home.ts",
+      "sha256": "b0b283dfb4de25f04c2ac66a7a76e74a827bc25319febcab51fef6ad44547a75"
+    },
+    {
+      "path": "services/pg-api/src/original-role-profile.ts",
+      "sha256": "ccf5cf32069bf8606a9e251544f3b20b07f06e291ed4d9a830a495db6110275c"
+    },
+    {
+      "path": "services/pg-api/src/original-role-resource-signature.mjs",
+      "sha256": "4f18da77cc96a252f00c7d4812362e5f91da8489f687ce51ee29fe718f410bc4"
+    },
+    {
+      "path": "services/pg-api/src/original-role-reviewed-plan.mjs",
+      "sha256": "8736e85df91bc0c3d046ab2ae208bdb227bf72e79b5bb485594d54c381403a5d"
+    },
+    {
+      "path": "services/pg-api/src/original-role-revision.ts",
+      "sha256": "a58623163ac974aa523a3ef2256076cddcaf00461970b1970df19a5d045eb48f"
+    },
+    {
+      "path": "services/pg-api/src/original-role-schema.mjs",
+      "sha256": "cde16e407dbc13d5de7430388e9c2fc37e8caf217010573a30786c1d02e8e56c"
+    },
+    {
+      "path": "services/pg-api/src/original-role-skill-policy.ts",
+      "sha256": "fbf8486e542e36caceb93d830648e497c479bcd3efbdfd96a22eb3715d3d5d46"
+    },
+    {
+      "path": "services/pg-api/src/original-role-ui-policy.ts",
+      "sha256": "b4f1b6d7be9b3d4cb80929e1518029071d96f29e719c84cbf5e85b596ee46e18"
+    },
+    {
+      "path": "services/pg-api/src/original-role-ui-repository.ts",
+      "sha256": "9cb079aa80cab00f986aeb7852c20c94ce3574286bdb2ae96b5472de2af7d30a"
+    },
+    {
+      "path": "services/pg-api/src/original-skill-ab-broker.ts",
+      "sha256": "1ca4589a7bc2d092012ca53df9b5f7ec606f48ebd0691fc0691bb35ae4f16a4b"
+    },
+    {
+      "path": "services/pg-api/src/original-skill-ab-catalog.mjs",
+      "sha256": "18da870856bb9079c688cd2a0798fe0783ac4d9f14bc23b2746d41582e81503d"
+    },
+    {
+      "path": "services/pg-api/src/original-skill-ab-client.ts",
+      "sha256": "4901fff632c3652c8d2d9cb6bd71fea7013bd98aa0afc42590ff6502af17fbc0"
+    },
+    {
+      "path": "services/pg-api/src/original-skill-ab-provider.ts",
+      "sha256": "56cb4c8503665d263baec2c77ac348e2385bdaa3f25d0436890bfbc928f77afa"
+    },
+    {
+      "path": "services/pg-api/src/original-skill-ab-repository.ts",
+      "sha256": "7792309cf9d35d18efddec8e3387b4d3393c05c1e10ff4f33b97b062f4d8d0bb"
+    },
+    {
+      "path": "services/pg-api/src/original-skill-ab-runtime.ts",
+      "sha256": "aabf0b0e1c7c37fd1a1bffd141a0863bdc1411f63ae470e07d1ffea45f708e79"
+    },
+    {
+      "path": "services/pg-api/src/original-skill-ab-schema.mjs",
+      "sha256": "fc46c86cfe9a5763aa2d9a8c52de27515410b73bb30d7cc876235fdfb0970dfc"
+    },
+    {
+      "path": "services/pg-api/src/original-skill-ab-source.ts",
+      "sha256": "7e6858309e44031acab3181ae40a9afcdc8753deb1de0472802a88a3b6848a36"
+    },
+    {
+      "path": "services/pg-api/src/original-staff-expression.mjs",
+      "sha256": "08d27de6e1a3950e463022fbaf8d18b9a7509b6799ddef330dc9925a345c6967"
+    },
+    {
+      "path": "services/pg-api/src/own-operations-contract.ts",
+      "sha256": "c5a5ababb17bed11959279b01657195b28af96ea909ff461535f9f19a26979ab"
+    },
+    {
+      "path": "services/pg-api/src/owned-step-decision-context.ts",
+      "sha256": "6e842015da3721caee315368706c0fdea608c020236816cd4210cf13bc025643"
+    },
+    {
+      "path": "services/pg-api/src/pg18-fresh-runtime-install.ts",
+      "sha256": "9e38f9278d26b73b5894cf3618a3c17092b7fcca8e7d1b145bcedb4b9d16b0c7"
+    },
+    {
+      "path": "services/pg-api/src/pg18-fresh-runtime-source.mjs",
+      "sha256": "1d91520d5ec50021b6b1bc30294b608c33dd612547eb0aced8506bc7665e5bb1"
+    },
+    {
+      "path": "services/pg-api/src/pg18-service-login-policy.mjs",
+      "sha256": "7548118f8efdc549a0a0ba90fd85479a911fa65c6c529e4b0a89ef3034e3cfd3"
+    },
+    {
+      "path": "services/pg-api/src/public-result-text.ts",
+      "sha256": "f3bdea90ae09d82a5a8294c6f8fa45b5a0f215577b6507dab66df9067980c086"
+    },
+    {
+      "path": "services/pg-api/src/repository.ts",
+      "sha256": "31fd1ed93e4f29e29e665675a5168e829daa5332eac982dd42d32ce96b785853"
+    },
+    {
+      "path": "services/pg-api/src/run-step-metadata.ts",
+      "sha256": "5569c3af59ac8a59075c9ff473b5406039c9f06de16f818f3ef2eeceedbc1859"
+    },
+    {
+      "path": "services/pg-api/src/schedule-effect-policy.ts",
+      "sha256": "156dcd7f4507a766d1e32371e20e260d5a47552f1234868088361871bbe4500e"
+    },
+    {
+      "path": "services/pg-api/src/schedule-runtime-audit.ts",
+      "sha256": "e4ac261c38d2b173f5c5844e742dd00f02b1c9f4d6c39449ed28adcb4ec58b6f"
+    },
+    {
+      "path": "services/pg-api/src/workflow-graph-v2.ts",
+      "sha256": "3d3c0f24fee5173869dc5c407583bc58cd901ec480b374de67030255ded3587a"
+    },
+    {
+      "path": "services/pg-api/src/workflow-repository.ts",
+      "sha256": "7ed3efee1a1abcbe7346293741062022757e76c2fa87e42a179bb2e436e0f840"
+    },
+    {
+      "path": "services/pg-api/src/workflow-sample-lineage.ts",
+      "sha256": "42afc452047d93904d3c509174866a30d20f64cf7d209b6d2b86475469b731d3"
+    },
+    {
+      "path": "services/pg-api/src/workflow-sample-provenance.ts",
+      "sha256": "65a021919bad5fece2618fe242f98ecb82cd3cdcebc09a0f2b83f5b20669d2f7"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-agent-machine.ts",
+      "sha256": "68bccb0d7fa3fb354be23edacdc107389fbb8b75d4f7ff15121487adbe301f80"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-agent-resources.ts",
+      "sha256": "02e008a1e59a83754ce87612326eafa2d2586c274ff4c8ae3faad72a7c6285e8"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-effect-failure.ts",
+      "sha256": "eebda0cad929328ede2132630a692ae92b7f9237d5e04f46f9e4cda83fe6262b"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-machine.ts",
+      "sha256": "e3621b34e5e4b2f590b6cb35e5f75d859cc12b70665d77c7b8733739fd949fb4"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-node-debug.ts",
+      "sha256": "bcec7baa1756afbb3b8d660d26df0cb7741d37918b095c37419ace31a481767e"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-output-contract.ts",
+      "sha256": "eda56a03d46d4e2590ed691404d1dc310ba612ebd2ede95afaa62ceb8a75b85f"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-output-projection.ts",
+      "sha256": "9a4f2ad3e96fe59286cd0632df28c0c8ed75bb0e1fe58ab2fa8f5f5c737f826d"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-preview.ts",
+      "sha256": "c4e5945193223f865b3e29e0efc1bf14f925f25e8d0a209e18a95ea67ffd4640"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-run-repository.ts",
+      "sha256": "01d9acb67fc82fd40eabdee5816fdf8c0877d2806652ce4718861e90cfe7f35c"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-tool-plan.ts",
+      "sha256": "196b47614e73d5421a6ebe08a29f89372fd07f4a98ff38f5921d7eea9bab012a"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-values.ts",
+      "sha256": "083de63a32d344177999ea5ce2b2ada40f39929f4a46034055ccc5f8fa36b4c7"
+    },
+    {
+      "path": "services/pg-api/tests/helpers/original-role-ab-sql-ci-fixture.mjs",
+      "sha256": "5402fc0ec20c12470205915926c6eb85b029b9283c28061179ad5e50ba65b6ff"
+    },
+    {
+      "path": "services/pg-api/tests/helpers/original-role-ab-sql-ci-guard.mjs",
+      "sha256": "f2e39ef6e02916f55db766f6151d115a94f9b10277d9b12b3ca79313c34b2fe9"
+    },
+    {
+      "path": "services/pg-api/tests/original-role-ab-genuine-pg18.test.mjs",
+      "sha256": "4eb9bcf08d5ec16cfdd1744d29452745074375fb44cb011dfe8f8afc5df85d87"
+    },
+    {
+      "path": "services/pg-api/tests/original-role-ab-sql-ci-guard.test.mjs",
+      "sha256": "2087b99ab5c4fe6d435309dcf4646bb609b0b8a0c88c5240402ed42b72325e0a"
+    },
+    {
+      "path": "shared/agent-caller-contract.ts",
+      "sha256": "147f48678600d933f0a50899c5c6f7f74d1d07e967a54a6aec0003d879ecc8ff"
+    },
+    {
+      "path": "shared/agent-role-limits.mjs",
+      "sha256": "3f5898746f06114e7cb9de53b75e7412d750b6fe626476e91d2dc9c02d69e759"
+    },
+    {
+      "path": "shared/business-schemas.mjs",
+      "sha256": "75321ae582c9edb3241a04ec8f505dc757788c3bc5afc916a5ca3f310792711c"
+    },
+    {
+      "path": "shared/model-connection-pagination-contract.ts",
+      "sha256": "e86576c1cc6edb0d25b302ff82bf913411bccbb2f5c4ce3a53945db95d461dad"
+    },
+    {
+      "path": "shared/native-local-device-contract.mjs",
+      "sha256": "1354c302ee2127a613b39f8f4df7d18051757a4b878b162557e59f8af586a928"
+    },
+    {
+      "path": "shared/ordinary-case-run-contract.ts",
+      "sha256": "3ef4db16749407b774422da4228fdb1333cd98465d0499ffb9c0c0174b6dde8d"
+    },
+    {
+      "path": "shared/original-account-contract.ts",
+      "sha256": "d47cf649c074ad31330a90b129826fde09ca5ae780e21898b5e19b3cc136911b"
+    },
+    {
+      "path": "shared/original-agent-run-options.ts",
+      "sha256": "e0d9e292a18e187f7807a2f7319a391c0eabd08aceba57d6c187a22d9a217788"
+    },
+    {
+      "path": "shared/original-role-execution-contract.mjs",
+      "sha256": "da39e07ebcc27fdb0d6773bd49438bec8b4c957ae3fb42a67449130ba7049248"
+    },
+    {
+      "path": "shared/original-skill-ab-contract.ts",
+      "sha256": "159f5a0cfb18dabfc3467a576e747c037d5d02476203f03fc96c57cdb0002865"
+    },
+    {
+      "path": "shared/original-skill-ab-execution-contract.ts",
+      "sha256": "6a7898e1382871f145f9a8959b311a8753ec621450a27c6f4d0dad2a8e985c04"
+    },
+    {
+      "path": "shared/skill-ab-compare.ts",
+      "sha256": "ce726613cffbf29c76e8c780658b0d2357350f43d18490fe48e1008d18a9d950"
+    },
+    {
+      "path": "services/pg-api/src/original-role-constraint-diagnostic.mjs",
+      "sha256": "6bfee223cd037dfe2ef5da57e7840d056f70400c6085522b9b328020d51dd7bc"
+    }
+  ]
+}

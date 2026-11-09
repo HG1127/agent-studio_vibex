@@ -3,6 +3,7 @@ import type { ConnectionRow, MarketPlugin } from "@/pages/PluginMarket/usePlugin
 import { curatedZhFor } from "@/pages/PluginMarket/curated"
 
 type MarketBrowserProps = {
+  nativeBackend?:boolean
   featuredItems: MarketPlugin[]
   isFeaturedLoading: boolean
   marketItems: MarketPlugin[]
@@ -165,6 +166,7 @@ function RowSkeleton({ rows }: { rows: number }) {
 }
 
 export function MarketBrowser({
+  nativeBackend=false,
   featuredItems,
   isFeaturedLoading,
   marketItems,
@@ -236,6 +238,7 @@ export function MarketBrowser({
               onKeyDown={(ev) => {
                 if (ev.key === "Enter") onSubmitSearch()
               }}
+              aria-label="搜索插件"
               placeholder="搜索插件，如 github / search / memory"
               className="h-10 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             />
@@ -288,7 +291,7 @@ export function MarketBrowser({
         <div className="mt-4 space-y-7">
           {(isFeaturedLoading || featuredItems.length > 0) && (
             <div>
-              <SectionHead title="热门推荐" hint="精选知名插件 · 匿名可试=直接连 · 需官方钥匙=先填钥匙" />
+              <SectionHead title={nativeBackend?'当前目录条目':'热门推荐'} hint={nativeBackend?'公共注册表当前返回的前6项；连接与试调分别核验':'精选知名插件 · 匿名可试=直接连 · 需官方钥匙=先填钥匙'} />
               {isFeaturedLoading ? <RowSkeleton rows={8} /> : <RowGrid items={featuredItems} connectionByUrl={connectionByUrl} onOpenPlugin={onOpenPlugin} />}
             </div>
           )}

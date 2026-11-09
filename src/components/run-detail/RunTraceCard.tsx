@@ -1,3 +1,5 @@
+import {getStudioBackend} from '@/lib/studioBackend'
+import type {OriginalRunDetailMeta} from '@/lib/originalRunDetailProjection'
 import { useEffect, useState } from "react"
 import { Activity, AlertCircle, CheckCircle2, RefreshCw } from "lucide-react"
 import { getPocketBaseUrl } from "@/lib/pb"
@@ -26,7 +28,16 @@ type TraceSummary = {
 
 type Snapshot = { key: string; items: Span[]; summary: TraceSummary | null; error: string }
 
-export function RunTraceCard({ runId, kind }: { runId: string; kind: "agent" | "workflow" }) {
+export function RunTraceCard({runId,kind,native,onNativeRefresh}:{runId:string;kind:"agent"|"workflow";native?:OriginalRunDetailMeta;onNativeRefresh?:()=>void}){
+ if(getStudioBackend()==='native_pg')return <section className="rounded-2xl border border-border bg-card p-4 shadow-sm" aria-label="模型与工具执行诊断">
+  <h2 className="text-sm font-semibold">模型与工具执行诊断</h2>
+  <p className="mt-2 text-xs text-muted-foreground">Native 目前只提供公开步骤状态；没有执行追踪 span、耗时分位数或原事件合同。</p>
+  {native?.runId===runId && (native.kind.startsWith('agent')?'agent':'workflow')===kind ? <p className="mt-2 text-xs">已读取 {native.steps.length} 个公开步骤快照。{native.stepsComplete?'当前步骤读取已结束。':'尚有步骤未核实。'}</p> : <p className="mt-2 text-xs">当前页面未提供已验证的此运行步骤快照。</p>}
+  {onNativeRefresh && <button type="button" onClick={onNativeRefresh} className="mt-2 rounded-lg border px-3 py-2 text-xs">刷新执行追踪</button>}
+ </section>
+ return <PocketBaseRunTraceCard runId={runId} kind={kind}/>
+}
+function PocketBaseRunTraceCard({ runId, kind }: { runId: string; kind: "agent" | "workflow" }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
   const [refresh, setRefresh] = useState(0)
   const key = kind + ":" + runId

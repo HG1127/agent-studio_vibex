@@ -5,6 +5,7 @@
 import {randomUUID} from "node:crypto"
 import {NativeEmployeeGovernanceRepository} from "./native-employee-governance.mjs"
 import {inspectEmployeeGovernance} from "./native-employee-governance-audit.mjs"
+import {originalAccountPasswordProtocol,parseOriginalAccountExpectedOwner} from "../../../shared/original-account-contract.ts"
 import {
   normalizeEmployeeEmail,verifyEmployeePassword,hashEmployeePassword,
   validateEmployeePassword,validateEmployeeDisplayName,
@@ -48,6 +49,8 @@ export class NativeAuthRepository{
   confirmEmployeeChange(token,choice){return this.governance.confirm(token,choice)}
   createGovernedEmployee(token,choice){return this.governance.create(token,choice)}
   changePassword(token,choice){return this.governance.changePassword(token,choice)}
+  get accountPasswordProtocol(){return originalAccountPasswordProtocol}
+  changePasswordForOwner(token,choice,expectedOwner){return this.governance.changePassword(token,choice,parseOriginalAccountExpectedOwner(expectedOwner))}
   // Operator-only bootstrap entry point. Never expose as an HTTP route.
   // Exclusive transaction-scoped lock makes parallel first-admin attempts
   // mutually exclusive across server processes and authenticated sessions.

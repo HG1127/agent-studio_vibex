@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+import {prepareOriginalRoleExecutionPool} from './original-role-ui-policy.ts'
+import {prepareOrdinaryCaseRuntime} from './native-ordinary-case-runtime.ts'
+import {NativeOrdinaryCaseCapture} from './native-ordinary-case-capture.ts'
+import {selectNativeLocalDeviceExecution} from './native-local-device-runtime-policy.ts'
+import {inspectNativeLocalDevicePool} from './native-local-device-audit.ts'
+import {createIsolatedNativeLocalVisionExecutor} from './model-connection-executor.ts'
+import {selectAgentCallerExecution} from './agent-caller-execution-opt-in.ts'
 import {selectKnowledgeSharing} from "./knowledge-sharing-policy.ts"
 import {scopedKnowledgePool,scopedEmbeddingConsentPool,scopedEmbeddingSettingsPool} from "./knowledge-scope-policy.ts"
 import {scopedKnowledgeQueryPool} from "./knowledge-query-policy.ts"
@@ -69,6 +76,8 @@ export function boundDispatchServerConfig(
   const mcpEnabled=selectMcpExecution(env)
   if(mcpEnabled&&!workflowToolsEnabled)refuse()
   const autonomousEnabled=selectAutonomousAgentExecution(env)
+  const callersEnabled=selectAgentCallerExecution(env)
+  if(callersEnabled&&!autonomousEnabled)refuse()
   const memoryEnabled=selectAgentMemoryRuntime(env)
   if(memoryEnabled&&!autonomousEnabled)refuse()
   const autonomousFingerprint=env.AGENT_STUDIO_PG_AUTONOMOUS_AGENT_CLIENT_FINGERPRINT
@@ -86,7 +95,7 @@ export function boundDispatchServerConfig(
   }catch{refuse()}
   if(mode==="serve")selectBoundGenerationUat(env,true,origin,uid)
   return {target,origin,directory,port:7453 as const,...(knowledgeSharingEnabled?{knowledgeSharingEnabled:true}:{}),...(knowledgeToolsEnabled?{knowledgeToolsEnabled:true}:{}),
-    workerFingerprint:env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT!,workflowModelEnabled,workflowToolsEnabled,workflowAgentsEnabled,workflowFingerprint,autonomousEnabled,autonomousFingerprint,...(mcpEnabled?{mcpEnabled:true}:{} ),...(memoryEnabled?{memoryEnabled:true}:{} )}
+    workerFingerprint:env.AGENT_STUDIO_PG_BOUND_DISPATCH_CLIENT_FINGERPRINT!,workflowModelEnabled,workflowToolsEnabled,workflowAgentsEnabled,workflowFingerprint,autonomousEnabled,callersEnabled,autonomousFingerprint,...(mcpEnabled?{mcpEnabled:true}:{} ),...(memoryEnabled?{memoryEnabled:true}:{} )}
 }
 function password(bytes:Buffer):string{
   const value=bytes.toString("utf8").replace(/[\r\n]+$/g,"")
@@ -98,13 +107,15 @@ function adapter(pool:PgPool):SqlPool{
     const db=await pool.connect()
     return {async query<Row>(sql:string,values:unknown[]=[]){
       const result=await db.query(sql,values);return {rows:result.rows as Row[]}
-    },release(){db.release()}}
+    },release(destroy?:boolean){db.release(destroy)}}
   }}
 }
 export async function startBoundDispatchServer(
   env=process.env,mode:"preflight"|"serve"="preflight",
 ){
   const cfg=boundDispatchServerConfig(env,mode)
+  const localDeviceExecutionApproved=selectNativeLocalDeviceExecution(env)
+  if(localDeviceExecutionApproved&&!cfg.autonomousEnabled)throw Error("native_local_autonomous_dispatch_required")
   const read=(name:string)=>readBoundRuntimeCredential("dispatch",name,env)
   const apiPassword=password(read("api.secret"))
   const identityPassword=password(read("identity.secret"))
@@ -129,7 +140,9 @@ export async function startBoundDispatchServer(
   let server:ReturnType<typeof createServer>|undefined
   const endPools=async()=>{await Promise.allSettled(pools.map(pool=>pool.end()))}
   try{
+    await prepareOriginalRoleExecutionPool(business,env)
     await verifyBoundDispatchRole(business,cfg.target,"api")
+    if(localDeviceExecutionApproved)await inspectNativeLocalDevicePool(business,"agentstudio_api")
     await verifyBoundDispatchRole(adapter(identities),cfg.target,"identity")
     await verifyBoundDispatchRole(adapter(broker),cfg.target,"broker")
     if(cfg.workflowModelEnabled){
@@ -152,6 +165,8 @@ export async function startBoundDispatchServer(
     if(cfg.knowledgeToolsEnabled)await verifyKnowledgeToolSchema(business)
     const memoryAvailable=await inspectAgentMemorySchema(business),memoryContextAvailable=await inspectAgentMemoryContextSchema(business)
     if(cfg.memoryEnabled===true&&(!memoryAvailable||!memoryContextAvailable||!await inspectAgentHumanInputSchema(business)))throw Error("agent_memory_runtime_required")
+    const ordinaryCase=await prepareOrdinaryCaseRuntime(business,env)
+    if(ordinaryCase?.execution&&(!cfg.autonomousEnabled||!cfg.workflowToolsEnabled||!cfg.workflowModelEnabled))throw Error("ordinary_case_autonomous_dispatch_required")
     if(mode==="preflight"){
       await endPools()
       encryptionKey.fill(0)
@@ -173,14 +188,15 @@ export async function startBoundDispatchServer(
         model:cfg.workflowModelEnabled?createWorkflowV2ModelInternalHandler({approvedForIsolatedUat:true,executionMode,
           reviewedClientFingerprint256:pin,dispatch:verifiedWorkflowV2ModelDispatch(new WorkflowV2ModelLeaseIdentity(adapter(identities)),
             new WorkflowV2ModelDispatch(business,encryptionKey,createIsolatedWorkflowModelExecutor(env,origin,true),adapter(broker),{
-              allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous,allowMemoryExecution:autonomous&&cfg.memoryEnabled===true,agentExecutor,
+              allowOrdinaryCaseExecution:autonomous&&ordinaryCase?.execution===true,allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous,allowCallerExecution:autonomous&&cfg.callersEnabled,allowMemoryExecution:autonomous&&cfg.memoryEnabled===true,agentExecutor,
+              ...(autonomous&&localDeviceExecutionApproved?{localVisionExecutor:createIsolatedNativeLocalVisionExecutor(env,origin,true)}:{}),
               nodeDebugExecutor:autonomous?undefined:createIsolatedWorkflowNodeDebugExecutor(env,origin,true)}))}):undefined,
         tool:cfg.workflowToolsEnabled?createWorkflowV2ToolInternalHandler({approvedForIsolatedUat:true,executionMode,
           reviewedClientFingerprint256:pin,dispatch:verifiedWorkflowV2ToolDispatch(new WorkflowV2ToolLeaseIdentity(adapter(identities)),
             new WorkflowV2ToolDispatch(business,encryptionKey,{...createWorkflowToolNetwork(),
               ...(cfg.mcpEnabled?{mcp:createMcpToolExecutor(createMcpNetwork())}:{}),
               summarize:createIsolatedWorkflowModelExecutor(env,origin,true)},adapter(broker),{
-                allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous,allowKnowledgeExecution:cfg.knowledgeToolsEnabled===true,allowMemoryExecution:autonomous&&cfg.memoryEnabled===true}))}):undefined,
+                allowOrdinaryCaseExecution:autonomous&&ordinaryCase?.execution===true,allowAgentExecution:!autonomous&&cfg.workflowAgentsEnabled,allowAutonomousExecution:autonomous,allowCallerExecution:autonomous&&cfg.callersEnabled,allowKnowledgeExecution:cfg.knowledgeToolsEnabled===true,allowMemoryExecution:autonomous&&cfg.memoryEnabled===true,allowLocalDeviceExecution:autonomous&&localDeviceExecutionApproved,...(autonomous&&ordinaryCase?.execution?{ordinaryCaseCapture:new NativeOrdinaryCaseCapture({...business,connect:()=>adapter(identities).connect()})}:{})}))}):undefined,
       }
     }
     const workflowHandlers=cfg.workflowModelEnabled||cfg.workflowToolsEnabled?makeV2Handlers(cfg.workflowFingerprint!,false):undefined

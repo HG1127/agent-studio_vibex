@@ -1,4 +1,6 @@
-import { validTimeZone, zonedDateString } from "@/lib/scheduleTime.js"
+import type {OriginalScheduleRow,OriginalScheduleHistoryRow,OriginalSchedulePending} from '../../../shared/original-schedules-contract.ts'
+import type {RunDetailRow} from '../RunDetail/useRunDetail.ts'
+import { validTimeZone, zonedDateString } from "../../lib/scheduleTime.js"
 import type { ScheduleRule } from "@/lib/scheduleTime.js"
 
 export type TargetKind = "agent" | "workflow"
@@ -11,10 +13,11 @@ export type ScheduleTask = Omit<ScheduleRule, "time_zone" | "local_time" | "week
   instruction: string; model_connection_id: string; model_id: string;
   max_steps: number; next_at_ms: number; last_due_ms: number;
   revision: number; enabled: boolean; created_ms: number;
+  native?: OriginalScheduleRow; nativeIncomplete?: boolean;
 }
 export type ScheduleHistory = {
   id: string; schedule_id: string; scheduled_for_ms: number;
-  run_id: string; status: string; attempts: number; error: string;
+  run_id: string; status: string; attempts: number; error: string; native?: OriginalScheduleHistoryRow;
 }
 export type ScheduleForm = {
   name: string; target_kind: TargetKind; target_id: string; instruction: string;
@@ -48,3 +51,6 @@ export function defaultScheduleForm(): ScheduleForm {
     weekday:1,interval_minutes:60,model_connection_id:"",model_id:"",max_steps:10,
   }
 }
+
+export type ScheduleRunPreview={id:string;name:string;kind:string;status:string;loading:boolean;result:string;error:string;events:number;nativeRun?:RunDetailRow}
+export type SchedulePending=OriginalSchedulePending

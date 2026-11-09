@@ -1,0 +1,11 @@
+export interface MonitorRecord{record_id:string;version:number;schema_id:string;payload:Record<string,unknown>;source_refs:unknown[];relation_versions:{record_id:string;version:number}[]}
+export interface MonitorSnapshot{payload:{records:MonitorRecord[];created_ms?:number}}
+export interface MonitorRelationDefinition{target_entity_ids:string[];relation_types:string[]}
+export interface MonitorSemanticEvent{kind:string;notify:boolean;reason:string;fact_key:string;record_id:string;record_version:number;fact:Record<string,unknown>}
+export interface MonitorSemanticComparison{adapter_id:string;scope:string;strict_path_quality:'unverified';events:MonitorSemanticEvent[];issues:{code:string;record_id:string}[];can_advance:boolean}
+export const monitorSemanticAdapterId:'research.relationship-events.v1'
+export function compareMonitorRelations(before:MonitorSnapshot|null,after:MonitorSnapshot,definition:MonitorRelationDefinition,baselineMs:number,observedMs:number):MonitorSemanticComparison
+export function monitoredRelations(snapshot:MonitorSnapshot|null,definition:MonitorRelationDefinition):MonitorRecord[]
+export function relationSemanticKey(record:MonitorRecord):string
+export function relationSemantic(record:MonitorRecord):Record<string,unknown>
+export function effectivePeriod(value:string|null):{start:number;end:number}|null

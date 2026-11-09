@@ -51,13 +51,13 @@ test('optional outcome admission flags cannot be invented by capabilities or mis
 
 
 test('submit SDK binds an explicit storage choice to returned original consent and leaves legacy request bodies unchanged',async()=>{
-  const calls=[];let response={run:{id:run,status:'queued'},pending_effect:null,outcome_memory:consent}
+  const calls=[];let response={run:{id:run,status:'queued',agent_spec_id:spec,checkpoint:{spec_revision:2,max_steps:1}},pending_effect:null,outcome_memory:consent}
   const api=createPgNativePilotApi(async(path,options)=>{calls.push({path,body:JSON.parse(options.body)});return new Response(JSON.stringify(response),{status:201,headers:{'content-type':'application/json'}})},'')
   assert.equal((await api.submitAutonomousAgentRun(spec,2,'Synthetic task','synthetic-outcome-choice',1,false,true)).outcome_memory.intent_sha256,hash)
   assert.equal(calls[0].body.remember_outcome,true)
   response={...response,outcome_memory:{...consent,spec_id:request}}
   await assert.rejects(api.submitAutonomousAgentRun(spec,2,'Synthetic task','synthetic-outcome-choice',1,false,true),e=>e.status===503)
-  response={run:{id:run,status:'queued'},pending_effect:null}
+  response={run:{id:run,status:'queued',agent_spec_id:spec,checkpoint:{spec_revision:2,max_steps:1}},pending_effect:null}
   await assert.rejects(api.submitAutonomousAgentRun(spec,2,'Synthetic task','synthetic-outcome-choice',1,false,true),e=>e.status===503)
   await api.submitAutonomousAgentRun(spec,2,'Synthetic task','synthetic-old-choice',1)
   assert.equal(Object.hasOwn(calls.at(-1).body,'remember_outcome'),false)

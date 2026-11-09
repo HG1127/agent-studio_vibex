@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import {selectNativePg18UatCapabilities,permitNativePg18BusinessUatRequest}
   from "../src/native-config-uat-policy.ts"
 
-const https="https://192.168.1.133:7443"
+const https="https://localhost:7443"
 const approval="APPROVE_ISOLATED_PG18_CONFIG_UAT_ONLY"
 const enabled={
   AGENT_STUDIO_PG18_CONFIG_WRITE_UAT_ENABLED:"true",
@@ -66,9 +66,15 @@ test("explicitly approved local non-root HTTPS permits ONLY config CRUD mutation
     assert.equal(permitNativePg18BusinessUatRequest("/api/v2/"+name+"/"+uuid,"GET",selected),true)
     assert.equal(permitNativePg18BusinessUatRequest("/api/v2/"+name+"/"+uuid,"POST",selected),false)
     assert.equal(permitNativePg18BusinessUatRequest("/api/v2/"+name,"PATCH",selected),false)
-    assert.equal(permitNativePg18BusinessUatRequest("/api/v2/"+name+"/"+uuid,"DELETE",selected),false)
+    assert.equal(permitNativePg18BusinessUatRequest("/api/v2/"+name+"/"+uuid,"DELETE",selected),name==="tool-connections")
   }
   assert.equal(selected.employeeProvisioning,false)
+})
+test("original Tool metadata deletion requires explicit config scope and one exact item path",()=>{
+  const collection='/api/v2/tool-connections',item=collection+'/'+uuid
+  assert.equal(permitNativePg18BusinessUatRequest(item,'DELETE',configUat),true)
+  assert.equal(permitNativePg18BusinessUatRequest(item,'DELETE',readOnly),false)
+  for(const path of [collection,collection+'/',item+'?force=1',item+'/test',item+'/'+uuid,'/api/v2/agent-specs/'+uuid,'/api/v2/workflows/'+uuid,'/api/v2/knowledge-bases/'+uuid])assert.equal(permitNativePg18BusinessUatRequest(path,'DELETE',configUat),false)
 })
 test("model connection CRUD is owner-authenticated and gated; DELETE is scoped to that resource",()=>{
   const collection="/api/v2/model-connections"

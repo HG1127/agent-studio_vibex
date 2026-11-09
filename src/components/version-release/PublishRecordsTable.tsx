@@ -5,6 +5,7 @@ import type {
 } from "@/pages/VersionRelease/useVersionRelease"
 
 type PublishRecordsTableProps = {
+  nativeMode?:boolean
   publishRecords: SpecVersionRow[]
   specDisplayName: string
   versionStatusMeta: Record<VersionStatusKey, { label: string; badge: string }>
@@ -12,6 +13,7 @@ type PublishRecordsTableProps = {
 }
 
 export function PublishRecordsTable({
+  nativeMode=false,
   publishRecords,
   specDisplayName,
   versionStatusMeta,
@@ -21,11 +23,12 @@ export function PublishRecordsTable({
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-md">
       <div className="flex items-center gap-2 border-b border-border px-5 py-4">
         <ScrollText className="h-4 w-4 text-primary" />
-        <h3 className="text-sm font-semibold text-card-foreground">发布记录</h3>
+        <h3 className="text-sm font-semibold text-card-foreground">{nativeMode ? "版本发布状态" : "发布记录"}</h3>
         <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs text-secondary-foreground">
           {publishRecords.length}
         </span>
       </div>
+      {nativeMode && <p className="px-5 py-3 text-xs text-muted-foreground">此表显示已加载版本的最近发布时间，不代表完整发布事件历史；旧发布版本可能不在最近100条中。</p>}
       {publishRecords.length === 0 ? (
         <p className="px-5 py-8 text-center text-xs text-muted-foreground">
           还没有发布记录，发布一个版本后会显示在这里。

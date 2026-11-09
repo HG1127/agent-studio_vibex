@@ -1,4 +1,38 @@
 #!/usr/bin/env node
+import {selectOriginalRunOptions} from './original-agent-run-options-runtime.ts'
+import {inspectNativeEmployeeStaff084Profile,selectNativeEmployeeStaff084Profile,createStaffCompositeNativeAuthRepository,inspectStaffCompositeReleaseSchema,inspectStaffCompositeStatisticsSchema} from './native-employee-staff084-profile.mjs'
+import {prepareOriginalRoleExecutionPool} from './original-role-ui-policy.ts'
+import {prepareOriginalRoleUiRuntime} from './original-role-ui-runtime.ts'
+import {prepareOriginalStaffRuntime} from './original-staff-runtime.mjs'
+import {inspectNativeEmployeeUi078Profile} from './native-employee-ui078-profile.ts'
+import {prepareOrdinaryCaseRuntime} from './native-ordinary-case-runtime.ts'
+import {OriginalRunInteractionRepository} from './original-run-interaction-repository.ts'
+import {OriginalSchedulesRepository} from './original-schedules-repository.ts'
+import {inspectOriginalSchedulesSchema} from './original-schedules-audit.ts'
+import {prepareModelConfigReceipts075After069} from './model-config-receipt-startup075.ts'
+import {createModelConfigReceiptHttp} from './model-config-receipt-http.ts'
+import {ModelDraftProbeRepository} from './model-draft-probe-repository.ts'
+import {createModelDraftProbeHttp} from './model-draft-probe-http.ts'
+import {createNativeEntryHttpHandler} from './native-entry-http.ts'
+import {prepareOriginalAgentQuality} from './original-agent-quality-runtime.ts'
+import {inspectOriginalQuality089Startup} from './original-quality089-audit.ts'
+import {prepareNativeHomeAgentSpecs} from './native-home-agent-specs-runtime.ts'
+import {inspectOptionalNativeHomeAuthoringSchema} from './native-home-authoring-audit.ts'
+import {prepareNativeAgentCatalog} from './native-agent-catalog-runtime.ts'
+import {prepareNativeMonitorInbox} from './native-monitor-inbox-runtime.ts'
+import {prepareNativeMonitorLive} from './native-monitor-live-runtime.ts'
+import {inspectOriginalHomeKnowledgeStatisticsStartup} from './native-home-knowledge-stats-runtime.ts'
+import {selectNativeLocalDevices} from './native-local-device-runtime-policy.ts'
+import {inspectNativeLocalDevicePool} from './native-local-device-audit.ts'
+import {NativeLocalDeviceRepository,NativeLocalExecutorRepository} from './native-local-device-repository.ts'
+import {createNativeLocalDeviceHttp} from './native-local-device-http.ts'
+import {createNativeGuidedHttp} from './native-guided-http.ts'
+import {NativeGuidedOwnerRepository,NativeGuidedExecutorRepository} from './native-guided-repository.ts'
+import {selectNativeGuidedPairing} from './native-guided-runtime-policy.ts'
+
+import {AgentCallerRepository} from './agent-caller-repository.ts'
+import {createAgentCallerOwnerHttp,createAgentCallerPublicHttp} from './agent-caller-http.ts'
+import {selectNativeAgentCallerCapabilities,inspectAgentCallerPool} from './agent-caller-native-policy.ts'
 import {scopedKnowledgePool,scopedEmbeddingSettingsPool,scopedEmbeddingConsentPool} from "./knowledge-scope-policy.ts"
 import {KnowledgeEmbeddingConsentRepository} from "./knowledge-embedding-consent-repository.ts"
 import {verifyKnowledgeEmbeddingConsentSchema} from "./knowledge-embedding-consent-privileges.ts"
@@ -35,12 +69,27 @@ import {createNativeOwnOperationsBusinessHandler} from "./own-operations-http.ts
 import {CompanyOverviewRepository} from "./company-overview-repository.ts"
 import {inspectCompanyOverviewSchema} from "./company-overview-audit.ts"
 import {createNativeCompanyOverviewBusinessHandler} from "./company-overview-http.ts"
+import {NativeCompanyWorkerHeartbeats} from "./native-company-worker-heartbeats.ts"
+import {createNativeCompanyWorkerHeartbeatsHttpHandler,selectNativeCompanyWorkerHeartbeatsHttp} from "./native-company-worker-heartbeats-http.ts"
 import {AgentGeneratedAcceptanceRepository} from "./agent-generated-acceptance-repository.ts"
 import {inspectAgentGeneratedSchema} from "./agent-generated-audit.ts"
 import {AgentDescriptivePatchAcceptanceRepository} from "./agent-descriptive-patch-acceptance-repository.ts"
 import {inspectAgentDescriptivePatchSchema} from "./agent-descriptive-patch-audit.ts"
 import {createAgentDescriptivePatchHttpHandler} from "./agent-descriptive-patch-http.ts"
 import {AgentReviewSourceRepository} from "./agent-review-source.ts"
+import {AgentDesignLedgerRepository} from "./agent-design-ledger.ts"
+import {createAgentDesignHttpHandler} from "./agent-design-http.ts"
+import {selectNativeAgentDesignCapabilities,loadAgentDesignAuditVerifier,inspectAgentDesignApiPool,type AgentDesignAuditVerifier} from "./agent-design-runtime-policy.ts"
+import {prepareAgentPlanWorkflowNative} from "./agent-plan-workflow-composition.ts"
+import {ApprovalDelegationRepository} from './approval-delegation-repository.ts'
+import {createApprovalDelegationHttp} from './approval-delegation-http.ts'
+import {selectApprovalDelegationCapabilities,inspectApprovalDelegationPool} from './approval-delegation-runtime-policy.ts'
+import {AgentInternalShareRepository} from './agent-internal-share-repository.ts'
+import {createAgentInternalShareHttp} from './agent-internal-share-http.ts'
+import {selectNativeInternalShareCapabilities,inspectInternalSharePool} from './agent-internal-share-runtime-policy.ts'
+import {AgentTemplateMarketRepository} from "./agent-template-market-repository.ts"
+import {createAgentTemplateMarketHttpHandler} from "./agent-template-market-http.ts"
+import {selectNativeAgentTemplateMarketCapabilities,loadAgentTemplateMarketAuditVerifier,inspectAgentTemplateMarketApiPool,type AgentTemplateMarketAuditVerifier} from "./agent-template-market-runtime-policy.ts"
 import {AgentReviewLedgerRepository} from "./agent-review-ledger.ts"
 import {inspectAgentReviewSchema} from "./agent-review-audit.ts"
 import {inspectAgentMemoryOutcomeSchema} from "./agent-memory-outcome-audit.ts"
@@ -93,6 +142,12 @@ import {createProviderConnectivityProbe} from "./model-connection-probe.ts"
 import type {SqlClient,SqlPool} from "./contracts.ts"
 import {selectNativePg18UatCapabilities}
   from "./native-config-uat-policy.ts"
+
+import {selectOwnerToolHubCapabilities} from "./tool-hub-runtime-policy.ts"
+import {inspectOwnerToolTrialSchema} from "./owner-tool-trial-audit.ts"
+import {OwnerToolTrialRepository} from "./tool-trial-repository.ts"
+import {OwnerToolInvocationRepository} from "./tool-invocation-projection.ts"
+import {createPublicMcpRegistryNetwork} from "./public-mcp-registry-network.ts"
 
 const portDefault=7403
 const here=fileURLToPath(import.meta.url)
@@ -185,7 +240,7 @@ function safeSecret(file:string,listen:boolean,env:NodeJS.ProcessEnv){
     const basename=path.basename(file)
     if(basename!=="api.secret"&&basename!=="native-auth.secret"&&
        basename!=="model-encryption.secret"&&
-       basename!=="model-broker.secret")reject()
+       basename!=="model-broker.secret"&&basename!=="local-executor.secret")reject()
     let canRead=false
     try{accessSync(file,constants.R_OK);canRead=true}catch{}
     try{
@@ -241,7 +296,7 @@ function adapter(pool:PgPool):SqlPool{
         const value=await client.query(sql,params)
         return {rows:value.rows as Row[]}
       },
-      release(){client.release()}
+      release(destroy?:boolean){client.release(destroy)}
     }
   }}
 }
@@ -319,6 +374,15 @@ export async function startNativePg18Server(env=process.env,listen=true){
   // No UAT capabilities are permitted with --preflight.
   const capabilities=selectNativePg18UatCapabilities(
     env,listen,cfg.allowedOrigin)
+  const agentDesign=selectNativeAgentDesignCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
+  const templateMarket=selectNativeAgentTemplateMarketCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
+  const internalShare=selectNativeInternalShareCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
+  const localDevices=selectNativeLocalDevices(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
+  const guidedPairing=selectNativeGuidedPairing(env,localDevices)
+  const approvalDelegation=selectApprovalDelegationCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites)
+  const agentCallers=selectNativeAgentCallerCapabilities(env,listen,cfg.allowedOrigin,capabilities.configurationWrites,capabilities.autonomousAgentUat===true)
+  const ownerToolHub=selectOwnerToolHubCapabilities(env,{listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,workflowV2ExecutionUat:capabilities.workflowV2ExecutionUat===true})
+  const companyWorkerHeartbeatsEnabled=selectNativeCompanyWorkerHeartbeatsHttp(env,listen,cfg.allowedOrigin)
   const files=nativeRuntimeCredentialConfig(env,listen)
   const apiSecret=safeSecret(files.apiFile,listen,env)
   const authSecret=safeSecret(files.authFile,listen,env)
@@ -328,7 +392,8 @@ export async function startNativePg18Server(env=process.env,listen=true){
   const brokerSecret=brokerFile?safeSecret(brokerFile,listen,env):null
   const {parseModelEncryptionKey}=await import("./model-connection-crypto.ts")
   const modelEncryptionKey=parseModelEncryptionKey(modelKeySecret.password)
-  const secrets=[apiSecret,authSecret,modelKeySecret,
+  const localExecutorSecret=localDevices.available?safeSecret(files.credentialDir+"/local-executor.secret",listen,env):null
+  const secrets=[apiSecret,authSecret,modelKeySecret,...(localExecutorSecret?[localExecutorSecret]:[]),
     ...(brokerSecret?[brokerSecret]:[])]
   for(let i=0;i<secrets.length;i++)for(let j=i+1;j<secrets.length;j++)
     if(secrets[i]!.stat.dev===secrets[j]!.stat.dev&&
@@ -346,14 +411,21 @@ export async function startNativePg18Server(env=process.env,listen=true){
     host:cfg.host,port:5333,database:cfg.database,
     user:"agentstudio_model_broker_login",password:brokerSecret.password,max:2,
     connectionTimeoutMillis:4000,statement_timeout:8000}):null
+  const localExecutorPool=localExecutorSecret?new Pool({host:cfg.host,port:5333,database:cfg.database,user:"agentstudio_local_executor_login",password:localExecutorSecret.password,max:3,connectionTimeoutMillis:4000,statement_timeout:10000}):null
+  localExecutorPool?.on("error",()=>{})
   const business=scopedKnowledgeToolPool(scopedKnowledgeQueryPool(scopedKnowledgeIndexPool(scopedEmbeddingConsentPool(scopedEmbeddingSettingsPool(scopedKnowledgePool(adapter(businessPool),capabilities.knowledgeSharingUat===true),capabilities.knowledgeEmbeddingSettingsUat===true),capabilities.knowledgeEmbeddingConsentUat===true),capabilities.knowledgeIndexRuntimeUat===true),capabilities.knowledgeQueryRuntimeUat===true),capabilities.knowledgeToolExecutionUat===true)
   businessPool.on("error",()=>{})
   authPool.on("error",()=>{})
   brokerPool?.on("error",()=>{})
   let server:ReturnType<typeof createServer>|undefined
+  let roleUiClose:(()=>void)|undefined
   try{
+    await prepareOriginalRoleExecutionPool(business,env)
     await verifyPgRuntimeTarget(business,cfg.api)
     await verifyDatabaseRole(business)
+    if(!await inspectNativeEmployeeStaff084Profile(business,adapter(authPool),env)){if(env.AGENT_STUDIO_PG18_EMPLOYEE_UI_PROFILE==='complete069-employee-ui-quality089'){const {inspectNativeEmployeeQuality089Profile}=await import('./native-employee-quality089-profile.mjs');await inspectNativeEmployeeQuality089Profile(business,env)}else await inspectNativeEmployeeUi078Profile(business,env)}
+    const originalStatisticsInspector=selectNativeEmployeeStaff084Profile(env)?(pool:SqlPool)=>inspectStaffCompositeStatisticsSchema(pool,env):env.AGENT_STUDIO_PG18_EMPLOYEE_UI_PROFILE==='complete069-employee-ui-quality089'?async(pool:SqlPool)=>(await import('./native-employee-quality089-profile.mjs')).inspectNativeQuality089StatisticsSchema(pool,env):undefined
+    if(localDevices.available){if(!localExecutorPool)throw Error("native_local_executor_credentials_required");await inspectNativeLocalDevicePool(business,"agentstudio_api");await inspectNativeLocalDevicePool(adapter(localExecutorPool),"agentstudio_local_executor")}
     const verifiedActiveAdmins=await verifyNativeAuthService(adapter(authPool))
     if(brokerPool){
       // Read-only, before opening HTTP. The model secret broker must be
@@ -404,9 +476,13 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(capabilities.knowledgeQueryRuntimeUat===true)await verifyKnowledgeQuerySchema(business)
     if(capabilities.knowledgeToolExecutionUat===true)await verifyKnowledgeToolSchema(business)
     if(capabilities.scheduleRuntimeUat===true)await verifyScheduleRuntimeSchema(business)
-    const employeeGovernanceAvailable=await inspectEmployeeGovernanceSchema(business)
+    const originalSchedulesAvailable=await inspectOriginalSchedulesSchema(business)
+    // Independently named084 has its own complete auth catalog/ACL audit.
+    // Default047 retains its original status-only grant checks unchanged.
+    const originalStaff=await prepareOriginalStaffRuntime({pool:adapter(authPool),env,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,employeeProvisioning:capabilities.employeeProvisioning,listen})
+    const employeeGovernanceAvailable=originalStaff!==null||await inspectEmployeeGovernanceSchema(business)
     const collaborationAvailable=await inspectAgentCollaborationSchema(business)
-    const releasesAvailable=await inspectAgentReleaseSchema(business)
+    const releasesAvailable=selectNativeEmployeeStaff084Profile(env)?await inspectStaffCompositeReleaseSchema(business,adapter(authPool),env):env.AGENT_STUDIO_PG18_EMPLOYEE_UI_PROFILE==='complete069-employee-ui-quality089'?await (await import('./native-employee-quality089-profile.mjs')).inspectNativeQuality089ReleaseSchema(business,env):await inspectAgentReleaseSchema(business)
     const humanInputAvailable=await inspectAgentHumanInputSchema(business)
     const memoryAvailable=await inspectAgentMemorySchema(business),memoryContextAvailable=await inspectAgentMemoryContextSchema(business)
     const derivedMemoryAvailable=await inspectAgentMemoryDerivedSchema(business)
@@ -435,22 +511,66 @@ export async function startNativePg18Server(env=process.env,listen=true){
     if(capabilities.agentReviewSubmissionUat===true&&!reviewAvailable)throw Error("agent_review_schema_required")
     if(capabilities.agentGeneratedAcceptanceUat===true&&!generatedAcceptanceAvailable)throw Error("agent_generated_schema_required")
     if(capabilities.agentDescriptivePatchUat===true&&!descriptivePatchAvailable)throw Error("agent_descriptive_patch_schema_required")
+    // Default-off performs no new auditor import, SQL, credential read or network.
+    let agentDesignAudit:AgentDesignAuditVerifier|undefined
+    if(agentDesign.available){agentDesignAudit=await loadAgentDesignAuditVerifier();await inspectAgentDesignApiPool(business,agentDesignAudit)}
+    const agentPlanWorkflow=await prepareAgentPlanWorkflowNative({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites})
+    let templateMarketAudit:AgentTemplateMarketAuditVerifier|undefined
+    if(templateMarket.available){templateMarketAudit=await loadAgentTemplateMarketAuditVerifier();await inspectAgentTemplateMarketApiPool(business,templateMarketAudit)}
+    if(ownerToolHub.available&&await inspectOwnerToolTrialSchema(business)!==true)throw Error("owner_tool_trial_schema_required")
+    if(internalShare.available)await inspectInternalSharePool(business)
+    if(approvalDelegation.available)await inspectApprovalDelegationPool(business)
+    if(agentCallers.available)await inspectAgentCallerPool(business)
+    // Optional070 integrity is required before the no-listen preflight return.
+    // The HTTP facade is prepared later, after real Native authentication exists.
+    const originalQualityFlag=env.AGENT_STUDIO_PG18_ORIGINAL_QUALITY_ENABLED
+    if(originalQualityFlag!==undefined&&originalQualityFlag!=='true')throw Error('unsafe_original_quality_config')
+    if(originalQualityFlag==='true')await inspectOriginalQuality089Startup(business)
+    const originalHomeFlag=env.AGENT_STUDIO_PG18_ORIGINAL_HOME_ENABLED
+    if(originalHomeFlag!==undefined&&originalHomeFlag!=='true')throw Error('unsafe_original_home_config')
+    const originalHomeSchema=await inspectOptionalNativeHomeAuthoringSchema(business)
+    if(originalHomeFlag==='true'&&originalHomeSchema!=='installed')throw Error('original_home_authoring_schema_required')
+    const ordinaryCase=await prepareOrdinaryCaseRuntime(business,env)
+    const monitorLive=await prepareNativeMonitorLive({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,ordinaryCaseEnabled:ordinaryCase!==null})
+    if(ordinaryCase&&!monitorLive)throw Error("ordinary_case_original_business_facade_required")
+    const agentCatalog=await prepareNativeAgentCatalog({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,allowMonitorBusinessSpecs:monitorLive!==null})
+    const originalMonitorInbox=await prepareNativeMonitorInbox({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin})
+    await inspectOriginalHomeKnowledgeStatisticsStartup({pool:business,env,allowedOrigin:cfg.allowedOrigin,inspectSelectedSchema:originalStatisticsInspector})
+    const originalRunOptionsEnabled=selectOriginalRunOptions(env)
+    if(originalRunOptionsEnabled&&(!capabilities.configurationWrites||!capabilities.autonomousAgentUat))throw Error('original_run_options_runtime_not_approved')
+    const modelConnections=new ModelConnectionRepository(business,modelEncryptionKey,brokerPool?adapter(brokerPool):business)
+    const modelConfigReceipts=await prepareModelConfigReceipts075After069({models:modelConnections,configurationWrites:capabilities.configurationWrites,env})
     if(!listen){
       await Promise.all([businessPool.end(),authPool.end(),
-        ...(brokerPool?[brokerPool.end()]:[])])
+        ...(brokerPool?[brokerPool.end()]:[]),...(localExecutorPool?[localExecutorPool.end()]:[])])
       return {mode:"preflight",ready:true,target:"agent_studio",
         verified_roles:2,verified_active_admins:verifiedActiveAdmins,
         writes_performed:false,port_opened:false,
         workers_started:false,production_cutover_allowed:false}
     }
-    const auth=new NativeAuthRepository(adapter(authPool))
+    const auth=selectNativeEmployeeStaff084Profile(env)?await createStaffCompositeNativeAuthRepository(adapter(authPool),env):new NativeAuthRepository(adapter(authPool))
+    // One actual component per Native service; all HTTP reads share its H3
+    // guard and capacity reservations. Construction performs no I/O.
+    const companyWorkerHeartbeats=new NativeCompanyWorkerHeartbeats(adapter(authPool))
+    const companyWorkerHeartbeatsHttp=createNativeCompanyWorkerHeartbeatsHttpHandler({
+      component:companyWorkerHeartbeats,allowedOrigin:cfg.allowedOrigin,enabled:companyWorkerHeartbeatsEnabled,
+    })
+    const modelDraftProbe=new ModelDraftProbeRepository(business,brokerPool?adapter(brokerPool):business,modelEncryptionKey,{configurationWrites:capabilities.configurationWrites,modelProbeUat:capabilities.modelProbeUat})
+    const autonomousAgentRuns=(ordinaryCase?.repository({allowOriginalRunOptions:originalRunOptionsEnabled,allowLocalDevices:localDevices.available,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable,allowMemory:capabilities.agentMemoryUat===true,allowOutcomeMemory:capabilities.configurationWrites===true&&capabilities.agentOutcomeMemoryUat===true,allowOptimizationRetest:optimizationAvailable&&capabilities.configurationWrites===true&&capabilities.agentOptimizationUat===true&&capabilities.autonomousAgentUat===true})??new AutonomousAgentRunRepository(business,{allowOriginalRunOptions:originalRunOptionsEnabled,allowLocalDevices:localDevices.available,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable,allowMemory:capabilities.agentMemoryUat===true,allowOutcomeMemory:capabilities.configurationWrites===true&&capabilities.agentOutcomeMemoryUat===true,allowOptimizationRetest:optimizationAvailable&&capabilities.configurationWrites===true&&capabilities.agentOptimizationUat===true&&capabilities.autonomousAgentUat===true}))
+    const originalInteraction=releasesAvailable?new OriginalRunInteractionRepository(business,{writes:capabilities.configurationWrites===true&&capabilities.autonomousAgentUat===true,allowHumanInput:humanInputAvailable,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowMemory:capabilities.agentMemoryUat===true}):null
     let businessHandler:ReturnType<typeof createHandler>|undefined
-    const native=createNativeAuthHttpHandler({auth,allowedOrigin:cfg.allowedOrigin,
+    const native=createNativeAuthHttpHandler({auth,allowedOrigin:cfg.allowedOrigin,originalQualityProtocol:originalQualityFlag==='true'?'native_original_agent_quality_v1':undefined,originalRunOptionsProtocol:Object.getOwnPropertyDescriptor(autonomousAgentRuns,'originalRunOptionsProtocol')?.value,originalRunInteractionProtocol:originalInteraction?.originalInteractionProtocol,
+      allowOwnerToolHub:ownerToolHub.available,allowOwnerToolTrials:ownerToolHub.trials,allowPublicMcpRegistry:ownerToolHub.registry,
       allowOwnOperations:ownOperationsAvailable,
       allowCompanyOverview:companyOverviewAvailable,
+      allowCompanyWorkerHeartbeats:companyWorkerHeartbeatsEnabled,
       allowEmployeeGovernance:employeeGovernanceAvailable,
       allowConfigurationWrites:capabilities.configurationWrites,
       allowModelProbe:capabilities.modelProbeUat,
+      originalModelDraftProbeProtocol:modelDraftProbe.enabled?Object.getOwnPropertyDescriptor(modelDraftProbe,'protocol')?.value:undefined,
+      allowOriginalModelConnections:Object.getOwnPropertyDescriptor(modelConnections,'originalUiProtocol')?.value==='native_model_connections_owner_cas_v1',
+      originalModelPaginationProtocol:Object.getOwnPropertyDescriptor(modelConnections,'paginationProtocol')?.value,
+      originalModelConfigReceiptsProtocol:modelConfigReceipts?.protocol,allowModelConfigReceiptWrites:modelConfigReceipts?.writes===true,
       allowMcpDiscovery:capabilities.mcpDiscoveryUat===true,
       allowSmitheryManagement:capabilities.smitheryManagementUat===true,
       allowKnowledgeSharing:capabilities.knowledgeSharingUat===true,
@@ -473,6 +593,13 @@ export async function startNativePg18Server(env=process.env,listen=true){
       allowAgentMemory:memoryAvailable,allowAgentMemoryRuntime:capabilities.agentMemoryUat===true,
       allowAgentReview:reviewAvailable,allowAgentReviewHistory:reviewAvailable,allowAgentReviewSubmission:capabilities.agentReviewSubmissionUat===true,
       allowAgentGeneratedAcceptance:generatedAcceptanceAvailable,allowAgentGeneratedAcceptanceWrites:capabilities.agentGeneratedAcceptanceUat===true,
+      allowAgentDesign:agentDesign.available,allowAgentDesignSubmissions:agentDesign.submissions,allowAgentDesignSaves:agentDesign.saves,
+      ...agentPlanWorkflow.metadataOptions,
+      allowAgentTemplateMarket:templateMarket.available,allowAgentTemplateMarketWrites:templateMarket.writes,
+      allowInternalShare:internalShare.available,allowInternalShareWrites:internalShare.writes,
+      allowLocalDevices:localDevices.available,allowLocalDeviceWrites:localDevices.writes,
+      allowApprovalDelegations:approvalDelegation.available,allowApprovalDelegationWrites:approvalDelegation.writes,
+      allowAgentCallers:agentCallers.available,allowAgentCallerWrites:agentCallers.writes,allowAgentCallerRuns:agentCallers.runs,
       allowAgentDescriptivePatch:descriptivePatchAvailable,allowAgentDescriptivePatchWrites:capabilities.agentDescriptivePatchUat===true,
       allowAgentOptimization:optimizationAvailable,allowAgentOptimizationAcceptance:capabilities.agentOptimizationUat===true,
       allowAgentFeedback:feedbackAvailable,allowAgentFeedbackSubmission:capabilities.agentFeedbackUat===true,allowAgentFeedbackLessons:capabilities.agentFeedbackLessonsUat===true,
@@ -483,11 +610,14 @@ export async function startNativePg18Server(env=process.env,listen=true){
         if(!businessHandler)throw Error("business_handler_unavailable")
         return businessHandler(req,res)
       }})
+    const originalWorkflowV2Runs=new WorkflowV2RunRepository(business,"workflow_native_v2",{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable})
     businessHandler=createHandler({
+      ...(ownerToolHub.available?{ownerToolHub:{capabilities:ownerToolHub,trials:new OwnerToolTrialRepository(business,originalWorkflowV2Runs),invocations:new OwnerToolInvocationRepository(business),...(ownerToolHub.registry?{registryRead:createPublicMcpRegistryNetwork()}:{} )}}:{}),
+      allowNativeLocalAgentSpecs:localDevices.available,allowMonitorBusinessSpecs:monitorLive!==null,
       allowedOrigin:cfg.allowedOrigin,
       verifyToken:async()=>{throw Error("oidc_disabled_in_native_mode")},
       authenticateRequest:native.authenticateRequest,
-      repository:new AgentSpecRepository(business),
+      repository:new AgentSpecRepository(business,{hideCallerSources:true}),
       ...(generatedAcceptanceAvailable?{agentGeneratedAcceptanceRepository:new AgentGeneratedAcceptanceRepository(business,{allowAcceptance:capabilities.configurationWrites===true&&capabilities.agentGeneratedAcceptanceUat===true})}:{}),
       ...(reviewAvailable?{agentReviewSourceRepository:new AgentReviewSourceRepository(business),
         agentReviewLedgerRepository:new AgentReviewLedgerRepository(business,{allowSubmissions:capabilities.configurationWrites===true&&capabilities.agentReviewSubmissionUat===true}),
@@ -500,9 +630,7 @@ export async function startNativePg18Server(env=process.env,listen=true){
       ...(collaborationAvailable?{agentCollaborationRepository:new AgentCollaborationRepository(business,(identity,email)=>auth.resolveKnowledgeRecipient(identity,email),{enabled:capabilities.configurationWrites===true})}:{}),
       ...(releasesAvailable?{agentReleaseRepository:new AgentReleaseRepository(business,{enabled:capabilities.configurationWrites===true,allowAcceptance:capabilities.autonomousAgentUat===true,
         allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable})}:{}),
-      modelConnectionRepository:new ModelConnectionRepository(
-        business,modelEncryptionKey,
-        brokerPool?adapter(brokerPool):business),
+      modelConnectionRepository:modelConnections,
       toolConnectionRepository:new ToolConnectionRepository(
         business,modelEncryptionKey),
       mcpConnectionRepository:new McpConnectionRepository(business,modelEncryptionKey,brokerPool?adapter(brokerPool):undefined),
@@ -517,12 +645,13 @@ export async function startNativePg18Server(env=process.env,listen=true){
       // submission additionally requires the independent generation UAT grant.
       // The public API never constructs a provider executor or private Broker.
       runRepository:createNativeRunRepository(business,capabilities),
-      workflowRepository:new WorkflowRepository(business),
+      workflowRepository:new WorkflowRepository(business,{excludeToolTrials:ownerToolHub.available}),
       // Owner-scoped Workflow run history is GET-only by default. The route
       // policy independently gates queue submissions behind explicit UAT.
       workflowSafeRunRepository:new WorkflowSafeRunRepository(business),
-      autonomousAgentRunRepository:new AutonomousAgentRunRepository(business,{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable,allowMemory:capabilities.agentMemoryUat===true,allowOutcomeMemory:capabilities.configurationWrites===true&&capabilities.agentOutcomeMemoryUat===true}),
-      workflowV2RunRepository:new WorkflowV2RunRepository(business,"workflow_native_v2",{allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}),
+      ...(originalInteraction?{originalRunInteractionRepository:originalInteraction}:{}),
+      autonomousAgentRunRepository:autonomousAgentRuns,
+      workflowV2RunRepository:originalWorkflowV2Runs,
       ...(humanInputAvailable?{agentHumanInputRepository:new AgentHumanInputRepository(business,"agent_native_v2",{allowResponses:capabilities.configurationWrites===true&&capabilities.autonomousAgentUat===true}),
         workflowHumanInputRepository:new AgentHumanInputRepository(business,"workflow_native_v2",{allowResponses:capabilities.configurationWrites===true&&capabilities.workflowV2ExecutionUat===true})}:{}),
       // Only a separately approved, inert Start/End-only validation run.
@@ -538,8 +667,9 @@ export async function startNativePg18Server(env=process.env,listen=true){
       ...(capabilities.knowledgeEmbeddingConsentUat===true?{knowledgeEmbeddingConsentRepository:new KnowledgeEmbeddingConsentRepository(business)}:{}),
       ...(capabilities.knowledgeIndexRuntimeUat===true?{knowledgeIndexRepository:new KnowledgeIndexRepository(business)}:{}),
       ...(capabilities.knowledgeQueryRuntimeUat===true?{knowledgeQueryRepository:new KnowledgeQueryRepository(business)}:{}),
+      ...(originalSchedulesAvailable?{originalSchedulesRepository:new OriginalSchedulesRepository(business,{allowMonitorBusiness:monitorLive!==null,writes:capabilities.configurationWrites===true,execution:capabilities.scheduleRuntimeUat===true,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable})}:{}),
       scheduleInventory:new ScheduleInventoryRepository(business),
-      scheduleRuntimeRepository:new ScheduleRuntimeRepository(business,{enabled:capabilities.scheduleRuntimeUat===true,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}),
+      scheduleRuntimeRepository:new ScheduleRuntimeRepository(business,{allowMonitorBusiness:monitorLive!==null,enabled:capabilities.scheduleRuntimeUat===true,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}),
       // Schedule drafts are inert and only available behind explicit config UAT.
       ...(capabilities.configurationWrites===true
         ?{scheduleDraftRepository:new ScheduleDraftRepository(business)}:{})
@@ -558,6 +688,9 @@ export async function startNativePg18Server(env=process.env,listen=true){
       ...(companyOverviewAvailable?{repository:new CompanyOverviewRepository(business)}:{}),
       businessHandler,
     })
+    const modelDraftProbeHttp=createModelDraftProbeHttp({repository:modelDraftProbe,allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest})
+    const modelDraftFallback=businessHandler
+    businessHandler=async(req,res)=>{if(await modelDraftProbeHttp(req,res))return;await modelDraftFallback(req,res)}
     // The shared composition applies the original Native global route policy
     // to BOTH owner metadata and existing business handlers before dispatch.
     businessHandler=createNativeOwnOperationsBusinessHandler({
@@ -566,7 +699,72 @@ export async function startNativePg18Server(env=process.env,listen=true){
       ...(ownOperationsAvailable?{repository:new OwnOperationsRepository(business)}:{}),
       policy:capabilities,businessHandler,
     })
-    const localServer=createServer(native.handler)
+    // This fixed GET-only boundary handles only company Worker metadata.
+    // Every fallback still crosses the original global Native route policy.
+    const agentDesignHttp=agentDesign.available?createAgentDesignHttpHandler({
+      allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,
+      repository:new AgentDesignLedgerRepository(business,{audit:agentDesignAudit,allowSubmissions:agentDesign.submissions,allowSaves:agentDesign.saves}),
+    }):null
+    const agentPlanWorkflowHttp=agentPlanWorkflow.createHandler(native.authenticateRequest)
+    const localDevicesHttp=localDevices.available&&localExecutorPool?createNativeLocalDeviceHttp({repository:new NativeLocalDeviceRepository(business,{allowWrites:localDevices.writes}),executor:new NativeLocalExecutorRepository(adapter(localExecutorPool)),authenticateRequest:native.authenticateRequest,allowedOrigin:cfg.allowedOrigin,allowWrites:localDevices.writes}):null
+    const guidedHttp=guidedPairing&&localExecutorPool?createNativeGuidedHttp({repository:new NativeGuidedOwnerRepository(business,{allowWrites:localDevices.writes}),executor:new NativeGuidedExecutorRepository(adapter(localExecutorPool)),authenticateRequest:native.authenticateRequest,allowedOrigin:cfg.allowedOrigin,allowWrites:localDevices.writes}):null
+    const callerRepository=agentCallers.available?new AgentCallerRepository(business,{enabled:true,allowAdmission:agentCallers.runs,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable}):null
+    const callerOwnerHttp=callerRepository?createAgentCallerOwnerHttp({repository:callerRepository,authenticateRequest:native.authenticateRequest,allowedOrigin:cfg.allowedOrigin,allowWrites:agentCallers.writes,allowAdmission:agentCallers.runs}):null
+    const callerPublicHttp=callerRepository?createAgentCallerPublicHttp({repository:callerRepository}):null
+    const guardedBusinessHandler=businessHandler
+    const approvalDelegationHttp=approvalDelegation.available?createApprovalDelegationHttp({allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,repository:new ApprovalDelegationRepository(business,{allowWrites:approvalDelegation.writes,allowModelDecisions:capabilities.configurationWrites&&capabilities.runApprovalUat,allowAutonomousDecisions:capabilities.configurationWrites&&capabilities.autonomousAgentUat===true,allowMcpExecution:capabilities.mcpToolExecutionUat===true,allowKnowledgeExecution:capabilities.knowledgeToolExecutionUat===true,allowHumanInput:humanInputAvailable})}):null
+    const internalShareHttp=internalShare.available?createAgentInternalShareHttp({allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,repository:new AgentInternalShareRepository(business,{allowWrites:internalShare.writes})}):null
+    const templateMarketHttp=templateMarket.available?createAgentTemplateMarketHttpHandler({
+      allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest,
+      repository:new AgentTemplateMarketRepository(business,{available:true,allowWrites:templateMarket.writes,verifyCredentials:templateMarketAudit}),
+    }):null
+    const modelConfigReceiptHttp=modelConfigReceipts?createModelConfigReceiptHttp({component:modelConfigReceipts,allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest}):null
+    businessHandler=async(req,res)=>{
+      if(modelConfigReceiptHttp&&await modelConfigReceiptHttp(req,res))return
+      // The design handler owns fixed routes and repeats Native cookie/Origin/CSRF
+      // and original-receipt gates, including recovery after new writes turn off.
+      if(localDevicesHttp&&await localDevicesHttp(req,res))return
+      if(guidedHttp&&await guidedHttp(req,res))return
+      if(agentPlanWorkflowHttp&&await agentPlanWorkflowHttp(req,res))return
+      if(agentDesignHttp&&await agentDesignHttp(req,res))return
+      if(templateMarketHttp&&await templateMarketHttp(req,res))return
+      if(internalShareHttp&&await internalShareHttp(req,res))return
+      if(approvalDelegationHttp&&await approvalDelegationHttp(req,res))return
+      if(callerOwnerHttp&&await callerOwnerHttp(req,res))return
+      if(await companyWorkerHeartbeatsHttp(req,res))return
+      await guardedBusinessHandler(req,res)
+    }
+    const originalQualityHttp=await prepareOriginalAgentQuality({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,authenticateRequest:native.authenticateRequest})
+    if(originalQualityHttp){const qualityFallback=businessHandler;businessHandler=async(req,res)=>{if(await originalQualityHttp(req,res))return;await qualityFallback(req,res)}}
+    const roleUi=await prepareOriginalRoleUiRuntime({pool:business,env,listen,configurationWrites:capabilities.configurationWrites,autonomousSubmission:capabilities.autonomousAgentUat===true,humanInput:humanInputAvailable,allowedOrigin:cfg.allowedOrigin,authenticateRequest:native.authenticateRequest})
+    roleUiClose=roleUi?.close
+    if(roleUi){const fallback=businessHandler;businessHandler=async(req,res)=>{if(await roleUi.handler(req,res))return;await fallback(req,res)}}
+    const originalHomeHttp=await prepareNativeHomeAgentSpecs({pool:business,env,listen,allowedOrigin:cfg.allowedOrigin,configurationWrites:capabilities.configurationWrites,allowNativeLocalAgentSpecs:localDevices.available,allowMonitorBusinessSpecs:monitorLive!==null,inspectStatisticsSchema:originalStatisticsInspector,authenticateRequest:native.authenticateRequest})
+    if(originalHomeHttp){
+      const originalHomeFallback=businessHandler
+      businessHandler=async(req,res)=>{if(await originalHomeHttp(req,res))return;await originalHomeFallback(req,res)}
+    }
+    const originalCatalogHttp=agentCatalog?.createHandler(native.authenticateRequest)??null
+    if(originalCatalogHttp){
+      const originalCatalogFallback=businessHandler
+      businessHandler=async(req,res)=>{if(await originalCatalogHttp(req,res))return;await originalCatalogFallback(req,res)}
+    }
+    const originalMonitorHttp=originalMonitorInbox?.createHandler(native.authenticateRequest)??null
+    if(originalMonitorHttp){
+      const originalMonitorFallback=businessHandler
+      businessHandler=async(req,res)=>{if(await originalMonitorHttp(req,res))return;await originalMonitorFallback(req,res)}
+    }
+    const liveMonitorHttp=monitorLive?.createHandler(native.authenticateRequest)??null
+    if(liveMonitorHttp){
+      const liveMonitorFallback=businessHandler
+      businessHandler=async(req,res)=>{if(await liveMonitorHttp(req,res))return;await liveMonitorFallback(req,res)}
+    }
+    const originalNativeHandler=async(req:IncomingMessage,res:ServerResponse)=>{
+      if(originalStaff&&await originalStaff.handler(req,res))return
+      await native.handler(req,res)
+    }
+    const entryHandler=createNativeEntryHttpHandler(originalNativeHandler,callerPublicHttp)
+    const localServer=createServer(entryHandler)
     server=localServer
     localServer.requestTimeout=15000
     localServer.headersTimeout=12000
@@ -593,9 +791,10 @@ export async function startNativePg18Server(env=process.env,listen=true){
     const shutdown=()=>{
       if(shuttingDown)return
       shuttingDown=true
+      roleUiClose?.()
       localServer.close(()=>{
         void Promise.all([businessPool.end(),authPool.end(),
-          ...(brokerPool?[brokerPool.end()]:[])])
+          ...(brokerPool?[brokerPool.end()]:[]),...(localExecutorPool?[localExecutorPool.end()]:[])])
           .then(()=>{process.exitCode=0})
       })
     }
@@ -603,9 +802,10 @@ export async function startNativePg18Server(env=process.env,listen=true){
     process.once("SIGINT",shutdown)
     return {server:localServer,shutdown}
   }catch(error){
+    roleUiClose?.()
     if(server?.listening)server.close()
     await Promise.allSettled([businessPool.end(),authPool.end(),
-      ...(brokerPool?[brokerPool.end()]:[])])
+      ...(brokerPool?[brokerPool.end()]:[]),...(localExecutorPool?[localExecutorPool.end()]:[])])
     throw error
   }
 }

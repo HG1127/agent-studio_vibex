@@ -1,9 +1,11 @@
+import {parseLocalInput,type LocalInput} from '../../../shared/native-local-device-contract.mjs'
 // Pure bounded tool argument/configuration rendering. No eval, network or keys.
 import {isIP} from "node:net"
 import type {WorkflowEffectRequest} from "./workflow-v2-machine.ts"
 import {WorkflowKnownEffectFailure} from "./workflow-v2-effect-failure.ts"
 export type ToolArguments=Record<string,unknown>
 export type WorkflowToolPlan=
+  |{kind:"local_computer";input:LocalInput}
   |{kind:"calculate";expression:string;output:string}
   |{kind:"summarize";prompt:string;binding:NonNullable<WorkflowEffectRequest["configuration"]["model_binding"]>}
   |{kind:"knowledge_search";query:string;ids:string[];retrieval?:NonNullable<WorkflowEffectRequest["configuration"]["knowledge_retrieval"]>}
@@ -76,6 +78,7 @@ export function prepareWorkflowTool(request:WorkflowEffectRequest):WorkflowToolP
     return {kind:"mcp",args,binding:{...config.mcp_binding}}
   }
   if(config.tool_binding)return {kind:"http",args,binding:{...config.tool_binding}}
+  if(config.tool==="local_computer"){if(!request.agent_context||config.tool_binding||config.mcp_binding||config.model_binding||config.knowledge_base_ids||config.knowledge_retrieval)invalid();return {kind:"local_computer",input:parseLocalInput(args)}}
   const allowed:Record<string,string[]>={calculate:["expression"],summarize:["text","focus"],knowledge_search:["query"],web_fetch:["url"],web_search:["query","limit"]}
   if(!config.tool||!Object.hasOwn(allowed,config.tool)||Object.keys(args).some(key=>!allowed[config.tool!]!.includes(key)))invalid()
   if(config.tool==="calculate"){

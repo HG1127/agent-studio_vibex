@@ -1,0 +1,14 @@
+[
+  {
+    "name": "PgNativePilotError",
+    "origin": "C:/Users/Administrator/.codex/worktrees/pg18-worker-heartbeat/agent_studio_vibex版本/.tmp/pg-migration-completion/A4e-B153-C4-B154B155-current-main-Root-composite-v1/payload/src/lib/pgNativePilotApi.ts",
+    "parent_sha256": "064f4e5e840dc471c77f34021e0cd8802678d70bfeaf9209d705383567b8c65e",
+    "source": "export class PgNativePilotError extends Error {\n  readonly status:number\n  readonly code:string\n  constructor(status:number,code:string){\n    super(code)\n    this.status=status\n    this.code=code\n  }\n}"
+  },
+  {
+    "name": "HttpError",
+    "origin": "C:/Users/Administrator/.codex/worktrees/pg18-worker-heartbeat/agent_studio_vibex版本/.tmp/pg-migration-completion/A4e-B153-C4-B154B155-current-main-Root-composite-v1/payload/services/pg-api/src/contracts.ts",
+    "parent_sha256": "2a820eb16977749e542b0f03ba2fb362e846c6e76dfe20a9530bd25af8437aef",
+    "source": "export class HttpError extends Error {\n  readonly status: number\n  readonly code: string\n  constructor(status: number, code: string) {\n    super(code)\n    this.status=status\n    this.code=code\n  }\n}"
+  }
+]

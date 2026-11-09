@@ -1,0 +1,70 @@
+import {originalSchedulesProtocol,originalSchedulesBase,OriginalSchedulesError,schedulesFail,scheduleObject,scheduleId,scheduleInteger,scheduleTimestampOrder,parseOriginalScheduleRow,parseOriginalScheduleHistoryRow,parseOriginalScheduleOperation,parseOriginalScheduleReceipt,originalSchedulePendingFromOperation,type OriginalSchedulePending,type OriginalScheduleOperation} from '../../shared/original-schedules-contract.ts'
+import {parseAgentDesignTransportJson} from '../../services/pg-api/src/agent-design-value-contract.ts'
+export type ScheduleCapabilities={metadata_writes_enabled:boolean;automatic_execution_enabled:boolean;pause_enabled:true;worker_alive:null;history_retained_after_delete:true}
+export type ScheduleWorkflowTarget={id:string;owner_user_id:string;name:string;revision:number}
+export type SchedulePage<T>={items:T[];has_more:boolean;next_cursor:string|null;order:string;live_partial_pages:true}
+export function parseScheduleWorkflowTarget(raw:unknown,employee:string):ScheduleWorkflowTarget{const v=scheduleObject(raw,['id','owner_user_id','name','revision']);if(v.owner_user_id!==employee||typeof v.name!=='string'||!v.name.trim()||v.name.length>120)return schedulesFail();return{id:scheduleId(v.id),owner_user_id:employee,name:v.name,revision:scheduleInteger(v.revision)}}
+export function parseSchedulePublicCursor(raw:string){if(!/^[A-Za-z0-9_-]{1,512}$/.test(raw))return schedulesFail(400,'invalid_original_schedule_cursor');try{const binary=atob(raw.replaceAll('-','+').replaceAll('_','/')+'='.repeat((4-raw.length%4)%4));if(btoa(binary).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'')!==raw)return schedulesFail();const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0)),v=scheduleObject(parseAgentDesignTransportJson(new TextDecoder('utf-8',{fatal:true}).decode(bytes)),['at','id']);scheduleTimestampOrder(String(v.at));return{at:v.at as string,id:scheduleId(v.id)}}catch{return schedulesFail(400,'invalid_original_schedule_cursor')}}
+function boundary<T extends {id:string}>(page:SchedulePage<T>,time:(row:T)=>string){if(page.has_more){const cursor=parseSchedulePublicCursor(page.next_cursor!),last=page.items.at(-1);if(!last||cursor.id!==last.id||scheduleTimestampOrder(cursor.at)!==scheduleTimestampOrder(time(last)))return schedulesFail()}return page}
+export function parseSchedulePage<T extends {id:string}>(raw:unknown,parse:(v:unknown)=>T,order:string,after:string|null=null):SchedulePage<T>{
+ const v=scheduleObject(raw,['items','has_more','next_cursor','order','live_partial_pages']);if(!Array.isArray(v.items)||v.items.length>50||typeof v.has_more!=='boolean'||v.live_partial_pages!==true||v.order!==order||v.has_more&&v.items.length!==50||v.has_more&&(typeof v.next_cursor!=='string'||!/^[A-Za-z0-9_-]{1,512}$/.test(v.next_cursor)||v.next_cursor===after)||!v.has_more&&v.next_cursor!==null)return schedulesFail()
+ const items=v.items.map(parse);if(new Set(items.map(r=>r.id)).size!==items.length)return schedulesFail();return{items,has_more:v.has_more,next_cursor:v.next_cursor as string|null,order,live_partial_pages:true}
+}
+export function appendSchedulePage<T extends {id:string}>(previous:T[],next:T[],time:(row:T)=>string){const all=[...previous,...next];if(new Set(all.map(r=>r.id)).size!==all.length)return schedulesFail(409,'original_schedule_page_changed');for(let i=1;i<all.length;i++){const a=all[i-1]!,b=all[i]!,order=scheduleTimestampOrder(time(a))-scheduleTimestampOrder(time(b));if(order<0n||order===0n&&a.id>=b.id)return schedulesFail(409,'original_schedule_page_changed')}return all}
+export async function prepareOriginalScheduleIntent(raw:OriginalScheduleOperation,employee:string,now=Date.now()){
+ const operation=parseOriginalScheduleOperation(raw,now),bytes=new TextEncoder().encode(JSON.stringify(operation)),hash=await crypto.subtle.digest('SHA-256',bytes),sha=Array.from(new Uint8Array(hash),n=>n.toString(16).padStart(2,'0')).join('');return{operation,pending:originalSchedulePendingFromOperation(operation,employee,sha,now)}
+}
+// Only the complete actual POST response path may create request-bound refusal proof.
+const scheduleWriteRefusals=new WeakMap<OriginalSchedulesError,string>()
+const scheduleRefusalCodes:Record<number,ReadonlySet<string>>={
+ 400:new Set(['invalid_original_schedules_body','original_schedules_protocol_header_refused','original_schedules_identity_header_refused','invalid_original_ui_employee_precondition','invalid_original_schedule_operation','invalid_original_schedule_precondition','invalid_original_schedule_form','invalid_original_schedule_page','invalid_schedule_execution','invalid_schedule_authority_limits','invalid_schedule_control','invalid_schedule_model_binding']),
+ 401:new Set(['session_required']),
+ 403:new Set(['native_request_origin_denied','native_employee_identity_required','original_schedules_writes_disabled','original_schedules_execution_disabled','original_schedule_actor_unavailable','schedule_owner_unavailable']),
+ 404:new Set(['original_schedule_not_found','schedule_not_found']),
+ 409:new Set(['original_schedule_source_changed','original_schedule_occurrence_changed','original_schedule_request_conflict','original_schedule_target_changed','original_schedule_model_changed','original_schedule_requires_reviewed_save','original_schedule_operation_not_open','original_schedule_finish_changed','original_schedule_authority_unconfirmed','original_schedule_queue_unconfirmed','original_schedule_operation_incomplete','original_schedule_receipt_immutable','schedule_activation_conflict','schedule_activation_changed_or_invalid','schedule_authority_unavailable','schedule_disabled_or_changed','schedule_already_queued','schedule_failed_start_not_retryable','schedule_requires_native_draft','schedule_model_unavailable','schedule_target_unavailable','schedule_activation_changed']),
+ 413:new Set(['original_schedules_request_too_large']),415:new Set(['json_content_type_required'])
+}
+export function originalScheduleWriteRefused(error:unknown,pending:OriginalSchedulePending){return error instanceof OriginalSchedulesError&&scheduleWriteRefusals.get(error)===JSON.stringify(pending)}
+export function createOriginalSchedulesApi(config:{employeeId:string;transport?:typeof fetch;rootPath?:''|'/__pg_native';timeoutMs?:number}){
+ const employee=scheduleId(config.employeeId),root=config.rootPath??'/__pg_native',send=config.transport??fetch,budget=config.timeoutMs??8000
+ if(!['','/__pg_native'].includes(root)||!Number.isSafeInteger(budget)||budget<1||budget>8000)return schedulesFail(400,'invalid_original_schedules_transport')
+ const base=root+originalSchedulesBase
+ async function request(path:string,method:'GET'|'POST',body?:unknown,signal?:AbortSignal,writePending?:OriginalSchedulePending){
+   const writeProof=writePending===undefined?null:JSON.stringify(writePending)
+  const bytes=body===undefined?undefined:JSON.stringify(body),write=method==='POST';if(bytes&&new TextEncoder().encode(bytes).length>16384)return schedulesFail(400,'original_schedules_request_too_large')
+   const controller=new AbortController(),cancel=()=>controller.abort();let reader:ReadableStreamDefaultReader<Uint8Array>|undefined,timer:ReturnType<typeof setTimeout>|undefined,complete=false,closed=false
+  const unavailable=()=>new OriginalSchedulesError(0,write?'original_schedules_outcome_unknown':'original_schedules_unavailable',write),deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(unavailable())},budget)})
+  const run=async()=>{
+   const response=await send(path,{method,body:bytes,credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',signal:controller.signal,headers:{Accept:'application/json','X-AgentStudio-Expected-Employee':employee,'X-AgentStudio-Original-Schedules':'1',...(write?{'Content-Type':'application/json','X-AgentStudio-Request':'1'}:{})}})
+   const invalid=():never=>schedulesFail(503,'invalid_original_schedules_response',write)
+   if(!(response instanceof Response)||response.redirected||!/^application\/json(?:;\s*charset=utf-8)?$/i.test(response.headers.get('content-type')??'')||!response.body)return invalid()
+    if(closed||controller.signal.aborted){void response.body.cancel().catch(()=>{});throw unavailable()}
+   const length=response.headers.get('content-length');if(length!==null&&(!/^(0|[1-9][0-9]*)$/.test(length)||Number(length)>1048576))return invalid()
+   reader=response.body.getReader();const chunks:Uint8Array[]=[];let count=0
+    while(true){const item=await reader.read();if(closed||controller.signal.aborted)throw unavailable();if(item.done)break;count+=item.value.length;if(count>1048576)return invalid();chunks.push(item.value)}
+    if(length!==null&&Number(length)!==count)return invalid();complete=true;const all=new Uint8Array(count);let at=0;for(const c of chunks){all.set(c,at);at+=c.length}
+   let data:Record<string,unknown>;try{data=scheduleObject(parseAgentDesignTransportJson(new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(all)))}catch{return invalid()}
+   if(!response.ok){const code=typeof data.error==='string'&&/^[a-z][a-z0-9_]{0,79}$/.test(data.error)?data.error:'original_schedules_request_refused',error=new OriginalSchedulesError(response.status,code,write&&response.status>=500);if(write&&writeProof!==null&&Object.keys(data).length===1&&scheduleRefusalCodes[response.status]?.has(code))scheduleWriteRefusals.set(error,writeProof);throw error}
+   return data
+  }
+  signal?.addEventListener('abort',cancel,{once:true})
+  try{if(signal?.aborted)throw unavailable();return await Promise.race([run(),deadline])}catch(error){if(error instanceof OriginalSchedulesError)throw error;throw unavailable()}
+  // A fully consumed response must not be aborted after its ACK was read.
+  // Incomplete/late responses still lose their transport and cannot settle it.
+  finally{closed=true;clearTimeout(timer);signal?.removeEventListener('abort',cancel);if(!complete){controller.abort();if(reader)void reader.cancel().catch(()=>{})}if(reader)try{reader.releaseLock()}catch{}}
+ }
+
+ function envelope(raw:unknown){const v=scheduleObject(raw,['protocol','owner_user_id','item']);if(v.protocol!==originalSchedulesProtocol||v.owner_user_id!==employee)return schedulesFail(409,'employee_session_changed');return v.item}
+ const read=async(path:string,signal?:AbortSignal)=>envelope(await request(path,'GET',undefined,signal))
+ return Object.freeze({protocol:originalSchedulesProtocol,
+  async capabilities(signal?:AbortSignal):Promise<ScheduleCapabilities>{const v=scheduleObject(await read(base+'/capabilities',signal),['metadata_writes_enabled','automatic_execution_enabled','pause_enabled','worker_alive','history_retained_after_delete']);if(typeof v.metadata_writes_enabled!=='boolean'||typeof v.automatic_execution_enabled!=='boolean'||v.automatic_execution_enabled&&!v.metadata_writes_enabled||v.pause_enabled!==true||v.worker_alive!==null||v.history_retained_after_delete!==true)return schedulesFail();return v as ScheduleCapabilities},
+  async list(filter:'all'|'active'|'disabled',after:string|null=null,signal?:AbortSignal){if(!['all','active','disabled'].includes(filter)||after!==null&&!/^[A-Za-z0-9_-]{1,512}$/.test(after))return schedulesFail(400,'invalid_original_schedule_page');const page=parseSchedulePage(await read(base+'?filter='+filter+'&limit=50'+(after?'&after='+after:''),signal),v=>parseOriginalScheduleRow(v,employee),'created_desc_id_asc',after);if(page.items.some(r=>r.deleted||filter==='active'&&!r.enabled||filter==='disabled'&&r.enabled))return schedulesFail();appendSchedulePage([],page.items,r=>r.created_at);return boundary(page,r=>r.created_at)},
+  async history(schedule:string|null,after:string|null=null,signal?:AbortSignal){if(after!==null&&!/^[A-Za-z0-9_-]{1,512}$/.test(after))return schedulesFail(400,'invalid_original_schedule_page');const page=parseSchedulePage(await read(base+'/history?limit=50'+(schedule?'&schedule='+scheduleId(schedule):'')+(after?'&after='+after:''),signal),v=>parseOriginalScheduleHistoryRow(v,employee),'scheduled_desc_id_asc',after);if(schedule&&page.items.some(r=>r.schedule_id!==schedule))return schedulesFail();appendSchedulePage([],page.items,r=>r.scheduled_for);return boundary(page,r=>r.scheduled_for)},
+  async get(id:string,signal?:AbortSignal){const key=scheduleId(id),row=parseOriginalScheduleRow(await read(base+'/'+key,signal),employee);if(row.id!==key)return schedulesFail();return row},
+  async workflows(after:string|null=null,signal?:AbortSignal){const page=parseSchedulePage(await read(base+'/workflow-targets?limit=50'+(after?'&after='+scheduleId(after):''),signal),v=>parseScheduleWorkflowTarget(v,employee),'id_asc',after);if(page.items.some((r,i)=>r.id<=(i?page.items[i-1]!.id:after??''))||page.has_more&&page.next_cursor!==page.items.at(-1)?.id)return schedulesFail();return page},
+  async workflow(id:string,signal?:AbortSignal){const key=scheduleId(id),row=parseScheduleWorkflowTarget(await read(base+'/workflow-targets/'+key,signal),employee);if(row.id!==key)return schedulesFail();return row},
+  async change(operation:OriginalScheduleOperation,pending:OriginalSchedulePending,signal?:AbortSignal){const normalized=await prepareOriginalScheduleIntent(operation,employee);if(JSON.stringify(normalized.pending)!==JSON.stringify({...pending,created_at:normalized.pending.created_at}))return schedulesFail(400,'invalid_original_schedule_intent');const value=await request(base+'/operations','POST',normalized.operation,signal,pending);try{return parseOriginalScheduleReceipt(envelope(value),pending)}catch{return schedulesFail(503,'unconfirmed_original_schedule_ack',true)}},
+  async receipt(pending:OriginalSchedulePending,signal?:AbortSignal){return parseOriginalScheduleReceipt(await read(base+'/operations/'+scheduleId(pending.request_id),signal),pending)},
+ })
+}
+export type OriginalSchedulesApi=ReturnType<typeof createOriginalSchedulesApi>

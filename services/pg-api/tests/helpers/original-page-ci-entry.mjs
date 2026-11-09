@@ -1,0 +1,27 @@
+// Pure GitHub identity and declared-page admission only. No env mutation, files,
+// drivers, SQL, identities, browser, network or fallback workflow impersonation.
+export const registeredOriginalPageWorkflow='.github/workflows/pg18-original-toolhub-ci.yml'
+export const registeredOriginalPageName='Agent Studio original ToolHub and Home PG18 isolated verification'
+export const originalPageRef='refs/heads/codex/pg18-worker-heartbeat-20261028'
+export const originalPageRepository='HG1127/agent-studio_vibex'
+const freeze=x=>Object.freeze(x)
+export const originalPageEntries=freeze({
+ resource:freeze({workflow:'.github/workflows/pg18-original-resource-read-ci.yml',name:registeredOriginalPageName,job:'pg18-tool-hub-browser',purpose:'AGENT_STUDIO_ORIGINAL_RESOURCE_CI',approval:'YES_DISPOSABLE_ORIGINAL_RESOURCE_READ_ONLY',story:'AGENT_STUDIO_ORIGINAL_RESOURCE_CASE',cases:freeze(['harness','execution_51']),head:'AGENT_STUDIO_ORIGINAL_RESOURCE_EXPECTED_HEAD',sources:freeze(['AGENT_STUDIO_ORIGINAL_RESOURCE_SOURCES_SHA256','AGENT_STUDIO_ORIGINAL_TOOL_HUB_SOURCES_SHA256','AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_SOURCES_SHA256'])}),
+ create:freeze({workflow:'.github/workflows/pg18-original-agent-create-fresh-ci.yml',name:'Agent Studio original agent-create fresh PG18 browser verification',job:'original-agent-create-fresh-browser',purpose:'AGENT_STUDIO_ORIGINAL_AGENT_CREATE_CI',approval:'YES_DISPOSABLE_ORIGINAL_AGENT_CREATE_FRESH_ONLY',story:'AGENT_STUDIO_ORIGINAL_AGENT_CREATE_STORY',cases:freeze(['original-agent-create-fresh']),head:'AGENT_STUDIO_ORIGINAL_AGENT_CREATE_EXPECTED_HEAD',sources:freeze(['AGENT_STUDIO_ORIGINAL_AGENT_CREATE_SOURCES_SHA256'])}),
+ plugin:freeze({workflow:'.github/workflows/pg18-original-plugin-market-ci.yml',name:registeredOriginalPageName,job:'pg18-tool-hub-browser',purpose:'AGENT_STUDIO_ORIGINAL_PLUGIN_MARKET_CI',approval:'YES_DISPOSABLE_ORIGINAL_PLUGIN_MARKET_ONLY',story:'AGENT_STUDIO_ORIGINAL_PLUGIN_MARKET_CASE',cases:freeze(['registry_connections','smithery_management','invoke_translation']),head:'AGENT_STUDIO_ORIGINAL_PLUGIN_MARKET_EXPECTED_HEAD',sources:freeze(['AGENT_STUDIO_ORIGINAL_PLUGIN_MARKET_SOURCES_SHA256','AGENT_STUDIO_ORIGINAL_TOOL_HUB_SOURCES_SHA256','AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_SOURCES_SHA256'])}),
+ web:freeze({workflow:'.github/workflows/pg18-original-web-pages-ci.yml',name:registeredOriginalPageName,job:'pg18-tool-hub-browser',purpose:'AGENT_STUDIO_ORIGINAL_WEB_PAGES_CI',approval:'YES_DISPOSABLE_ORIGINAL_WEB_PAGES_ONLY',story:'AGENT_STUDIO_ORIGINAL_WEB_PAGES_CASE',cases:freeze(['search_citations','fetch_cancel','search_unknown_recovery']),head:'AGENT_STUDIO_ORIGINAL_WEB_PAGES_EXPECTED_HEAD',sources:freeze(['AGENT_STUDIO_ORIGINAL_WEB_PAGES_SOURCES_SHA256','AGENT_STUDIO_WEB_EGRESS_GUARD_SOURCES_SHA256','AGENT_STUDIO_WEB_CITATION_BOUNDARIES_SOURCES_SHA256','AGENT_STUDIO_ORIGINAL_TOOL_HUB_SOURCES_SHA256','AGENT_STUDIO_ORIGINAL_TOOL_HUB_HOME_SOURCES_SHA256'])})
+})
+const fail=()=>{throw Error('original_page_ci_exact_entry_required')}
+export function requireOriginalPageCiEntry(env,page){
+ if(!Object.hasOwn(originalPageEntries,page))fail();const spec=originalPageEntries[page],mode=env.AGENT_STUDIO_REGISTERED_ORIGINAL_PAGE_ENTRY
+ if(![undefined,'','false','true'].includes(mode))fail();const registered=mode==='true',head=env.GITHUB_SHA
+ if(env.GITHUB_REPOSITORY!==originalPageRepository||env.GITHUB_EVENT_NAME!=='workflow_dispatch'||env.GITHUB_REF!==originalPageRef||env.GITHUB_JOB!==spec.job||!/^[a-f0-9]{40}$/.test(head??'')||/^0{40}$/.test(head)||env[spec.head]!==head||env[spec.purpose]!==spec.approval||!spec.cases.includes(env[spec.story])||spec.sources.some(key=>!/^[a-f0-9]{64}$/.test(env[key]??'')||/^0{64}$/.test(env[key])))fail()
+ for(const [other,entry]of Object.entries(originalPageEntries))if(other!==page&&env[entry.purpose]!==undefined&&env[entry.purpose]!=='')fail()
+ if(registered){
+  const expectedJobRef=originalPageRepository+'/'+spec.workflow+'@'
+  if(env.GITHUB_ACTIONS!=='true'||env.CI!=='true'||env.RUNNER_OS!=='Linux'||env.RUNNER_ENVIRONMENT!=='github-hosted'||!/^[1-9][0-9]{0,31}$/.test(env.GITHUB_RUN_ID??'')||!/^[1-9][0-9]{0,9}$/.test(env.GITHUB_RUN_ATTEMPT??'')||env.GITHUB_WORKFLOW!==registeredOriginalPageName||env.GITHUB_WORKFLOW_REF!==originalPageRepository+'/'+registeredOriginalPageWorkflow+'@'+originalPageRef||env.GITHUB_WORKFLOW_SHA!==head||env.AGENT_STUDIO_REGISTERED_ORIGINAL_PAGE!==page||env.AGENT_STUDIO_REGISTERED_PAGE_EVENT_ENABLED!=='true'||env.AGENT_STUDIO_REGISTERED_PAGE_EVENT_PAGE!==page||env.AGENT_STUDIO_REGISTERED_PAGE_EVENT_LEGACY!=='false'||env.AGENT_STUDIO_REGISTERED_PAGE_JOB_ID!==spec.job||env.AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REPOSITORY!==originalPageRepository||env.AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_SHA!==head||![expectedJobRef+originalPageRef,expectedJobRef+head].includes(env.AGENT_STUDIO_REGISTERED_PAGE_JOB_WORKFLOW_REF))fail()
+ }else if(env.GITHUB_WORKFLOW!==spec.name||env.GITHUB_WORKFLOW_REF!==originalPageRepository+'/'+spec.workflow+'@'+originalPageRef)fail()
+ return freeze({entry:registered?'registered-workflow-call':'independent-workflow-dispatch',page,story:env[spec.story],head,workflow:spec.workflow,job:spec.job,synthetic_only:true,actual_runtime_acceptance:false})
+}
+/** Keep each existing outer guard's refusal contract; no environment is rewritten. */
+export function originalPageCiIdentity(env,page){try{requireOriginalPageCiEntry(env,page);return true}catch{return false}}

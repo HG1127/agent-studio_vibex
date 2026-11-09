@@ -1,0 +1,41 @@
+// Actual parent session function + actual hook route effect, AST/VM only.
+// Child sessions, identity, catalog and projection are explicit terminal DATA ports.
+// This is not real login, Native /me, an Actor check or genuine browser acceptance.
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import vm from 'node:vm'
+import {createRequire,stripTypeScriptTypes} from 'node:module'
+const ts=createRequire(import.meta.url)('typescript'),read=p=>fs.readFileSync(new URL('../'+p,import.meta.url),'utf8')
+function parse(p){const s=read(p),a=ts.createSourceFile(p,s,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);assert.equal(a.parseDiagnostics.length,0,p);return a}
+const sessionTree=parse('src/lib/originalAgentRunSession.ts'),sessionNode=sessionTree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='createOriginalAgentRunSession'),hookTree=parse('src/pages/AgentRun/usePgOriginalAgentRun.ts'),privacyTree=parse('src/lib/originalAgentRunPrivacy.ts'),privacyNode=privacyTree.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='originalAgentRunPrivacy')
+let routeNode
+function visit(n){if(ts.isCallExpression(n)&&n.expression.getText(hookTree)==='useEffect'&&n.arguments[0]?.getText(hookTree).includes('appliedRoute.current===key')){assert(!routeNode);routeNode=n.arguments[0]}ts.forEachChild(n,visit)}visit(hookTree)
+assert(sessionNode&&routeNode&&privacyNode)
+const compile=(s,ports={})=>vm.runInNewContext(stripTypeScriptTypes('('+s.replace(/^export\s+/,'')+')',{mode:'strip'}),{structuredClone,...ports})
+const privacy=compile(privacyNode.getText(privacyTree)),sessionSource=sessionNode.getText(sessionTree)
+const employee='22222222-2222-4222-8222-222222222222',foreign='11111111-1111-4111-8111-111111111111',spec='33333333-3333-4333-8333-333333333333'
+const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r});return{promise,resolve}}
+const drain=async()=>{for(let i=0;i<35;i++)await Promise.resolve()}
+function dataChild(state){const listeners=new Set();return{snapshot:()=>state,subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn)},dispose(){listeners.clear()},setActive(){},setScopes(){},setWritable(){},navigationBlocked:()=>false,refresh:async()=>{},select:async()=>{}}}
+class DataError extends Error{constructor(status,code){super(code);this.status=status;this.code=code}}
+function fixture({legacy=false,failCatalog=false,requestedSpec=spec}={}){
+ const identityGate=deferred(),catalogGate=deferred(),catalogEntered=deferred(),observed=[],selected=[]
+ let identityReads=0,owner=employee,unavailable=false
+ const emptyRuns={runs:[],detail:null,loading:false,busy:false,pendingSubmit:null,pendingMutation:null,pendingHumanResponse:null,pendingRunControl:null,error:'',notice:''},emptyFeedback=()=>({busy:false,pending:null,status:null,runId:null,error:'',notice:''}),emptyMemory=()=>({busy:false,pending:null,items:[],error:'',notice:''}),memories=dataChild(emptyMemory())
+ memories.select=async row=>{selected.push(row?.id??null)}
+ const workspace=()=>({items:[],pending_items:[],pending_count:0,agent_run_total:0}),ports={PgNativePilotError:DataError,emptyWorkspace:workspace,emptyAutonomousView:emptyRuns,emptyFeedbackView:emptyFeedback,emptyMemoryView:emptyMemory,createOriginalRunCopyAction:()=>({close(){}}),createPgNativeAutonomousAgentSession:()=>dataChild(emptyRuns),createPgNativeFeedbackSession:()=>dataChild(emptyFeedback()),createPgNativeMemorySession:()=>memories,createOriginalOptimizationRecovery:()=>({refresh:async()=>{},snapshot:()=>({candidate:null,linked:false,loading:false,error:''}),dispose(){}}),originalRunApproval:()=>null,originalRunAgent(a,who){assert.equal(a.owner_user_id,who);return{id:a.id,name:a.name,spec:a.spec}}}
+ const source=legacy?sessionSource.replace("error='',notice='',loading=true,selectedAgent=''","error='',notice='',loading=false,selectedAgent=''"):sessionSource
+ if(legacy)assert.notEqual(source,sessionSource)
+ const create=compile(source,ports),c=create({employeeId:employee,verifyEmployee:async()=>{if(++identityReads===1)await identityGate.promise;if(unavailable)throw Error('identity DATA unavailable');return owner},api:{getConfigCapabilities:async()=>({}),listToolConnections:async()=>[]},models:{listSnapshot:async()=>({complete:true,items:[]})},home:{list:async()=>{catalogEntered.resolve();await catalogGate.promise;if(failCatalog)throw Error('catalog DATA unavailable');return[{id:spec,owner_user_id:employee,name:'Bob DATA agent',revision:1,spec:{tools:[],mcp_tools:[]}}]}},inbox:{workspace:async()=>workspace()},confirm:()=>{throw Error('unexpected mutation confirmation')}})
+ const controller={current:c},appliedRoute={current:''},effect=()=>{const actual=c.snapshot(),p=privacy(actual,owner),view=p.hidden?null:actual;const run=compile(routeNode.getText(hookTree),{controller,appliedRoute,view,requestedSpec,requestedRun:'',requestedKind:'',canAct:()=>privacy(c.snapshot(),owner).canAct});run()}
+ const unsubscribe=c.subscribe(()=>{observed.push(c.snapshot());effect()})
+ effect()
+ return{c,appliedRoute,observed,selected,identityGate,catalogGate,catalogEntered,effect,setOwner:v=>{owner=v},setUnavailable:v=>{unavailable=v},close(){unsubscribe();c.dispose()}}
+}
+test('spec-only deep link waits through first publish, identity and catalog before one owner selection',async()=>{const f=fixture();try{assert.equal(f.c.snapshot().loading,true);assert.equal(f.appliedRoute.current,'');const starting=f.c.activate();await drain();assert.equal(f.appliedRoute.current,'');f.identityGate.resolve();await f.catalogEntered.promise;assert.equal(f.appliedRoute.current,'');assert.equal(f.c.snapshot().selectedAgentId,'');f.catalogGate.resolve();await starting;await drain();assert.equal(f.c.snapshot().loading,false);assert.equal(f.c.snapshot().selectedAgentId,spec);assert.equal(f.appliedRoute.current,spec+'::');assert.equal(f.selected.filter(v=>v===spec).length,1)}finally{f.close()}})
+test('same actual route effect reproduces old early-consumption failure with only old initial loading value restored',async()=>{const f=fixture({legacy:true});try{assert.equal(f.appliedRoute.current,spec+'::');assert.equal(f.c.snapshot().selectedAgentId,'');const starting=f.c.activate();f.identityGate.resolve();await f.catalogEntered.promise;f.catalogGate.resolve();await starting;await drain();assert.equal(f.c.snapshot().agents.length,1);assert.equal(f.c.snapshot().selectedAgentId,'');assert.equal(f.selected.length,0)}finally{f.close()}})
+test('unknown spec still remains unselected after complete owner catalog',async()=>{const f=fixture({requestedSpec:foreign});try{const starting=f.c.activate();f.identityGate.resolve();await f.catalogEntered.promise;f.catalogGate.resolve();await starting;await drain();assert.equal(f.c.snapshot().loading,false);assert.equal(f.c.snapshot().selectedAgentId,'');assert.match(f.c.snapshot().error,/未找到/);assert.equal(f.selected.length,0)}finally{f.close()}})
+test('catalog failure keeps all private state hidden and never consumes route selection',async()=>{const f=fixture({failCatalog:true});try{const starting=f.c.activate();f.identityGate.resolve();await f.catalogEntered.promise;f.catalogGate.resolve();await starting;await drain();assert.equal(f.c.snapshot().sourceDenied,true);assert.equal(f.c.snapshot().agents.length,0);assert.equal(f.appliedRoute.current,'');assert.equal(f.selected.length,0)}finally{f.close()}})
+test('verified owner change during initial identity wait never exposes or selects old owner catalog',async()=>{const f=fixture();try{const starting=f.c.activate();f.setOwner(foreign);f.identityGate.resolve();await assert.rejects(starting,/employee_changed/);await drain();assert.equal(f.c.snapshot().ownerChanged,true);assert.equal(f.c.snapshot().selectedAgentId,'');assert.equal(f.appliedRoute.current,'');assert.equal(f.selected.length,0)}finally{f.close()}})
+test('unavailable initial identity keeps route unapplied and private data hidden',async()=>{const f=fixture();try{const starting=f.c.activate();f.setUnavailable(true);f.identityGate.resolve();await assert.rejects(starting,/identity_unavailable/);await drain();assert.equal(f.c.snapshot().suspended,true);assert.equal(f.c.snapshot().agents.length,0);assert.equal(f.appliedRoute.current,'');assert.equal(f.selected.length,0)}finally{f.close()}})

@@ -1,5 +1,6 @@
 // Auth-pool only. No business records or credential projection cross this API.
 import {createHash,randomUUID} from 'node:crypto'
+import {parseOriginalAccountExpectedOwner} from '../../../shared/original-account-contract.ts'
 import {NATIVE_LOCAL_ISSUER,hashOpaqueSession,hashEmployeePassword,verifyEmployeePassword,
   normalizeEmployeeEmail,validateEmployeeDisplayName,validateEmployeePassword} from './native-employee-auth.mjs'
 
@@ -93,13 +94,17 @@ export class NativeEmployeeGovernanceRepository{
       return employee({user_id:id,email,display_name,...after,governance_revision:1})
     })
   }
-  async changePassword(token,raw){
+  async changePassword(token,raw,expectedOwner){
+    const owner=expectedOwner===undefined?undefined:parseOriginalAccountExpectedOwner(expectedOwner)
     exact(raw,['old_password','new_password'])
     validateEmployeePassword(raw.new_password)
     if(typeof raw.old_password!=='string'||Buffer.byteLength(raw.old_password,'utf8')>256)fail('invalid_employee_governance_input')
     const password=await hashEmployeePassword(raw.new_password)
     return this.transaction(this.pool,async db=>{
       await lockGovernance(db);const actor=await session(db,token)
+      // This comparison uses the locked, verified session row in the write
+      // transaction; the HTTP profile and expected owner are not authority.
+      if(owner!==undefined&&actor!==owner)fail('session_changed')
       const row=(await db.query('SELECT password_record FROM agentstudio_auth.accounts WHERE user_id=$1::uuid FOR UPDATE',[actor])).rows[0]
       if(!await verifyEmployeePassword(raw.old_password,row?.password_record))fail('invalid_current_password')
       if(await verifyEmployeePassword(raw.new_password,row.password_record))fail('employee_password_unchanged')

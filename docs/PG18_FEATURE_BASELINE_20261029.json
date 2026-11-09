@@ -1,0 +1,2608 @@
+{
+  "format": "pg18_reachable_feature_source_inventory_v1",
+  "snapshot_date": "2026-10-29",
+  "source_audit_sha256": "b0cd8581a187432881cef9f9224ef5e2da123f60000a8b43403e9d451179ee84",
+  "scope": "Source reachability and implementation correspondence only. Not browser execution, behavioral equivalence, release evidence or activation authority.",
+  "is_authority": false,
+  "production_GO": false,
+  "snapshots": {
+    "D": {
+      "meaning": "Original user working tree; includes uncommitted additions, not asserted equal to HEAD. No files are copied into the migration candidate by this inventory.",
+      "resolved_HEAD": "3cdf117dbf4f7c2030fdfac514cf64b5a6da83cb"
+    },
+    "H": {
+      "meaning": "Canonical migration candidate before later HTTP/UI integration. Raw worktree byte hashes, not portable normalized Git blob hashes.",
+      "resolved_HEAD": "f63c98bcdac34a5113fa8e751265329024755644"
+    }
+  },
+  "classification_counts": {
+    "A_confirmed_preexisting_active_behavior_Native_gap": 12,
+    "B_Native_implementation_exists_do_not_rebuild": 13,
+    "C_not_active_baseline_or_new_product_not_required": 1,
+    "P_D_worktree_reachable_addition_provenance_scope_unresolved": 5
+  },
+  "classification_meaning": {
+    "A": "Concrete preexisting reachable PB action lacks the corresponding Native flow; needs implementation and verification.",
+    "B": "Native implementation exists; reuse it and verify remaining scope instead of rebuilding it. This is not employee UAT or target acceptance.",
+    "P": "Reachable D working-tree addition requires provenance/scope reconciliation. Preserve the source and evaluate it; untracked does not mean deletable or dispensable.",
+    "C": "Not an established active baseline or is an additional product; not automatically a migration prerequisite."
+  },
+  "business_routes": [
+    {
+      "path": "/",
+      "mapped_feature_ids": [
+        "F01",
+        "F03",
+        "F22",
+        "F26"
+      ],
+      "gate": "verified studio_users",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": true
+    },
+    {
+      "path": "/agent-create",
+      "mapped_feature_ids": [
+        "F01",
+        "F02",
+        "F22"
+      ],
+      "gate": "verified studio_users",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": false
+    },
+    {
+      "path": "/internal-templates",
+      "mapped_feature_ids": [
+        "F08"
+      ],
+      "gate": "verified studio_users",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": true
+    },
+    {
+      "path": "/agent-collaboration",
+      "mapped_feature_ids": [
+        "F09"
+      ],
+      "gate": "verified studio_users",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": true
+    },
+    {
+      "path": "/internal-overview",
+      "mapped_feature_ids": [
+        "F26"
+      ],
+      "gate": "verified studio_users + AdminGate",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": true
+    },
+    {
+      "path": "/staff",
+      "mapped_feature_ids": [
+        "F25"
+      ],
+      "gate": "verified studio_users + AdminGate",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": true
+    },
+    {
+      "path": "/manager",
+      "mapped_feature_ids": [
+        "F25",
+        "F26",
+        "F27"
+      ],
+      "gate": "verified studio_users + AdminGate",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": true
+    },
+    {
+      "path": "/agent-run",
+      "mapped_feature_ids": [
+        "F03",
+        "F04",
+        "F05",
+        "F20",
+        "F21",
+        "F24",
+        "F28",
+        "F29",
+        "F31"
+      ],
+      "gate": "verified studio_users",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": true
+    },
+    {
+      "path": "/model-connections",
+      "mapped_feature_ids": [
+        "F13"
+      ],
+      "gate": "verified studio_users",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": true
+    },
+    {
+      "path": "/version-release",
+      "mapped_feature_ids": [
+        "F10"
+      ],
+      "gate": "verified studio_users",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": true
+    },
+    {
+      "path": "/tool-connections",
+      "mapped_feature_ids": [
+        "F13",
+        "F15"
+      ],
+      "gate": "verified studio_users",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": true
+    },
+    {
+      "path": "/run-detail",
+      "mapped_feature_ids": [
+        "F04",
+        "F06",
+        "F24"
+      ],
+      "gate": "verified studio_users",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": true
+    },
+    {
+      "path": "/template-market",
+      "mapped_feature_ids": [
+        "F07"
+      ],
+      "gate": "verified studio_users",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": true
+    },
+    {
+      "path": "/workflow-canvas",
+      "mapped_feature_ids": [
+        "F05",
+        "F06"
+      ],
+      "gate": "verified studio_users",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": true
+    },
+    {
+      "path": "/scheduled-tasks",
+      "mapped_feature_ids": [
+        "F23"
+      ],
+      "gate": "verified studio_users",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": true
+    },
+    {
+      "path": "/knowledge-bases",
+      "mapped_feature_ids": [
+        "F14"
+      ],
+      "gate": "verified studio_users",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": true
+    },
+    {
+      "path": "/tool-hub",
+      "mapped_feature_ids": [
+        "F17",
+        "F19",
+        "F20",
+        "F21"
+      ],
+      "gate": "verified studio_users",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": true
+    },
+    {
+      "path": "/integrate",
+      "mapped_feature_ids": [
+        "F11",
+        "F12"
+      ],
+      "gate": "verified studio_users",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": true
+    },
+    {
+      "path": "/plugin-market",
+      "mapped_feature_ids": [
+        "F15",
+        "F16",
+        "F18"
+      ],
+      "gate": "verified studio_users",
+      "D_navigation_declared": true,
+      "H_PB_route_also_declared": true
+    }
+  ],
+  "features": [
+    {
+      "id": "F01",
+      "classification": "A_confirmed_preexisting_active_behavior_Native_gap",
+      "priority": "P1",
+      "title": "自然语言创建结构化助手方案与自然语言修改",
+      "D_routes": [
+        "/",
+        "/agent-create"
+      ],
+      "conclusion": "确认真实保留缺口。H旧首页已有该行为，不依赖D未入索引的五步向导；不能仅因Native能执行任意模型任务就视为已提供设计闭环。",
+      "next_safe_action": "先为已验证Owner/当前模型与资源准备有界设计请求/结果/预览契约，复用现有broker/持久回执和unknown恢复；明确目的/费用，解析后显式保存，不重新实现通用模型Worker。",
+      "legacy_actions": [
+        "D首页展开“快速生成方案”details，或五步页第一步→CreateComposer.onCreate→handleCreate→runGenerate→callLlmWithFallback；H旧首页同一生成器直接可见",
+        "SpecEditorCard.onRevise→runRevise；生成JSON预览/编辑后另行保存 /api/agent_specs"
+      ],
+      "Native": {
+        "configuration_gates": "configurationWrites / model连接与已有付费执行开关可复用；无单独已挂载的设计/修订用途开关或协议。",
+        "SDK_operations_or_missing_flow": "createAgent(name,goal)和手工完整spec更新存在；Agent评审生成接受已有，但不等于从新需求生成/修订新角色。未见此设计动作的NativeSDK/UI/受保护结果契约。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_home",
+        "d_wizard",
+        "d_home_hook",
+        "d_llm_client",
+        "h_home",
+        "h_home_hook",
+        "d_llm_hook",
+        "h_llm_hook",
+        "d_agent_specs_hook",
+        "h_agent_specs_hook",
+        "d_pb_auth",
+        "h_pb_auth",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_sdk",
+        "native_model_tools",
+        "native_autonomous",
+        "test_employee_run_spec_mjs",
+        "test_agent_generated_acceptance_spec_mjs"
+      ]
+    },
+    {
+      "id": "F02",
+      "classification": "P_D_worktree_reachable_addition_provenance_scope_unresolved",
+      "priority": "scope_before_author",
+      "title": "五步首次创建向导、质量门槛及资源引导",
+      "D_routes": [
+        "/agent-create"
+      ],
+      "conclusion": "D当前确实可达，但导航/AgentCreatePage/agentCreateJourney不在D当前索引，且没有验证其属于3cdf HEAD或本目标已接受历史。先把引导体验与F01已存在核心行为分开。",
+      "next_safe_action": "保留源码/来源待核对状态，查可信原任务授权或已验收UI记录后再决定迁移五步体验；F01可以先做。不得把新向导全部逻辑强制作为正式迁移前置。",
+      "legacy_actions": [
+        "描述→生成方案→连接资源→试跑→版本发布",
+        "读取模型连接；按当前spec查询recent/detail核实真实输出；跳转 /agent-run?spec 和 /version-release?spec"
+      ],
+      "Native": {
+        "configuration_gates": "基础config/run/release独立开关已有；无五阶段路由。",
+        "SDK_operations_or_missing_flow": "现有Native可创建/编辑/绑定/执行/发布；缺少同一向导UI不代表全部基础功能缺失。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_wizard",
+        "d_wizard_contract",
+        "d_home_hook",
+        "d_agent_specs_hook",
+        "d_llm_hook",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_sdk",
+        "native_model_tools",
+        "native_releases",
+        "native_autonomous"
+      ]
+    },
+    {
+      "id": "F03",
+      "classification": "B_Native_implementation_exists_do_not_rebuild",
+      "priority": "retain",
+      "title": "手工Agent配置、模型/HTTP/MCP/知识资源绑定和方案人工确认",
+      "D_routes": [
+        "/",
+        "/agent-run",
+        "/model-connections",
+        "/tool-connections"
+      ],
+      "conclusion": "Native真实实现和入口已找到；不重做。对实际限制/尚需精确current-head验收另列，不以D自动匹配等新UX推断后端不存在。",
+      "next_safe_action": "保留当前Owner/版本/显式副作用审批；只补最终范围/角色可见性和候选证据，不新建第二套Agent配置域。",
+      "legacy_actions": [
+        "创建/编辑/保存角色描述、任务/标准",
+        "绑定当前本人模型、HTTP/MCP工具与可读知识；require_plan_review"
+      ],
+      "Native": {
+        "configuration_gates": "configurationWrites；boundModelExecutionUat/autonomousAgentUat；mcpToolExecutionUat/knowledgeToolExecutionUat；人工输入schema与独立开关。",
+        "SDK_operations_or_missing_flow": "createAgent/updateAgent/set模型与HTTP/MCP/知识绑定、human response/confirm均已有。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_home",
+        "d_run_page",
+        "d_agent_specs_hook",
+        "d_agent_engine",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_sdk",
+        "native_model_tools",
+        "native_http_tools",
+        "native_mcp",
+        "native_autonomous",
+        "test_employee_run_spec_mjs",
+        "test_autonomous_agent_spec_mjs",
+        "test_pg_native_mcp_execution_test_mjs"
+      ]
+    },
+    {
+      "id": "F04",
+      "classification": "B_Native_implementation_exists_do_not_rebuild",
+      "priority": "retain",
+      "title": "多轮执行、本人逐步审批、人工补充与取消/原请求恢复",
+      "D_routes": [
+        "/agent-run",
+        "/run-detail"
+      ],
+      "conclusion": "核心Native执行/审批已有；不是经理委托授权。逐个PB状态操作是否等价以受保护Native状态机/证据核对，不能照搬旧tick。",
+      "next_safe_action": "针对明确用户动作做状态/恢复等价表，保留unknown不自动POST及来源失效拒绝；委托缺口见F27。",
+      "legacy_actions": [
+        "start、poll/events/detail、approve/reject、respond、pause/resume/cancel、查看结果"
+      ],
+      "Native": {
+        "configuration_gates": "autonomousAgentUat/boundModelExecutionUat；人类输入/记忆等独立能力；默认关闭。",
+        "SDK_operations_or_missing_flow": "submitAutonomousAgentRun/decideAutonomousAgentNode/respond/confirm/cancel/steps/history等存在；pause/resume等细节须按实际Native状态机对照，不要求端点同名。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_run_page",
+        "d_run_hook",
+        "d_agent_engine",
+        "d_background_worker",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_autonomous",
+        "native_sdk",
+        "test_autonomous_agent_spec_mjs",
+        "test_employee_run_spec_mjs"
+      ]
+    },
+    {
+      "id": "F05",
+      "classification": "A_confirmed_preexisting_active_behavior_Native_gap",
+      "priority": "P1",
+      "title": "从已有Agent方案一键生成工作流草图",
+      "D_routes": [
+        "/agent-run",
+        "/workflow-canvas"
+      ],
+      "conclusion": "确认现有行为缺口，范围仅现有“方案→图”的员工动作；不能把它误写成Workflow V2整体未实现，也不扩张独立子工作流。",
+      "next_safe_action": "先写Agent版本/资源到有界图草案的来源/目的契约和typed graph适配，复用现有图验证/编辑/保存与执行；付费生成需明确授权，不自动运行。",
+      "legacy_actions": [
+        "SpecConfigPanel.onGenerateWorkflow→handleGenerateWorkflow→POST /api/workflow-studio/generate-from-spec→跳转工作流画布"
+      ],
+      "Native": {
+        "configuration_gates": "configurationWrites/workflowV2ExecutionUat及现有图验证；未见Agent→生成草图的专门目的和入口。",
+        "SDK_operations_or_missing_flow": "Native图导入/模板/节点编辑/保存/运行已实现；未见等价Agent→模型生成图的SDK或页面动作。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_run_page",
+        "d_spec_config",
+        "d_run_hook",
+        "h_run_page",
+        "h_spec_config",
+        "h_run_hook",
+        "d_workflow_hook",
+        "h_workflow_hook",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_workflow",
+        "native_workflow_sdk",
+        "native_sdk",
+        "test_workflow_canvas_spec_mjs",
+        "test_pg_native_workflow_authoring_test_mjs"
+      ]
+    },
+    {
+      "id": "F06",
+      "classification": "B_Native_implementation_exists_do_not_rebuild",
+      "priority": "retain",
+      "title": "Workflow画布、节点/输出/样本调试、导入导出及真实执行",
+      "D_routes": [
+        "/workflow-canvas",
+        "/run-detail"
+      ],
+      "conclusion": "已有实际Native组件/SDK/路由和测试源；不可因旧Start/End文档或缺少F05生成按钮重做V2。",
+      "next_safe_action": "沿用现有实现；按当前head/最终资源组合核对浏览器与真实PG运行证据。",
+      "legacy_actions": [
+        "画布新建/编辑、模板/导入导出、验证",
+        "模型节点试调、样本来源、整图运行/审批/人工输入、节点/输出历史"
+      ],
+      "Native": {
+        "configuration_gates": "configurationWrites、workflowValidationUat/workflowV2ExecutionUat与所选资源独立能力。",
+        "SDK_operations_or_missing_flow": "create/update workflow、model-node-debug、native-runs、decision/respond、steps/outputs/output-history存在。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_run_page",
+        "d_workflow_hook",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_workflow",
+        "native_workflow_sdk",
+        "native_sdk",
+        "test_workflow_canvas_spec_mjs",
+        "test_workflow_v2_node_debug_test_mjs",
+        "test_pg_native_workflow_authoring_test_mjs"
+      ]
+    },
+    {
+      "id": "F07",
+      "classification": "A_confirmed_preexisting_active_behavior_Native_gap",
+      "priority": "P1",
+      "title": "模板中心发布、复用、下架/恢复/删除",
+      "D_routes": [
+        "/template-market"
+      ],
+      "conclusion": "确认跨D/H旧PB都可达的现有功能缺口；D页面局部修改不决定该核心行为是否存在。",
+      "next_safe_action": "先定义安全模板快照/发布状态/复制结果和Owner重绑定契约，再做独立schema/仓库/路由/SDK/UI；复制不带凭据或来源Owner能力。",
+      "legacy_actions": [
+        "GET /api/templates/market、mine",
+        "POST /api/templates/publish；/{id}/use；/{id}/unpublish；/{id}/republish；DELETE /{id}"
+      ],
+      "Native": {
+        "configuration_gates": "Native releases/collaboration config开关存在；无实际模板市场域和入口开关。",
+        "SDK_operations_or_missing_flow": "完整发布快照、协作提案和Workflow内置模板不等价模板市场发布/复制；Native路由表和SDK未挂此业务。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_template_page",
+        "d_template_hook",
+        "h_template_page",
+        "h_template_hook",
+        "d_template_pb",
+        "h_template_pb",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_releases",
+        "native_collaboration",
+        "native_workflow",
+        "test_releases_spec_mjs",
+        "test_collaboration_spec_mjs"
+      ]
+    },
+    {
+      "id": "F08",
+      "classification": "A_confirmed_preexisting_active_behavior_Native_gap",
+      "priority": "P1",
+      "title": "团队内部单次模板分享、预览、兑换、撤销",
+      "D_routes": [
+        "/internal-templates"
+      ],
+      "conclusion": "确认核心现有功能缺口；不要重做已验收员工share_enabled治理。",
+      "next_safe_action": "与F07共享安全模板快照契约，独立邀请epoch/来源指纹/到期/单次消费与Owner审计；兑换端重新选择/绑定本人资源。",
+      "legacy_actions": [
+        "GET /api/internal/templates；POST同一路径 action=preview/create/redeem/revoke",
+        "分享资格开关、明确审阅、一次展示分享码、固定期限/一次兑换"
+      ],
+      "Native": {
+        "configuration_gates": "employeeProvisioning/分享资格治理已实现；缺少内部邀请/兑换的独立Native域。",
+        "SDK_operations_or_missing_flow": "Native分享资格与员工治理不等于实际模板邀请；未见等价SDK/UI/存储链。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_internal_template_page",
+        "h_internal_template_page",
+        "d_internal_template_pb",
+        "h_internal_template_pb",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_employees",
+        "native_releases",
+        "native_collaboration",
+        "test_internal_templates_integration_mjs",
+        "test_employees_spec_mjs"
+      ]
+    },
+    {
+      "id": "F09",
+      "classification": "B_Native_implementation_exists_do_not_rebuild",
+      "priority": "retain",
+      "title": "多人Agent协作、提案审查及安全描述历史/恢复",
+      "D_routes": [
+        "/agent-collaboration"
+      ],
+      "conclusion": "Native能力和挂载已存在；角色提案审核不等于运行代审批。",
+      "next_safe_action": "沿用既有实现和权限/历史回执；补最终候选证据，不新增组织/多级审批。",
+      "legacy_actions": [
+        "Owner授权/撤销、编辑提案、接受/拒绝、差异/历史/恢复"
+      ],
+      "Native": {
+        "configuration_gates": "collaborationAvailable + configurationWrites；当前员工身份/资源权限再检查。",
+        "SDK_operations_or_missing_flow": "collaboration workspace/change/confirm/revoke/reject/revisions等存在。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_agent_specs_hook",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_collaboration",
+        "native_sdk",
+        "test_collaboration_spec_mjs"
+      ]
+    },
+    {
+      "id": "F10",
+      "classification": "B_Native_implementation_exists_do_not_rebuild",
+      "priority": "retain",
+      "title": "角色完整版本快照、验收、发布及按版本运行",
+      "D_routes": [
+        "/version-release"
+      ],
+      "conclusion": "Native完整发布实现已存在；不能拿它代替F07模板市场或F12外部调用。",
+      "next_safe_action": "仅核对最终实际版本/资源/运行快照证据和真实员工UAT。",
+      "legacy_actions": [
+        "保存版本、核对资源/验收、显式发布/恢复、绑定版本试跑"
+      ],
+      "Native": {
+        "configuration_gates": "releasesAvailable、configurationWrites、autonomousAgentUat与MCP/知识/人工输入组合。",
+        "SDK_operations_or_missing_flow": "Agent release workspace/detail/change/confirm及版本运行已有。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_wizard",
+        "d_agent_specs_hook",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_releases",
+        "native_sdk",
+        "test_releases_spec_mjs"
+      ]
+    },
+    {
+      "id": "F11",
+      "classification": "A_confirmed_preexisting_active_behavior_Native_gap",
+      "priority": "P1",
+      "title": "已发布Agent的API调用钥匙和本人试调用/记录",
+      "D_routes": [
+        "/integrate"
+      ],
+      "conclusion": "确认现有功能缺口，涉及调用者身份和费用边界，不能将公开调用转成任意Owner注入。",
+      "next_safe_action": "独立caller作用域/钥匙摘要/一次展示/版本绑定/撤销/重放与unknown契约；复用既有安全执行管线，另行显式调用授权和预算。",
+      "legacy_actions": [
+        "GET agents/keys/invocations/stats",
+        "POST keys；POST keys/{id}/reissue；DELETE keys/{id}",
+        "POST test-run；GET test-run/poll"
+      ],
+      "Native": {
+        "configuration_gates": "Native版本与运行开关已有；无caller钥匙发行/摘要/轮换/撤销/限额的Native功能配置。",
+        "SDK_operations_or_missing_flow": "版本发布、本人cookie任务和历史查询不能替代API caller钥匙；未见integration SDK/入口。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_integration_page",
+        "d_integration_hook",
+        "h_integration_page",
+        "h_integration_hook",
+        "d_integration_pb",
+        "h_integration_pb",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_releases",
+        "native_autonomous",
+        "native_sdk"
+      ]
+    },
+    {
+      "id": "F12",
+      "classification": "A_confirmed_preexisting_active_behavior_Native_gap",
+      "priority": "P1",
+      "title": "嵌入配置、嵌入预览及公开授权run/poll",
+      "D_routes": [
+        "/integrate"
+      ],
+      "conclusion": "确认已有业务缺口，和F11同域分阶段实现；不新建商业SaaS或旧RunningHub支付。",
+      "next_safe_action": "先固定F11后端caller ABI，再写隔离嵌入UI/严格client、Origin和最小结果投影，保持未知状态和撤销/停用。",
+      "legacy_actions": [
+        "GET/POST /api/integrate/embed-config",
+        "POST /api/public/agent/run；GET /api/public/agent/poll",
+        "GET /embed/{token}；GET /embed.js；本人页面预览/文档"
+      ],
+      "Native": {
+        "configuration_gates": "需与F11同一独立caller/fee/版本策略；目前无等价Native公开路由或embed产物挂载。",
+        "SDK_operations_or_missing_flow": "Nativecookie员工工作台并非可嵌入的已发布Agent调用界面。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_integration_page",
+        "d_integration_hook",
+        "h_integration_page",
+        "d_integration_pb",
+        "h_integration_pb",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_releases",
+        "native_autonomous"
+      ]
+    },
+    {
+      "id": "F13",
+      "classification": "B_Native_implementation_exists_do_not_rebuild",
+      "priority": "retain",
+      "title": "模型连接与独立HTTP工具连接的配置/探测",
+      "D_routes": [
+        "/model-connections",
+        "/tool-connections"
+      ],
+      "conclusion": "Native实现已存在；独立“真实试调”另见F17。",
+      "next_safe_action": "保留凭据不回前端、exact endpoint/SSRF/Owner/版本检查，按当前功能组合补证据。",
+      "legacy_actions": [
+        "本人连接CRUD、密钥保存/轮换、验证可用模型",
+        "HTTP工具URL/method/schema/headers配置；绑定时重新检查"
+      ],
+      "Native": {
+        "configuration_gates": "configurationWrites、modelProbeUat、mcpDiscoveryUat等各自开关。",
+        "SDK_operations_or_missing_flow": "model-connections、tool-connections CRUD/probe以及Agent binding存在；tool连接投影execution_enabled:false是安全配置语义，不能误判整个工具执行未实现。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_model_tools",
+        "native_http_tools",
+        "native_sdk",
+        "test_tool_connection_http_test_mjs",
+        "test_employee_run_spec_mjs"
+      ]
+    },
+    {
+      "id": "F14",
+      "classification": "B_Native_implementation_exists_do_not_rebuild",
+      "priority": "retain",
+      "title": "知识库文件/文本导入、删除、关键词、共享及语义RAG",
+      "D_routes": [
+        "/knowledge-bases"
+      ],
+      "conclusion": "正向源码证实已实现。旧独立TXT/MD UAT面板被productionRoot排除，不代表生产独立页不能上传文件；不得重做解析器/ACL/语义管线。",
+      "next_safe_action": "核对实际文档大小/格式和现有PB支持范围、当前配置/真实目标权限；不新增OCR或XLSX知识解析（现有知识扩展列表无XLSX）。",
+      "legacy_actions": [
+        "支持TXT/MD/CSV/TSV/JSON/HTML/PDF/DOCX，文本粘贴，文档删除/关键词检索",
+        "团队授权/撤销，embedding模型/单独费用许可，索引/查询/工具执行"
+      ],
+      "Native": {
+        "configuration_gates": "knowledgeSharingUat；embeddingSettings/Consent/index/query/tool独立能力；config写开关。",
+        "SDK_operations_or_missing_flow": "importSharedKnowledge/deleteSharedKnowledge/access/receipt + base64 file payload和真实文档解析已接；productionRoot知识页挂PgNativeKnowledgeSharingPanel。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_knowledge_page",
+        "d_knowledge_reader",
+        "h_knowledge_page",
+        "d_knowledge_pb",
+        "h_knowledge_pb",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_knowledge",
+        "native_knowledge_client",
+        "native_sdk",
+        "test_pg_native_knowledge_sharing_test_mjs",
+        "test_knowledge_sharing_spec_mjs",
+        "test_knowledge_semantic_spec_mjs",
+        "test_document_parser_test_mjs",
+        "test_document_worker_test_mjs"
+      ]
+    },
+    {
+      "id": "F15",
+      "classification": "B_Native_implementation_exists_do_not_rebuild",
+      "priority": "retain",
+      "title": "MCP连接/发现/Agent与Workflow执行、Smithery托管目录搜索",
+      "D_routes": [
+        "/plugin-market",
+        "/tool-connections",
+        "/agent-run",
+        "/workflow-canvas"
+      ],
+      "conclusion": "已有Native能力，不把“插件目录”统称缺失。F16只指官方公共注册表浏览层，F18只指独立人工试调用/日志。",
+      "next_safe_action": "复用已验收连接与网络/资源绑定，不建第二套MCP或Smithery实现。",
+      "legacy_actions": [
+        "本人MCP连接/发现、选择具体工具、绑定Agent/Workflow",
+        "Smithery key/工作空间/catalog分页搜索、connect/授权页面、refresh/pause/retry/revoke"
+      ],
+      "Native": {
+        "configuration_gates": "configurationWrites、mcpDiscoveryUat、mcpToolExecutionUat、smitheryManagementUat。",
+        "SDK_operations_or_missing_flow": "searchSmitheryCatalog和catalog POST实际存在，连接CRUD/discover及Smithery操作存在。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_market_page",
+        "d_market_hook",
+        "h_market_page",
+        "d_market_pb",
+        "h_market_pb",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_mcp",
+        "native_smithery",
+        "native_sdk",
+        "test_pg_native_smithery_test_mjs",
+        "test_smithery_http_test_mjs",
+        "test_pg_native_mcp_execution_test_mjs"
+      ]
+    },
+    {
+      "id": "F16",
+      "classification": "A_confirmed_preexisting_active_behavior_Native_gap",
+      "priority": "P2",
+      "title": "MCP公共注册表搜索/推荐/详情/中文说明",
+      "D_routes": [
+        "/plugin-market"
+      ],
+      "conclusion": "确认旧PB双方都存在的范围差异；D将其折叠不等于不可达或废弃。",
+      "next_safe_action": "补最小只读registry数据投影/边界/分页/详情，复用现有MCP连接选择；仅保留已存在说明功能，翻译显式费用。",
+      "legacy_actions": [
+        "登录后打开高级details（D）；H旧页面MarketBrowser本来可达",
+        "GET /api/market/list、lookup，推荐条目；PluginDetailDrawer；POST /api/market/i18n"
+      ],
+      "Native": {
+        "configuration_gates": "Smithery目录已有且不同；无public MCP registry/i18n Native开关或SDK动作。",
+        "SDK_operations_or_missing_flow": "searchSmitheryCatalog不是官方MCP注册表list/lookup；未见等价Native公开目录UI/数据源。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_market_page",
+        "d_market_hook",
+        "h_market_page",
+        "h_market_hook",
+        "d_market_pb",
+        "h_market_pb",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_smithery",
+        "native_mcp",
+        "test_pg_native_smithery_test_mjs"
+      ]
+    },
+    {
+      "id": "F17",
+      "classification": "A_confirmed_preexisting_active_behavior_Native_gap",
+      "priority": "P1",
+      "title": "独立内置/HTTP工具在线真实试调",
+      "D_routes": [
+        "/tool-hub"
+      ],
+      "conclusion": "确认原PB可达缺口；补目的/回执/审计而不是绕过审批开一个任意HTTP代理。",
+      "next_safe_action": "先定义限工具/限源/Owner/当前版本/参数摘要和显式写授权的trial契约，复用Broker/SSRF/unknown规则；后台运行的副作用不重发。",
+      "legacy_actions": [
+        "BuiltinToolCards/ExternalToolList→openDebug→DebugConsole.onRun→runDebug",
+        "POST /api/llm/tool-hub/debug（同Handler另有/api/tool-hub/debug）；外写confirm"
+      ],
+      "Native": {
+        "configuration_gates": "既有工具/Workflow执行开关可复用规则；无独立tool-trial目的/请求与UI。",
+        "SDK_operations_or_missing_flow": "Workflow model-node-debug、连接探测和正常任务工具执行已存在，不是这套独立试调台。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_tool_hub_page",
+        "h_tool_hub_page",
+        "d_builtin_cards",
+        "d_external_cards",
+        "d_debug_console",
+        "d_tool_hub_hook",
+        "d_tool_hub_pb",
+        "h_tool_hub_pb",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_http_tools",
+        "native_workflow",
+        "native_autonomous",
+        "native_sdk",
+        "test_tool_debug_integration_mjs",
+        "test_workflow_v2_node_debug_test_mjs"
+      ]
+    },
+    {
+      "id": "F18",
+      "classification": "A_confirmed_preexisting_active_behavior_Native_gap",
+      "priority": "P2",
+      "title": "MCP独立工具试调用及本人调用日志",
+      "D_routes": [
+        "/plugin-market"
+      ],
+      "conclusion": "确认可达行为差异；与F17统一安全trial域，避免两套请求账本。",
+      "next_safe_action": "F17契约加入MCP工具来源/连接/catalog版本/效应与隐私边界，再复用真实MCP执行模块。",
+      "legacy_actions": [
+        "连接选择→具体工具→参数→InvokeTestPanel.onRunInvoke",
+        "POST /api/market/invoke；GET /api/market/invocations；MarketInvocationLog"
+      ],
+      "Native": {
+        "configuration_gates": "MCP discovery/execution已有；独立trial应纳入F17，不扩大连接权限。",
+        "SDK_operations_or_missing_flow": "未见独立MCP trial/log SDK和UI；正常任务steps/output日志不能无说明地替代此功能。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_market_page",
+        "d_market_hook",
+        "h_market_page",
+        "h_market_hook",
+        "d_market_pb",
+        "h_market_pb",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_mcp",
+        "native_smithery",
+        "native_autonomous",
+        "test_pg_native_mcp_execution_test_mjs"
+      ]
+    },
+    {
+      "id": "F19",
+      "classification": "A_confirmed_preexisting_active_behavior_Native_gap",
+      "priority": "P2",
+      "title": "本人跨任务工具调用记录、统计和Harness诊断",
+      "D_routes": [
+        "/tool-hub"
+      ],
+      "conclusion": "部分已有、差异明确：不重做CT03总览；只补当前Owner invocation/harness投影。Worker心跳由独立既有NATIVE-01推进，不用队列数量伪造。",
+      "next_safe_action": "先定义无私密参数/凭据/正文的有界Owner调用投影、分页和统计口径，核对现有审计是否可复用；真实遥测UI另按冻结ABI接线。",
+      "legacy_actions": [
+        "GET /api/tool-hub/invocations（limit/filter）、stats",
+        "GET /api/harness/monitor；手动刷新与安全摘要",
+        "WorkerStatusPanel为D新增工作树入口，来源边界另列F22/F29"
+      ],
+      "Native": {
+        "configuration_gates": "own/company已挂载；当前公司Worker合同仍unavailable；新controller已通过但运行reporter/HTTP未等同上线。",
+        "SDK_operations_or_missing_flow": "本人待办/计数、任务steps和公司数量已有；未见Owner所有工具调用的同等筛选/统计/harness整体入口。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_tool_hub_page",
+        "d_tool_hub_hook",
+        "h_tool_hub_page",
+        "h_tool_hub_hook",
+        "d_tool_hub_pb",
+        "h_tool_hub_pb",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_own",
+        "native_company",
+        "native_autonomous",
+        "native_workflow",
+        "test_company_overview_spec_mjs",
+        "test_pg_native_company_overview_test_mjs"
+      ]
+    },
+    {
+      "id": "F20",
+      "classification": "P_D_worktree_reachable_addition_provenance_scope_unresolved",
+      "priority": "scope_before_author",
+      "title": "本机设备配对、撤销、人工试调及Agent local_computer任务",
+      "D_routes": [
+        "/tool-hub",
+        "/agent-run"
+      ],
+      "conclusion": "D源级可达、联动Hook与执行器完整；关键新增文件不在当前D索引，未验证HEAD历史或原始授权。属于范围待定，不列为已确认迁移阻塞。",
+      "next_safe_action": "先找该域原任务/提交或可信验收记录，明确已授权保留的有限能力；确认后独立设计Native设备owner/revocation/claim/结果，不移植任意shell。",
+      "legacy_actions": [
+        "POST/GET /api/local-devices；revoke；/jobs；/api/local-jobs/{id}读取/cancel",
+        "Agent run携带local_device_id，每次工具批准后enqueue；等待实际结果",
+        "本机CLI pair/run→public/local-executor pair/poll/check/complete"
+      ],
+      "Native": {
+        "configuration_gates": "Native Owner审批已有，但没有这些设备/执行器/任务资源；该域是否进入原目标仍需工作树来源确认。",
+        "SDK_operations_or_missing_flow": "H相应文件缺失；不能靠普通MCP执行声称已经接入，也不能据D未入索引文件直接要求新增设备产品。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_tool_hub_page",
+        "d_device_panel",
+        "d_device_selector",
+        "d_run_hook",
+        "d_agent_engine",
+        "d_device_pb",
+        "d_device_module",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_autonomous",
+        "native_sdk",
+        "test_local_computer_integration_mjs"
+      ]
+    },
+    {
+      "id": "F21",
+      "classification": "P_D_worktree_reachable_addition_provenance_scope_unresolved",
+      "priority": "scope_before_author",
+      "title": "办公台账汇总→Word/Excel报告→可选网页录入",
+      "D_routes": [
+        "/tool-hub",
+        "/agent-run"
+      ],
+      "conclusion": "D当前实际可达，但office新增文件未入索引，历史授权未核实。先保留为工作树候选，不强行扩成正式迁移必备新产品。",
+      "next_safe_action": "与F20一并确认授权来源、受限格式/目录/网址/实际产物；确认前不作者Native office/设备schema或新桌面执行器。",
+      "legacy_actions": [
+        "打开办公details、下载CSV样例、选择在线已授权设备与根目录",
+        "create office Agent→navigate AgentRun携带officeTask",
+        "office.table_summary→office.create_report（实际source hash）→回读清单；可选allowlisted浏览器逐次审批"
+      ],
+      "Native": {
+        "configuration_gates": "依赖F20设备范围确认；H无相同办公有限工具/交接。",
+        "SDK_operations_or_missing_flow": "Agent通用工具执行已有，但具体Office工具不在H；不得泛化成所有文件或任意桌面权限。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_office_panel",
+        "d_office_contract",
+        "d_device_panel",
+        "d_device_pb",
+        "d_device_module",
+        "d_agent_engine",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_autonomous",
+        "native_sdk",
+        "test_local_office_test_mjs",
+        "test_local_computer_integration_mjs"
+      ]
+    },
+    {
+      "id": "F22",
+      "classification": "P_D_worktree_reachable_addition_provenance_scope_unresolved",
+      "priority": "scope_before_author",
+      "title": "D导航/管理可见性、草稿及资源返回的体验增强",
+      "D_routes": [
+        "/agent-create",
+        "/manager",
+        "/staff",
+        "/internal-overview"
+      ],
+      "conclusion": "D索引/工作树不同；需区分原有可用性修复与新增体验。H PB缺AdminGate不直接证明服务端权限漏洞。",
+      "next_safe_action": "仅把明确的角色可见性和可恢复用户请求需求映射到Native现有session/页面生命周期；未验证授权的新导航/自动匹配体验不作为迁移schema需求。",
+      "legacy_actions": [
+        "统一sidebar/mobile/Ctrl+K菜单、AdminGate、错误边界/未保存提醒/草稿恢复",
+        "工具市场返回/资源自动匹配与五步向导"
+      ],
+      "Native": {
+        "configuration_gates": "Native真实cookie身份、is_admin/员工治理和capabilities已存在。",
+        "SDK_operations_or_missing_flow": "独立Native工作台不同导航结构本身不是业务功能丢失；配置默认关闭也不是未实现。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_command",
+        "d_home_hook",
+        "d_pb_auth",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_auth"
+      ]
+    },
+    {
+      "id": "F23",
+      "classification": "B_Native_implementation_exists_do_not_rebuild",
+      "priority": "retain",
+      "title": "定时任务草稿/时区/激活暂停/立即运行与去重",
+      "D_routes": [
+        "/scheduled-tasks"
+      ],
+      "conclusion": "已实现Native挂载。需真实目标长跑/DST/恢复签收，不能把待签收写成源码未实现。",
+      "next_safe_action": "保留已验收状态机与费用授权；在最终profile/真实24h运维验证。",
+      "legacy_actions": [
+        "创建/编辑/删除草稿、时区计划、激活/暂停、立即运行、occurrence/结果"
+      ],
+      "Native": {
+        "configuration_gates": "scheduleRuntimeUat、配置写与所选执行资源开关；默认不启用计划。",
+        "SDK_operations_or_missing_flow": "create/update/deleteScheduleDraft、activate/pause/runNow/retryStart/listOccurrences/getExecution存在。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_schedules",
+        "native_sdk",
+        "test_schedule_spec_mjs"
+      ]
+    },
+    {
+      "id": "F24",
+      "classification": "B_Native_implementation_exists_do_not_rebuild",
+      "priority": "retain",
+      "title": "执行记录、原任务重开、真实输出和检查点受限投影",
+      "D_routes": [
+        "/run-detail",
+        "/agent-run",
+        "/internal-overview"
+      ],
+      "conclusion": "现有Native记录/恢复/待办已挂载；不能用它自动替代F19所有工具调用统计。",
+      "next_safe_action": "核对现有运行种类/分页/unknown等具体差异，禁止扩大私密数据投影。",
+      "legacy_actions": [
+        "最近运行/详细结果/事件、原任务重新打开、结果和错误记录"
+      ],
+      "Native": {
+        "configuration_gates": "只读可用性/owner身份和当前源检查；提交授权独立。",
+        "SDK_operations_or_missing_flow": "Agent/workflow runs、steps/output-history与original target opening存在。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_run_page",
+        "d_run_hook",
+        "d_agent_engine",
+        "d_workflow_hook",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_sdk",
+        "native_own",
+        "native_workflow",
+        "native_autonomous",
+        "test_employee_run_spec_mjs",
+        "test_autonomous_agent_spec_mjs",
+        "test_company_overview_spec_mjs"
+      ]
+    },
+    {
+      "id": "F25",
+      "classification": "B_Native_implementation_exists_do_not_rebuild",
+      "priority": "retain",
+      "title": "员工开通、角色/停用/分享资格与本人改密",
+      "D_routes": [
+        "/staff",
+        "/manager"
+      ],
+      "conclusion": "Native已实现并隔离验收；真实人员目录/离职撤权现场签收仍需独立。",
+      "next_safe_action": "保留禁用/降权撤销、ABA治理版本、自管理员保护和权限审计。",
+      "legacy_actions": [
+        "创建员工/admin、修改role/active/share_enabled、自助改密、目录/撤销旧会话"
+      ],
+      "Native": {
+        "configuration_gates": "employeeProvisioning/configurationWrites+当前真实admin；自助改密独立Native身份。",
+        "SDK_operations_or_missing_flow": "员工治理API/client/panel存在；不重做分享资格以实现F08。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_manager_page",
+        "d_pb_auth",
+        "d_manager_pb",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_employees",
+        "native_auth",
+        "native_sdk",
+        "test_employees_spec_mjs"
+      ]
+    },
+    {
+      "id": "F26",
+      "classification": "B_Native_implementation_exists_do_not_rebuild",
+      "priority": "retain",
+      "title": "公司管理员元数据总览和本人跨任务概览/待办",
+      "D_routes": [
+        "/manager",
+        "/internal-overview",
+        "/"
+      ],
+      "conclusion": "CT03/a19当前阶段已验收，不重做。controller20成功不是live reporter/Nativetransport自动完成。",
+      "next_safe_action": "只保留统计范围逐项对照；按后端冻结最小GET ABI补独立Worker panel/client，复用当前管理员身份和总期限，不改旧聚合合同来假装ready。",
+      "legacy_actions": [
+        "公司数量/员工游标、本人任务统计/待审批/待回应/逾期计划/失败项",
+        "PB /api/studio/company/overview 与 /api/internal/overview 是不同来源，具体统计含义需对照"
+      ],
+      "Native": {
+        "configuration_gates": "schema available并审计 + 当前admin；独立read-only统计；telemetry尚未挂入该固定contract。",
+        "SDK_operations_or_missing_flow": "现有pgNativeCompanyOverview和pgNativeOwnOperations严格client/session及真实handlers；Worker心跳另行接线。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_manager_page",
+        "d_overview_page",
+        "h_manager_page",
+        "h_overview_page",
+        "d_manager_pb",
+        "h_manager_pb",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_company",
+        "native_company_contract",
+        "native_own",
+        "test_company_overview_spec_mjs",
+        "test_pg_native_company_overview_test_mjs"
+      ]
+    },
+    {
+      "id": "F27",
+      "classification": "A_confirmed_preexisting_active_behavior_Native_gap",
+      "priority": "P1",
+      "title": "Owner明确委托当前单个Agent步骤给另一活跃管理员",
+      "D_routes": [
+        "/manager"
+      ],
+      "conclusion": "确认H旧PB同样可达、独立于D新AdminGate的功能缺口。",
+      "next_safe_action": "先复核D候选四文件是否适配当前Native状态机，独立grant/revoke/step+input/source/治理epoch契约；复用现有Owner事务决定，不复制Owner Run DTO给经理。",
+      "legacy_actions": [
+        "GET/POST /api/studio/approval-delegations（grant/revoke）",
+        "GET /api/studio/manager/approvals；POST /manager/decision，精确fingerprint/confirm"
+      ],
+      "Native": {
+        "configuration_gates": "Owner本人决定/公司admin只读/员工治理已有；无实际delegation schema/route/执行授权。",
+        "SDK_operations_or_missing_flow": "D已有纯契约/安全投影仅候选，相关记录明确未挂载；不能用Native角色协作提案替代。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_manager_page",
+        "h_manager_page",
+        "d_manager_pb",
+        "h_manager_pb",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_autonomous",
+        "native_employees",
+        "native_company",
+        "native_sdk",
+        "test_studio_company_integration_mjs"
+      ]
+    },
+    {
+      "id": "F28",
+      "classification": "B_Native_implementation_exists_do_not_rebuild",
+      "priority": "retain_partial",
+      "title": "反馈/经验记忆、付费评审和生成描述接受的已完成部分",
+      "D_routes": [
+        "/agent-run"
+      ],
+      "conclusion": "已完成部分保留，不能按旧“只读建议”段落重做。历史意见reader未注入是当前确认的受限选择能力，但其是否必须保留应对照旧PB实际选择行为，而非所有规划模式。",
+      "next_safe_action": "明确每个现有员工动作/历史评估选择的业务输入和当前可读来源；只补可证实缺口，保持传递擦除、精确请求和未知效果不重发。",
+      "legacy_actions": [
+        "记忆保存/忘记、反馈/经验教训、evaluate/optimize",
+        "完整五字段/模型实际提供1–5字段的受保护接受、原请求恢复与045/055历史"
+      ],
+      "Native": {
+        "configuration_gates": "agentMemory/Derived/Outcome/Feedback/Lessons/Optimization/ReviewSubmission/GeneratedAcceptance/DescriptivePatch各自默认关闭。",
+        "SDK_operations_or_missing_flow": "已挂评审/账本/原请求与两种生成接受；不等于已实现edited/prior-only/retest全套。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_run_page",
+        "d_run_hook",
+        "h_run_page",
+        "h_run_hook",
+        "d_agent_engine",
+        "h_agent_engine",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_feedback",
+        "native_review_ui",
+        "native_review_source",
+        "native_autonomous",
+        "test_agent_generated_acceptance_spec_mjs",
+        "test_agent_descriptive_patch_spec_mjs"
+      ]
+    },
+    {
+      "id": "F29",
+      "classification": "P_D_worktree_reachable_addition_provenance_scope_unresolved",
+      "priority": "scope_before_author",
+      "title": "优化接受→复测lineage与D新增运行来源关联",
+      "D_routes": [
+        "/agent-run"
+      ],
+      "conclusion": "D工作树实际可达新增来源关联，不能直接说是3cdf原目标既有已接受能力；也不能以H缺失就删掉。",
+      "next_safe_action": "核对创建该D改动的可信任务/验收来源。若确认需保留，再独立设计接受回执→新run来源绑定，不自动复跑/新费用。",
+      "legacy_actions": [
+        "PATCH Agent spec携带optimization_context.source_run_id",
+        "新试跑携带optimization_lineage_id；D新增Hook持久关联"
+      ],
+      "Native": {
+        "configuration_gates": "现有接受/评审来源已经保护；复测关联域历史授权待核实。",
+        "SDK_operations_or_missing_flow": "H旧PB useAgentRun无这两个字段，H无独立lineage Hook；D关键Hook不在当前索引。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_run_hook",
+        "d_lineage_pb",
+        "h_run_hook",
+        "d_agent_specs_hook",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_autonomous",
+        "native_review_source",
+        "native_sdk"
+      ]
+    },
+    {
+      "id": "F30",
+      "classification": "C_not_active_baseline_or_new_product_not_required",
+      "priority": "exclude",
+      "title": "没有当前活跃来源支持的扩展产品与旧身份/支付机制",
+      "D_routes": [],
+      "conclusion": "不能因为旧文档规划、文件名或通用执行能力就增加这些功能。现有X-Rh存储字段/客户端老命名也不授予身份信任。",
+      "next_safe_action": "仅在用户明确新授权时另立范围；当前继续独立Native验证身份、Owner/RLS、审批与审计。",
+      "legacy_actions": [
+        "部门组织图、独立子工作流、多级Workflow会签、知识OCR、商业SaaS/平台支付",
+        "任意shell/远程桌面权限、自动执行插件说明中的npx/uvx命令、恢复RH SSO"
+      ],
+      "Native": {
+        "configuration_gates": "无授权开关；不新建。",
+        "SDK_operations_or_missing_flow": "不要求实现。"
+      },
+      "source_evidence_ids": [
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http"
+      ]
+    },
+    {
+      "id": "F31",
+      "classification": "A_confirmed_preexisting_active_behavior_Native_gap",
+      "priority": "P1",
+      "title": "正在运行的Agent任务显式暂停与恢复（保留同一任务）",
+      "D_routes": [
+        "/agent-run"
+      ],
+      "conclusion": "确认现有可达子动作缺口；只补安全的同一任务暂停/恢复，不重做整个Agent运行器。对已开始外部效果保持unknown/不重放，不能承诺物理中止。",
+      "next_safe_action": "先对照当前Native lease/admission/checkpoint定义何时停止接新步骤、如何记录已开始结果、恢复时来源/审批复核和原请求回执；纯契约先审阅，再由原运行器作者接线。",
+      "legacy_actions": [
+        "RunControlBar在running允许pause，在paused/queued显示resume",
+        "POST /api/agent-runs/{id}/pause；POST /api/agent-runs/{id}/resume；随后原任务继续"
+      ],
+      "Native": {
+        "configuration_gates": "通用run status包含paused字面量、Smithery pause和schedule pause不是运行任务暂停能力；须按当前任务协议另行明确开关。",
+        "SDK_operations_or_missing_flow": "Native本人审批/取消/人工输入已实现，但当前employee SDK/UI无同一运行任务的pause/resume操作，闭合路由表无该动作。"
+      },
+      "source_evidence_ids": [
+        "d_app",
+        "d_nav",
+        "d_sidebar",
+        "d_run_page",
+        "d_run_controls",
+        "d_run_hook",
+        "h_run_page",
+        "h_run_controls",
+        "h_run_hook",
+        "d_agent_engine",
+        "h_agent_engine",
+        "native_entry",
+        "native_page",
+        "native_server",
+        "native_http",
+        "native_autonomous",
+        "native_sdk",
+        "test_autonomous_agent_spec_mjs",
+        "test_employee_run_spec_mjs"
+      ]
+    }
+  ],
+  "source_evidence": {
+    "d_app": {
+      "root": "D",
+      "relative_path": "src/App.tsx",
+      "exists": true,
+      "sha256": "f2b4336eab50fbc0f42147c57be390a5f612df1e4496ae7858c8a448e2413a1c",
+      "bytes": 6669,
+      "line_count": 122
+    },
+    "h_app": {
+      "root": "H",
+      "relative_path": "src/App.tsx",
+      "exists": true,
+      "sha256": "7e952b23537ebcd873f805b16ffe30e1946ada954012747530cc332ab7b182bb",
+      "bytes": 5618,
+      "line_count": 104
+    },
+    "d_sidebar": {
+      "root": "D",
+      "relative_path": "src/components/site/SiteSidebar.tsx",
+      "exists": true,
+      "sha256": "c7c93e860700404e793c9d607dc06370f082404448a115241571c0989c6a6f48",
+      "bytes": 11597,
+      "line_count": 194
+    },
+    "h_sidebar": {
+      "root": "H",
+      "relative_path": "src/components/site/SiteSidebar.tsx",
+      "exists": true,
+      "sha256": "36d2695ccb4672a8a2c72f79542bcf360ba2d9f70ca9fd979d7f844f79b5322f",
+      "bytes": 6558,
+      "line_count": 163
+    },
+    "d_nav": {
+      "root": "D",
+      "relative_path": "src/lib/studioNavigation.ts",
+      "exists": true,
+      "sha256": "3e3a38284cd5c8cb111c9a4936ea0e550b7a6f9b84e60e867a7965961b2ff130",
+      "bytes": 4303,
+      "line_count": 101
+    },
+    "d_command": {
+      "root": "D",
+      "relative_path": "src/components/site/StudioCommandPalette.tsx",
+      "exists": true,
+      "sha256": "3c85f44ad2f4f5fa9ff63ca32b2f18ed17a6cd3eb465ae9cc603817a7ff7ec73",
+      "bytes": 5742,
+      "line_count": 114
+    },
+    "d_home": {
+      "root": "D",
+      "relative_path": "src/pages/Home/HomePage.tsx",
+      "exists": true,
+      "sha256": "a8919dcb2ea42eb8977b9901dade818da1a84148a635de1ab9db72f9c0b19bd7",
+      "bytes": 9866,
+      "line_count": 181
+    },
+    "h_home": {
+      "root": "H",
+      "relative_path": "src/pages/Home/HomePage.tsx",
+      "exists": true,
+      "sha256": "3b8f8f1e4002948014ed2a47afb3d7f048e1e02476a9c8f5bfeea1baaad455e5",
+      "bytes": 9320,
+      "line_count": 187
+    },
+    "d_home_hook": {
+      "root": "D",
+      "relative_path": "src/pages/Home/useHome.ts",
+      "exists": true,
+      "sha256": "7e70d64c1c23f0f662fbdac78d456ea7ab25580fa7840d05adab729867ecf509",
+      "bytes": 31989,
+      "line_count": 787
+    },
+    "h_home_hook": {
+      "root": "H",
+      "relative_path": "src/pages/Home/useHome.ts",
+      "exists": true,
+      "sha256": "20e266d1030c7017006612e80cd2758f4853b05c7cc67dbf7562a647d3b7c150",
+      "bytes": 16087,
+      "line_count": 446
+    },
+    "d_llm_client": {
+      "root": "D",
+      "relative_path": "src/lib/llm.ts",
+      "exists": true,
+      "sha256": "540728a25c42a6a57681706ffe34d29567181ba11442d04897ed459e25af6068",
+      "bytes": 6430,
+      "line_count": 194
+    },
+    "h_llm_client": {
+      "root": "H",
+      "relative_path": "src/lib/llm.ts",
+      "exists": true,
+      "sha256": "22bc266627bf7b089c77857f5bcdbe12ad7692b77357eb8f634310a7f6da4366",
+      "bytes": 6624,
+      "line_count": 194
+    },
+    "d_llm_hook": {
+      "root": "D",
+      "relative_path": "pocketbase/pb_hooks/llm.pb.js",
+      "exists": true,
+      "sha256": "e76e8a93150c97d732e903eee65e9708d706c014aed589ae7e73ed805c6b5069",
+      "bytes": 19853,
+      "line_count": 386
+    },
+    "h_llm_hook": {
+      "root": "H",
+      "relative_path": "pocketbase/pb_hooks/llm.pb.js",
+      "exists": true,
+      "sha256": "0ab5c2a5e1121812c50a168c3158d089b0e8f385d7696a3b526aff5af7981ac1",
+      "bytes": 17500,
+      "line_count": 341
+    },
+    "d_pb_auth": {
+      "root": "D",
+      "relative_path": "pocketbase/pb_hooks/studio_auth.pb.js",
+      "exists": true,
+      "sha256": "a6da9ef790d1d65a6a178b56eee950515f9f96974635f6301340e3d9f1cb87c4",
+      "bytes": 9186,
+      "line_count": 186
+    },
+    "h_pb_auth": {
+      "root": "H",
+      "relative_path": "pocketbase/pb_hooks/studio_auth.pb.js",
+      "exists": true,
+      "sha256": "e559a6e540f8d442f33a6930bd66d7aa2a73096f33eee2cab109421b09ff5fdc",
+      "bytes": 9372,
+      "line_count": 186
+    },
+    "d_wizard": {
+      "root": "D",
+      "relative_path": "src/pages/AgentCreate/AgentCreatePage.tsx",
+      "exists": true,
+      "sha256": "4ffc57d411de2499983f73f65acbba8831e37fb509660a7c57591a6e6649297d",
+      "bytes": 28614,
+      "line_count": 471
+    },
+    "d_wizard_contract": {
+      "root": "D",
+      "relative_path": "src/lib/agentCreateJourney.ts",
+      "exists": true,
+      "sha256": "c4743c74345bc60abc08ec78a945e48f2c98494fb4c757ab08ff83355659aa28",
+      "bytes": 13237,
+      "line_count": 223
+    },
+    "d_run_page": {
+      "root": "D",
+      "relative_path": "src/pages/AgentRun/AgentRunPage.tsx",
+      "exists": true,
+      "sha256": "01ef7245d30b7d8985c350515d0859830ab5ff92a0ad18910a0ce8d135b34e03",
+      "bytes": 14582,
+      "line_count": 276
+    },
+    "h_run_page": {
+      "root": "H",
+      "relative_path": "src/pages/AgentRun/AgentRunPage.tsx",
+      "exists": true,
+      "sha256": "77224a5d0cb94d4a243166b177dc2f2668fa1a7636f2752f7f4f054d7ea5858f",
+      "bytes": 8794,
+      "line_count": 192
+    },
+    "d_run_controls": {
+      "root": "D",
+      "relative_path": "src/components/agent-run/RunControlBar.tsx",
+      "exists": true,
+      "sha256": "bf101e9bbc2d7e565c7e5c1bddfb90f34e0d75d90226691a8ec28b0e08503999",
+      "bytes": 3709,
+      "line_count": 73
+    },
+    "h_run_controls": {
+      "root": "H",
+      "relative_path": "src/components/agent-run/RunControlBar.tsx",
+      "exists": true,
+      "sha256": "1377ab94423e409ac1bc0773843f314ead4ed6c2d66cd4f5d95c19425139242a",
+      "bytes": 3782,
+      "line_count": 73
+    },
+    "d_run_hook": {
+      "root": "D",
+      "relative_path": "src/pages/AgentRun/useAgentRun.ts",
+      "exists": true,
+      "sha256": "93daba0531169f13cc8a70c8a125b36eb01a9ad37c7885368077a53a2b0a199e",
+      "bytes": 59815,
+      "line_count": 1504
+    },
+    "h_run_hook": {
+      "root": "H",
+      "relative_path": "src/pages/AgentRun/useAgentRun.ts",
+      "exists": true,
+      "sha256": "422315fcd19d6c1e2abaab4db2744e39a3ee3ac2bedb781dcdc66f3dc4d32da0",
+      "bytes": 38184,
+      "line_count": 1067
+    },
+    "d_spec_config": {
+      "root": "D",
+      "relative_path": "src/components/agent-run/SpecConfigPanel.tsx",
+      "exists": true,
+      "sha256": "4f1ecc270e86db455aa878ec863fed9fa5d5f1a5401290ff34d13dfba765ba78",
+      "bytes": 19931,
+      "line_count": 366
+    },
+    "h_spec_config": {
+      "root": "H",
+      "relative_path": "src/components/agent-run/SpecConfigPanel.tsx",
+      "exists": true,
+      "sha256": "a6ce5a132cf61d0eae39168e62ac22937c702b78a3c4a6464f2d6471549f4250",
+      "bytes": 13269,
+      "line_count": 305
+    },
+    "d_workflow_hook": {
+      "root": "D",
+      "relative_path": "pocketbase/pb_hooks/workflow_api.pb.js",
+      "exists": true,
+      "sha256": "ab01f08b04f651ae6c9322c27e7da433eb0146d2c8e27a68fc4323a276c6ba56",
+      "bytes": 131502,
+      "line_count": 2522
+    },
+    "h_workflow_hook": {
+      "root": "H",
+      "relative_path": "pocketbase/pb_hooks/workflow_api.pb.js",
+      "exists": true,
+      "sha256": "84a4e4150d9322a7c0004ad027c6b8779d94eae51da1b774c4e7a611b9fd9697",
+      "bytes": 134024,
+      "line_count": 2522
+    },
+    "d_agent_specs_hook": {
+      "root": "D",
+      "relative_path": "pocketbase/pb_hooks/agent_specs.pb.js",
+      "exists": true,
+      "sha256": "e9d52c8cf87110e70a3c36edba38a7f97fc46565414a10644bfb3c1ac8cd4152",
+      "bytes": 18720,
+      "line_count": 375
+    },
+    "h_agent_specs_hook": {
+      "root": "H",
+      "relative_path": "pocketbase/pb_hooks/agent_specs.pb.js",
+      "exists": true,
+      "sha256": "d3b78ab4973e910cda5b0275e0e6beb205d4ef8f3b339a057903a364a95f6b7b",
+      "bytes": 13048,
+      "line_count": 262
+    },
+    "d_agent_engine": {
+      "root": "D",
+      "relative_path": "pocketbase/pb_hooks/agent_engine.pb.js",
+      "exists": true,
+      "sha256": "cd4b87586f6da0f4a59e8d188c24ab14590f04761c669f1ef0648ce0d07d0217",
+      "bytes": 168157,
+      "line_count": 3368
+    },
+    "h_agent_engine": {
+      "root": "H",
+      "relative_path": "pocketbase/pb_hooks/agent_engine.pb.js",
+      "exists": true,
+      "sha256": "93fc7af67e61e6ebfc6133ae85acc096d67c8e6be7ee0b48ebb0dbc6f68b9eed",
+      "bytes": 141966,
+      "line_count": 2894
+    },
+    "d_background_worker": {
+      "root": "D",
+      "relative_path": "pocketbase/pb_hooks/background_worker.pb.js",
+      "exists": true,
+      "sha256": "6eb978e81e48bc5c93a82579f1047a9add6588d7ffbf69b06bdeceb98b87fde2",
+      "bytes": 13502,
+      "line_count": 269
+    },
+    "h_background_worker": {
+      "root": "H",
+      "relative_path": "pocketbase/pb_hooks/background_worker.pb.js",
+      "exists": true,
+      "sha256": "ebc84d9680f7f0424164b5dc7d4e30c40ad51744ca830e290bbd8fb4320fb142",
+      "bytes": 13771,
+      "line_count": 269
+    },
+    "d_template_page": {
+      "root": "D",
+      "relative_path": "src/pages/TemplateMarket/TemplateMarketPage.tsx",
+      "exists": true,
+      "sha256": "608afa97a589081bde2fb3f90242142f3f5573245c6f1035ab8c074d829d4482",
+      "bytes": 9938,
+      "line_count": 217
+    },
+    "h_template_page": {
+      "root": "H",
+      "relative_path": "src/pages/TemplateMarket/TemplateMarketPage.tsx",
+      "exists": true,
+      "sha256": "bcddd778c2d39f4fb48a04ae2f9aca6baa0033f9befc449a33e46e4fdb33bbd7",
+      "bytes": 9475,
+      "line_count": 203
+    },
+    "d_template_hook": {
+      "root": "D",
+      "relative_path": "src/pages/TemplateMarket/useTemplateMarket.ts",
+      "exists": true,
+      "sha256": "f3d95cea19a8daf29b665c717cc7237d3b3a4d74537d7cdff5e2367843318425",
+      "bytes": 14379,
+      "line_count": 429
+    },
+    "h_template_hook": {
+      "root": "H",
+      "relative_path": "src/pages/TemplateMarket/useTemplateMarket.ts",
+      "exists": true,
+      "sha256": "3c55d9ae7f816486577b67bef6dba66ea1ac92b03b4658ff34c18c8a0f02ad40",
+      "bytes": 13023,
+      "line_count": 397
+    },
+    "d_template_pb": {
+      "root": "D",
+      "relative_path": "pocketbase/pb_hooks/template_market_api.pb.js",
+      "exists": true,
+      "sha256": "69135599e83c5b13666fa6734c20007ae2177572db8cd2039134aa6032d4a4ed",
+      "bytes": 26979,
+      "line_count": 631
+    },
+    "h_template_pb": {
+      "root": "H",
+      "relative_path": "pocketbase/pb_hooks/template_market_api.pb.js",
+      "exists": true,
+      "sha256": "541e12e467f469f9fe2a01343e04ead319df1a14d84f13a5f08da39d8c152867",
+      "bytes": 19958,
+      "line_count": 469
+    },
+    "d_internal_template_page": {
+      "root": "D",
+      "relative_path": "src/pages/InternalTemplates/InternalTemplatesPage.tsx",
+      "exists": true,
+      "sha256": "253cb7a2445a237408a5407023b16d62e2ecedb308297a754fd66f86d9a031a3",
+      "bytes": 19282,
+      "line_count": 337
+    },
+    "h_internal_template_page": {
+      "root": "H",
+      "relative_path": "src/pages/InternalTemplates/InternalTemplatesPage.tsx",
+      "exists": true,
+      "sha256": "0d8e634a3e3fede639606aa099bd94d4d4576124244ed98ffcde93fb8ad16198",
+      "bytes": 19609,
+      "line_count": 337
+    },
+    "d_internal_template_pb": {
+      "root": "D",
+      "relative_path": "pocketbase/pb_hooks/internal_templates.pb.js",
+      "exists": true,
+      "sha256": "93e80df89147fe700ce6962741c1be2dce81fb27ae838175d6540cd838121e8d",
+      "bytes": 10476,
+      "line_count": 212
+    },
+    "h_internal_template_pb": {
+      "root": "H",
+      "relative_path": "pocketbase/pb_hooks/internal_templates.pb.js",
+      "exists": true,
+      "sha256": "657e6da983afe9bf691beb9dc664413b0f5fb3d0f321707f5feee4127c3569b8",
+      "bytes": 10688,
+      "line_count": 212
+    },
+    "d_integration_page": {
+      "root": "D",
+      "relative_path": "src/pages/Integrate/IntegratePage.tsx",
+      "exists": true,
+      "sha256": "d97eb63feb727e43b502d767a30a6946ab16b228a4478b99ed16a0cd30ebb6ad",
+      "bytes": 9144,
+      "line_count": 202
+    },
+    "h_integration_page": {
+      "root": "H",
+      "relative_path": "src/pages/Integrate/IntegratePage.tsx",
+      "exists": true,
+      "sha256": "699edd2295bf8628c61abff487ba240d643d67848fde823bdf2a3b4dbb2b105d",
+      "bytes": 9359,
+      "line_count": 202
+    },
+    "d_integration_hook": {
+      "root": "D",
+      "relative_path": "src/pages/Integrate/useIntegrate.ts",
+      "exists": true,
+      "sha256": "9e1188d21aa6a9f9847b1e9a95660787befc7a97ac0ca3d8b310bef9c2b1ce47",
+      "bytes": 23848,
+      "line_count": 703
+    },
+    "h_integration_hook": {
+      "root": "H",
+      "relative_path": "src/pages/Integrate/useIntegrate.ts",
+      "exists": true,
+      "sha256": "7ce72a203c1fc45361aebbf5ff551b979b8893e2521a431c1b9caac71e71d24d",
+      "bytes": 24551,
+      "line_count": 703
+    },
+    "d_integration_pb": {
+      "root": "D",
+      "relative_path": "pocketbase/pb_hooks/integrate_api.pb.js",
+      "exists": true,
+      "sha256": "58fd309f41b7ff7ca8ba76a8c5a115d14ef8e08ff4b2b21b1a4f08807932d2e3",
+      "bytes": 68486,
+      "line_count": 1253
+    },
+    "h_integration_pb": {
+      "root": "H",
+      "relative_path": "pocketbase/pb_hooks/integrate_api.pb.js",
+      "exists": true,
+      "sha256": "dd982e097e0e5f9073ffeedc351f355e595ba302d41715e8ba089c964cc45aab",
+      "bytes": 69739,
+      "line_count": 1253
+    },
+    "d_tool_hub_page": {
+      "root": "D",
+      "relative_path": "src/pages/ToolHub/ToolHubPage.tsx",
+      "exists": true,
+      "sha256": "affe9b3dc6069c4e9bd7e59189b269b40c916c24d5c0edf4a2d571f862fc4f82",
+      "bytes": 8026,
+      "line_count": 179
+    },
+    "h_tool_hub_page": {
+      "root": "H",
+      "relative_path": "src/pages/ToolHub/ToolHubPage.tsx",
+      "exists": true,
+      "sha256": "24ee8714a1adc03f53378503403cf2c09be9fc16f299bb512a1e048ab0eaeb22",
+      "bytes": 8137,
+      "line_count": 177
+    },
+    "d_tool_hub_hook": {
+      "root": "D",
+      "relative_path": "src/pages/ToolHub/useToolHub.ts",
+      "exists": true,
+      "sha256": "3253030dffa27179e9f8740ce2c6eb49f4de91aac05b38f7af5746a535e9aa28",
+      "bytes": 21941,
+      "line_count": 612
+    },
+    "h_tool_hub_hook": {
+      "root": "H",
+      "relative_path": "src/pages/ToolHub/useToolHub.ts",
+      "exists": true,
+      "sha256": "308750a2d0e1025e37028636da761d833c172fd2b98c7b6805280f26669b416d",
+      "bytes": 22553,
+      "line_count": 612
+    },
+    "d_tool_hub_pb": {
+      "root": "D",
+      "relative_path": "pocketbase/pb_hooks/tool_hub_api.pb.js",
+      "exists": true,
+      "sha256": "67a417926dd2dcfe5ee27748d13d51b9a5dd6483228f67ad1fc27128ea82fe25",
+      "bytes": 44826,
+      "line_count": 1000
+    },
+    "h_tool_hub_pb": {
+      "root": "H",
+      "relative_path": "pocketbase/pb_hooks/tool_hub_api.pb.js",
+      "exists": true,
+      "sha256": "e82760e61194d16646f75cfbaa0990ce60480ac9cee605133af516b1f3d42d95",
+      "bytes": 45826,
+      "line_count": 1000
+    },
+    "d_builtin_cards": {
+      "root": "D",
+      "relative_path": "src/components/tool-hub/BuiltinToolCards.tsx",
+      "exists": true,
+      "sha256": "38da2f98b6df43d6b678a858adae486a12ee9335af2341a5c07c09fb77e21636",
+      "bytes": 2868,
+      "line_count": 63
+    },
+    "h_builtin_cards": {
+      "root": "H",
+      "relative_path": "src/components/tool-hub/BuiltinToolCards.tsx",
+      "exists": true,
+      "sha256": "e3601758a5ee65f308e8323797049e9f99446bbfa5d01a4e8cdd1e3f667249c0",
+      "bytes": 2931,
+      "line_count": 63
+    },
+    "d_external_cards": {
+      "root": "D",
+      "relative_path": "src/components/tool-hub/ExternalToolList.tsx",
+      "exists": true,
+      "sha256": "c02416f91457a076f8807e2b92a47366585736baf2911187760bc5b8b889b1aa",
+      "bytes": 3850,
+      "line_count": 79
+    },
+    "h_external_cards": {
+      "root": "H",
+      "relative_path": "src/components/tool-hub/ExternalToolList.tsx",
+      "exists": true,
+      "sha256": "1dbe6d2a9a523af033207e0bbcba28b0085c2294c2d59990ce6aaedfc7ff0ffa",
+      "bytes": 3929,
+      "line_count": 79
+    },
+    "d_debug_console": {
+      "root": "D",
+      "relative_path": "src/components/tool-hub/DebugConsole.tsx",
+      "exists": true,
+      "sha256": "9adfdc999f97306268ed31e10db7f4153af208c04bdc380fb28d3b64863978b3",
+      "bytes": 12476,
+      "line_count": 320
+    },
+    "h_debug_console": {
+      "root": "H",
+      "relative_path": "src/components/tool-hub/DebugConsole.tsx",
+      "exists": true,
+      "sha256": "fa65ba8b3199d41990d173ea5b5f70b67f8682b2796daa8158dcfd8b66a8266f",
+      "bytes": 12796,
+      "line_count": 320
+    },
+    "d_market_page": {
+      "root": "D",
+      "relative_path": "src/pages/PluginMarket/PluginMarketPage.tsx",
+      "exists": true,
+      "sha256": "7b9439c1a324f34f78f04e70fe4fb6f09b81eee836a46b8ac9fe894ba9a9d2db",
+      "bytes": 10298,
+      "line_count": 201
+    },
+    "h_market_page": {
+      "root": "H",
+      "relative_path": "src/pages/PluginMarket/PluginMarketPage.tsx",
+      "exists": true,
+      "sha256": "d8be064f539b9a0e1ad025ed6864e811b943ae344d62b06061a425990c85215b",
+      "bytes": 9150,
+      "line_count": 181
+    },
+    "d_market_hook": {
+      "root": "D",
+      "relative_path": "src/pages/PluginMarket/usePluginMarket.ts",
+      "exists": true,
+      "sha256": "2405c637b958487bc09771f9d9befc7302da8b4f881893b68f329241963f1550",
+      "bytes": 45743,
+      "line_count": 1219
+    },
+    "h_market_hook": {
+      "root": "H",
+      "relative_path": "src/pages/PluginMarket/usePluginMarket.ts",
+      "exists": true,
+      "sha256": "d9761501c77ad66e6158a20d037e9ec4c45beadbdbf6a6be83127c9ff5ddd7fc",
+      "bytes": 40214,
+      "line_count": 1088
+    },
+    "d_market_pb": {
+      "root": "D",
+      "relative_path": "pocketbase/pb_hooks/plugin_market.pb.js",
+      "exists": true,
+      "sha256": "a57393f15ccc2f69af40f2051c9eb939000e7f259c8508c705faadb590a80c29",
+      "bytes": 80142,
+      "line_count": 1685
+    },
+    "h_market_pb": {
+      "root": "H",
+      "relative_path": "pocketbase/pb_hooks/plugin_market.pb.js",
+      "exists": true,
+      "sha256": "a36b27b00ec3c3cf2ea83078c4a4ecc18f2f1e94984ba9e4f8ce5a5435ddefa6",
+      "bytes": 78331,
+      "line_count": 1629
+    },
+    "d_manager_page": {
+      "root": "D",
+      "relative_path": "src/pages/Manager/ManagerPage.tsx",
+      "exists": true,
+      "sha256": "44ef3d67172934e4ea4c9c0352253a66df57c2d788749fd62ad533e5469081fc",
+      "bytes": 18951,
+      "line_count": 310
+    },
+    "h_manager_page": {
+      "root": "H",
+      "relative_path": "src/pages/Manager/ManagerPage.tsx",
+      "exists": true,
+      "sha256": "9654b1f9d3e1d476c1ec3db079f0746ddab708d0be6281cd122abce3dd9aace4",
+      "bytes": 18205,
+      "line_count": 298
+    },
+    "d_manager_pb": {
+      "root": "D",
+      "relative_path": "pocketbase/pb_hooks/studio_company.pb.js",
+      "exists": true,
+      "sha256": "a844be26f4f11a4f6f00e1049c09b488b66cef526c58d20652f5e33abccab984",
+      "bytes": 18227,
+      "line_count": 316
+    },
+    "h_manager_pb": {
+      "root": "H",
+      "relative_path": "pocketbase/pb_hooks/studio_company.pb.js",
+      "exists": true,
+      "sha256": "35e1cda31fa48aca5dc6aa2e4fbbe58778fae3def31c128d93a68af11e13c36a",
+      "bytes": 18543,
+      "line_count": 316
+    },
+    "d_overview_page": {
+      "root": "D",
+      "relative_path": "src/pages/InternalOverview/InternalOverviewPage.tsx",
+      "exists": true,
+      "sha256": "5d895de10e4034244079b0e1516cf4f88dd6681cc14a44267dce0e8a633abd4e",
+      "bytes": 16942,
+      "line_count": 322
+    },
+    "h_overview_page": {
+      "root": "H",
+      "relative_path": "src/pages/InternalOverview/InternalOverviewPage.tsx",
+      "exists": true,
+      "sha256": "5235e05c4921d874131e86587fd3c01422f18f8aa0342c489970c5a519c59aed",
+      "bytes": 16779,
+      "line_count": 316
+    },
+    "d_knowledge_page": {
+      "root": "D",
+      "relative_path": "src/pages/KnowledgeBases/KnowledgeBasesPage.tsx",
+      "exists": true,
+      "sha256": "e9b7318822ea79c5ce1be58840d98949847c0b3490646d96638589640832cc46",
+      "bytes": 44399,
+      "line_count": 652
+    },
+    "h_knowledge_page": {
+      "root": "H",
+      "relative_path": "src/pages/KnowledgeBases/KnowledgeBasesPage.tsx",
+      "exists": true,
+      "sha256": "9f9c31861eaeece72af1d3ea95d31883818906f46b8723604a9730ce060a801f",
+      "bytes": 44348,
+      "line_count": 642
+    },
+    "d_knowledge_reader": {
+      "root": "D",
+      "relative_path": "src/lib/knowledgeDocumentText.ts",
+      "exists": true,
+      "sha256": "ea3a844c27cf4f9e573c2fbecdd965a34d30a9156f27e6f95f33d950980d528b",
+      "bytes": 3527,
+      "line_count": 78
+    },
+    "h_knowledge_reader": {
+      "root": "H",
+      "relative_path": "src/lib/knowledgeDocumentText.ts",
+      "exists": true,
+      "sha256": "b32f25f183b263a89bde49c95b30bb7574a326202182655a45839ba2297538d7",
+      "bytes": 3605,
+      "line_count": 78
+    },
+    "d_knowledge_pb": {
+      "root": "D",
+      "relative_path": "pocketbase/pb_hooks/knowledge_bases.pb.js",
+      "exists": true,
+      "sha256": "d5e8b2cb56ca0009c50e9ce26e9cb5757fc76c6c709be4770784f8a116969b87",
+      "bytes": 14921,
+      "line_count": 257
+    },
+    "h_knowledge_pb": {
+      "root": "H",
+      "relative_path": "pocketbase/pb_hooks/knowledge_bases.pb.js",
+      "exists": true,
+      "sha256": "da38f3adbd9cfee985e72a99a474be6bc43197252cba600946037d506486b58e",
+      "bytes": 15177,
+      "line_count": 257
+    },
+    "d_device_selector": {
+      "root": "D",
+      "relative_path": "src/components/agent-run/LocalDeviceSelector.tsx",
+      "exists": true,
+      "sha256": "ac78c4ecf48191c2f3c59b2d39ce10490154043b50652d9fc8e74444e8e522f7",
+      "bytes": 1670,
+      "line_count": 27
+    },
+    "h_device_selector": {
+      "root": "H",
+      "relative_path": "src/components/agent-run/LocalDeviceSelector.tsx",
+      "exists": false,
+      "sha256": null,
+      "bytes": null,
+      "line_count": null
+    },
+    "d_device_panel": {
+      "root": "D",
+      "relative_path": "src/components/tool-hub/LocalDevicesPanel.tsx",
+      "exists": true,
+      "sha256": "e92ef032c915f01e4b7d112e41b61851836007cefe5d422262dc3c39c636444f",
+      "bytes": 8010,
+      "line_count": 107
+    },
+    "h_device_panel": {
+      "root": "H",
+      "relative_path": "src/components/tool-hub/LocalDevicesPanel.tsx",
+      "exists": false,
+      "sha256": null,
+      "bytes": null,
+      "line_count": null
+    },
+    "d_device_client": {
+      "root": "D",
+      "relative_path": "src/lib/localDevices.ts",
+      "exists": true,
+      "sha256": "25b09a80995861bb1be8f2d16397e599d2577d4f09364ca3a0d4881244ae2dae",
+      "bytes": 1177,
+      "line_count": 18
+    },
+    "h_device_client": {
+      "root": "H",
+      "relative_path": "src/lib/localDevices.ts",
+      "exists": false,
+      "sha256": null,
+      "bytes": null,
+      "line_count": null
+    },
+    "d_device_pb": {
+      "root": "D",
+      "relative_path": "pocketbase/pb_hooks/local_devices.pb.js",
+      "exists": true,
+      "sha256": "ecb8ed28923df6f1c928b289d8c4f578ce3b7bd33711f0d92d1ef41b2e8f519d",
+      "bytes": 8899,
+      "line_count": 132
+    },
+    "h_device_pb": {
+      "root": "H",
+      "relative_path": "pocketbase/pb_hooks/local_devices.pb.js",
+      "exists": false,
+      "sha256": null,
+      "bytes": null,
+      "line_count": null
+    },
+    "d_device_module": {
+      "root": "D",
+      "relative_path": "pocketbase/pb_hooks/modules/local_devices.js",
+      "exists": true,
+      "sha256": "de51506f729cb32ec690684ed13276512ad42467b40ff913f1c511f4acc93667",
+      "bytes": 4918,
+      "line_count": 76
+    },
+    "h_device_module": {
+      "root": "H",
+      "relative_path": "pocketbase/pb_hooks/modules/local_devices.js",
+      "exists": false,
+      "sha256": null,
+      "bytes": null,
+      "line_count": null
+    },
+    "d_office_panel": {
+      "root": "D",
+      "relative_path": "src/components/tool-hub/OfficeWorkflowPanel.tsx",
+      "exists": true,
+      "sha256": "2a7dde5b5ff7f736d8d4c63c65561066ca196ba6f4d44603b7df14996a771f21",
+      "bytes": 5390,
+      "line_count": 61
+    },
+    "h_office_panel": {
+      "root": "H",
+      "relative_path": "src/components/tool-hub/OfficeWorkflowPanel.tsx",
+      "exists": false,
+      "sha256": null,
+      "bytes": null,
+      "line_count": null
+    },
+    "d_office_contract": {
+      "root": "D",
+      "relative_path": "src/lib/localOfficeWorkflow.ts",
+      "exists": true,
+      "sha256": "ef7297cab980e0716ecf365dd095af01d82309677ab17347298a84beb53222a5",
+      "bytes": 5036,
+      "line_count": 45
+    },
+    "h_office_contract": {
+      "root": "H",
+      "relative_path": "src/lib/localOfficeWorkflow.ts",
+      "exists": false,
+      "sha256": null,
+      "bytes": null,
+      "line_count": null
+    },
+    "d_lineage_pb": {
+      "root": "D",
+      "relative_path": "pocketbase/pb_hooks/agent_optimization_lineage.pb.js",
+      "exists": true,
+      "sha256": "5c3f410cbec5af883c6dc70a950ade551969085271ffa7f1a9ab144753c73fbd",
+      "bytes": 4392,
+      "line_count": 92
+    },
+    "h_lineage_pb": {
+      "root": "H",
+      "relative_path": "pocketbase/pb_hooks/agent_optimization_lineage.pb.js",
+      "exists": false,
+      "sha256": null,
+      "bytes": null,
+      "line_count": null
+    },
+    "native_entry": {
+      "root": "H",
+      "relative_path": "pg18-app/main.tsx",
+      "exists": true,
+      "sha256": "bfd9aa8ce1aea72cc9d480b5de7e53f702dcc132cf6c480cb32661d5ed784180",
+      "bytes": 487,
+      "line_count": 10
+    },
+    "native_page": {
+      "root": "H",
+      "relative_path": "src/pages/PgNativePilot/PgNativePilotPage.tsx",
+      "exists": true,
+      "sha256": "a83eaaff0369342ab217c9e05cbe15c7dfbcd8ccaaba1b357a6b4ea4c4fd1b33",
+      "bytes": 72887,
+      "line_count": 969
+    },
+    "native_server": {
+      "root": "H",
+      "relative_path": "services/pg-api/src/native-server.ts",
+      "exists": true,
+      "sha256": "0e1cc36e8df410e3492bbe86aed74e5ec6cfa60ec47135960fe6817e473c56b8",
+      "bytes": 40956,
+      "line_count": 634
+    },
+    "native_policy": {
+      "root": "H",
+      "relative_path": "services/pg-api/src/native-config-uat-policy.ts",
+      "exists": true,
+      "sha256": "3f43e1d5716d3e85bfc5d93d3476b0ec6d1f1568fb771a1141eee73dc4f8d4c8",
+      "bytes": 24877,
+      "line_count": 374
+    },
+    "native_http": {
+      "root": "H",
+      "relative_path": "services/pg-api/src/http.ts",
+      "exists": true,
+      "sha256": "baa2b16b108e0c67c1e8e4e35abe5412c8442448552a95a1236e1fce61aa5470",
+      "bytes": 75684,
+      "line_count": 1164
+    },
+    "native_sdk": {
+      "root": "H",
+      "relative_path": "src/lib/pgNativePilotApi.ts",
+      "exists": true,
+      "sha256": "47d0206176d5ab805ed7ca63c8f7c1e2f48e0f8f1fd9da294773c1ce9cb90053",
+      "bytes": 98414,
+      "line_count": 1313
+    },
+    "native_auth": {
+      "root": "H",
+      "relative_path": "services/pg-api/src/native-auth-http.mjs",
+      "exists": true,
+      "sha256": "be8bfa296eb9762c9e0cbc057db0d15483ff48ee2f92242fdd3b29f871d13f0f",
+      "bytes": 19242,
+      "line_count": 322
+    },
+    "native_knowledge": {
+      "root": "H",
+      "relative_path": "src/pages/PgNativePilot/PgNativeKnowledgeSharingPanel.tsx",
+      "exists": true,
+      "sha256": "d48b68cb2d7daf9dcf578d3d9709702d52a11364a1b0e6aebdf684ae1f37f487",
+      "bytes": 15886,
+      "line_count": 156
+    },
+    "native_knowledge_client": {
+      "root": "H",
+      "relative_path": "src/lib/pgNativeKnowledgeSharing.ts",
+      "exists": true,
+      "sha256": "2e8979be2559344d06d3a92acfd911f3f922270dd0e7588829b875b6166b604e",
+      "bytes": 4279,
+      "line_count": 55
+    },
+    "native_smithery": {
+      "root": "H",
+      "relative_path": "src/pages/PgNativePilot/PgNativeSmitheryPanel.tsx",
+      "exists": true,
+      "sha256": "10e4961b234dd4d1f599edeffb05211bfa00f3e8ac44a303a856e582889b341d",
+      "bytes": 11694,
+      "line_count": 79
+    },
+    "native_mcp": {
+      "root": "H",
+      "relative_path": "src/pages/PgNativePilot/PgNativeMcpConnectionsPanel.tsx",
+      "exists": true,
+      "sha256": "762639a059ffe96fb8d3a69b52125006c430df18adbfd8cedeac3c9f08f74ed3",
+      "bytes": 8901,
+      "line_count": 85
+    },
+    "native_workflow": {
+      "root": "H",
+      "relative_path": "src/pages/PgNativePilot/PgNativeWorkflowWorkspace.tsx",
+      "exists": true,
+      "sha256": "e8e46373b4e2ddb11252a9c7f9110e9a33eab12125c98544fdafec46add01cd2",
+      "bytes": 21612,
+      "line_count": 200
+    },
+    "native_workflow_sdk": {
+      "root": "H",
+      "relative_path": "src/lib/pgNativeWorkflowEditor.ts",
+      "exists": true,
+      "sha256": "a72cb70ba1f8f56a2ab07775a24f9e9f3af39979141101187ddbd2352d8b2640",
+      "bytes": 9181,
+      "line_count": 119
+    },
+    "native_model_tools": {
+      "root": "H",
+      "relative_path": "src/pages/PgNativePilot/PgNativeAgentModelBindingPanel.tsx",
+      "exists": true,
+      "sha256": "5bd684a27b5e4401bbd3763200e3b812503cfe5d37e9f92fc9ed6c6277f750bd",
+      "bytes": 7055,
+      "line_count": 125
+    },
+    "native_http_tools": {
+      "root": "H",
+      "relative_path": "src/pages/PgNativePilot/PgNativeAgentHttpToolsPanel.tsx",
+      "exists": true,
+      "sha256": "0e50826945c78aade775d53ee3353cb3195d02a9499e8a3a3415252c9483be9b",
+      "bytes": 7379,
+      "line_count": 92
+    },
+    "native_autonomous": {
+      "root": "H",
+      "relative_path": "src/pages/PgNativePilot/PgNativeAutonomousAgentPanel.tsx",
+      "exists": true,
+      "sha256": "591ba45be7415856a1a40918d65032f5b213557b08882ffbd1f1c6e5200077c1",
+      "bytes": 15724,
+      "line_count": 149
+    },
+    "native_review_source": {
+      "root": "H",
+      "relative_path": "services/pg-api/src/agent-review-source.ts",
+      "exists": true,
+      "sha256": "9359c59d1ebe214de949fd26dbd88c1ae8e58c37a0a3a148356d48bc253705a4",
+      "bytes": 11703,
+      "line_count": 117
+    },
+    "native_own": {
+      "root": "H",
+      "relative_path": "src/pages/PgNativePilot/OwnOperationsPanel.tsx",
+      "exists": true,
+      "sha256": "c2de2ca1702514f061a2fe76698bd7135d4fb1eb23962187b55204f4cecffe8d",
+      "bytes": 13306,
+      "line_count": 115
+    },
+    "native_company": {
+      "root": "H",
+      "relative_path": "src/pages/PgNativePilot/CompanyOverviewPanel.tsx",
+      "exists": true,
+      "sha256": "fa7fcd1950eaa57536d871507874ff2fcc82846ddbc54ebb2d7c40380a57c6ba",
+      "bytes": 9829,
+      "line_count": 100
+    },
+    "native_company_contract": {
+      "root": "H",
+      "relative_path": "services/pg-api/src/company-overview-contract.ts",
+      "exists": true,
+      "sha256": "17cb8e6e6060d4f569d8cba32c24be5e4a9f1b70b334214c4f402a769759bd6b",
+      "bytes": 10599,
+      "line_count": 183
+    },
+    "native_worker_facade": {
+      "root": "H",
+      "relative_path": "services/pg-api/src/native-company-worker-heartbeats.ts",
+      "exists": true,
+      "sha256": "6058c7bd324155790939f6e8d6762ed85ade39e05e024915b76d71be061b89a1",
+      "bytes": 9316,
+      "line_count": 178
+    },
+    "native_review_ui": {
+      "root": "H",
+      "relative_path": "src/pages/PgNativePilot/PgNativeAgentReviewPanel.tsx",
+      "exists": true,
+      "sha256": "638257d1c3d4e1111dd077d1bf6587a1af422288f027be83730623731a31df96",
+      "bytes": 35078,
+      "line_count": 219
+    },
+    "native_feedback": {
+      "root": "H",
+      "relative_path": "src/pages/PgNativePilot/PgNativeAgentFeedbackPanel.tsx",
+      "exists": true,
+      "sha256": "c70cd596451f58d8d9609ee7b77f313d1d7e9f614e9eb4dfb741c5fa7052da4b",
+      "bytes": 10573,
+      "line_count": 63
+    },
+    "native_releases": {
+      "root": "H",
+      "relative_path": "src/pages/PgNativePilot/PgNativeAgentReleasePanel.tsx",
+      "exists": true,
+      "sha256": "3abd69f8f31c5281e773635bb3a54b0f4c04b362affa86797ca2317a3707dcef",
+      "bytes": 23002,
+      "line_count": 204
+    },
+    "native_collaboration": {
+      "root": "H",
+      "relative_path": "src/pages/PgNativePilot/PgNativeAgentCollaborationPanel.tsx",
+      "exists": true,
+      "sha256": "5b62230974d6d0643e1ae5b6bb25ec730621b0ae1a85a0ecdf8f77aeab0f16b1",
+      "bytes": 18809,
+      "line_count": 156
+    },
+    "native_schedules": {
+      "root": "H",
+      "relative_path": "src/pages/PgNativePilot/PgNativeSchedulesReadonlyPanel.tsx",
+      "exists": true,
+      "sha256": "89f21448f6b4c124aabb52afa51eb547ce13f3796e47decb116fc0909de7c7b0",
+      "bytes": 23647,
+      "line_count": 359
+    },
+    "native_employees": {
+      "root": "H",
+      "relative_path": "src/pages/PgNativePilot/PgNativeEmployeeSettingsPanel.tsx",
+      "exists": true,
+      "sha256": "fb6dcb62ac46f0038286f2f586ee9995da2c3de08f02c5f8da1eb5ef9e35a5c9",
+      "bytes": 10463,
+      "line_count": 98
+    },
+    "test_tool_debug_integration_mjs": {
+      "root": "H",
+      "relative_path": "tests/tool-debug.integration.mjs",
+      "exists": true,
+      "sha256": "c61351d5f29376434f329e8a938b2ee6cd50ae3f589751e1d18a1b0889c7ca78",
+      "bytes": 6869,
+      "line_count": 138
+    },
+    "test_internal_templates_integration_mjs": {
+      "root": "H",
+      "relative_path": "tests/internal-templates.integration.mjs",
+      "exists": true,
+      "sha256": "a9bcb031b73a391e4cb8b18bbb958131ade3b31511f060d62ffeab6af09a64c3",
+      "bytes": 8029,
+      "line_count": 145
+    },
+    "test_studio_company_integration_mjs": {
+      "root": "H",
+      "relative_path": "tests/studio-company.integration.mjs",
+      "exists": true,
+      "sha256": "e9b740e6766bc2b5cf56fbfa9b98f5cf3abc1298030101a1f45eacc261ec7124",
+      "bytes": 10743,
+      "line_count": 197
+    },
+    "test_local_computer_integration_mjs": {
+      "root": "D",
+      "relative_path": "tests/local-computer.integration.mjs",
+      "exists": true,
+      "sha256": "97c53e78887b3b9ca179246295ca549b445068ee5b51139ad870e0599f363b4d",
+      "bytes": 33891,
+      "line_count": 434
+    },
+    "test_local_office_test_mjs": {
+      "root": "D",
+      "relative_path": "tests/local-office.test.mjs",
+      "exists": true,
+      "sha256": "778e15c8e0beb5a41813684de2a0cc8507b910bf42a6f148673c484bbf69139c",
+      "bytes": 8115,
+      "line_count": 100
+    },
+    "test_pg_native_knowledge_sharing_test_mjs": {
+      "root": "H",
+      "relative_path": "tests/pg-native-knowledge-sharing.test.mjs",
+      "exists": true,
+      "sha256": "2070c1b6920e82802eda0862e54c5795d05523137d6a74a9d45e65d16f6f0a54",
+      "bytes": 6505,
+      "line_count": 63
+    },
+    "test_pg_native_smithery_test_mjs": {
+      "root": "H",
+      "relative_path": "tests/pg-native-smithery.test.mjs",
+      "exists": true,
+      "sha256": "7244f2db88d3da4381cee696226a3991d9677869cf616d1007d54308d7694eb2",
+      "bytes": 8492,
+      "line_count": 82
+    },
+    "test_pg_native_mcp_execution_test_mjs": {
+      "root": "H",
+      "relative_path": "tests/pg-native-mcp-execution.test.mjs",
+      "exists": true,
+      "sha256": "f677c976eb7e5d4c8e791f922b513c1abf86286e7518b229751b7f4d2677c4ef",
+      "bytes": 11548,
+      "line_count": 109
+    },
+    "test_pg_native_workflow_authoring_test_mjs": {
+      "root": "H",
+      "relative_path": "tests/pg-native-workflow-authoring.test.mjs",
+      "exists": true,
+      "sha256": "59412f1469141bd204ee65bcec7b0b2dbee4c0d870f90f2b505a72481a9c29bd",
+      "bytes": 11756,
+      "line_count": 107
+    },
+    "test_knowledge_sharing_spec_mjs": {
+      "root": "H",
+      "relative_path": "tests/pg-native-browser/knowledge-sharing.spec.mjs",
+      "exists": true,
+      "sha256": "2f80666a4603409aa386100358d1e21ccbd3e8d4890e0e326b5ab5506b9dcfc1",
+      "bytes": 11201,
+      "line_count": 118
+    },
+    "test_employee_run_spec_mjs": {
+      "root": "H",
+      "relative_path": "tests/pg-native-browser/employee-run.spec.mjs",
+      "exists": true,
+      "sha256": "d0b764036b8c7bcdca4da3a44a3f225b2345e078a4126745e7083c0572eadbf4",
+      "bytes": 17820,
+      "line_count": 254
+    },
+    "test_workflow_canvas_spec_mjs": {
+      "root": "H",
+      "relative_path": "tests/pg-native-browser/workflow-canvas.spec.mjs",
+      "exists": true,
+      "sha256": "da8183bcedb5de46ed00828fe7db26dc6540c5afb6b624179d6bfae4a6d804a0",
+      "bytes": 24854,
+      "line_count": 247
+    },
+    "test_autonomous_agent_spec_mjs": {
+      "root": "H",
+      "relative_path": "tests/pg-native-browser/autonomous-agent.spec.mjs",
+      "exists": true,
+      "sha256": "8a492170e319fff66bbc4dde11a37e9aa25b3b2e281adddcec9b32edf13b4261",
+      "bytes": 22988,
+      "line_count": 242
+    },
+    "test_collaboration_spec_mjs": {
+      "root": "H",
+      "relative_path": "tests/pg-native-browser/collaboration.spec.mjs",
+      "exists": true,
+      "sha256": "360ee9c5d82df24ba28d3ba07a41089228c2967f1bd9eb3d8d8c056b87e737e8",
+      "bytes": 9948,
+      "line_count": 86
+    },
+    "test_releases_spec_mjs": {
+      "root": "H",
+      "relative_path": "tests/pg-native-browser/releases.spec.mjs",
+      "exists": true,
+      "sha256": "5ddae560ca879d03b945f39a7eb3ab95dd13cbb9918d57ab5cf81149362a4afa",
+      "bytes": 11216,
+      "line_count": 109
+    },
+    "test_employees_spec_mjs": {
+      "root": "H",
+      "relative_path": "tests/pg-native-browser/employees.spec.mjs",
+      "exists": true,
+      "sha256": "5f3dbb9049b92ffd811f135b189e1ac68681c8b1f85d05780d821d8831a2d73c",
+      "bytes": 6800,
+      "line_count": 62
+    },
+    "test_schedule_spec_mjs": {
+      "root": "H",
+      "relative_path": "tests/pg-native-browser/schedule.spec.mjs",
+      "exists": true,
+      "sha256": "60feed4e4d6b39676e2e07006c07a953faaab190bd45f8792d0562b51dc16bfd",
+      "bytes": 16098,
+      "line_count": 152
+    },
+    "test_knowledge_semantic_spec_mjs": {
+      "root": "H",
+      "relative_path": "tests/pg-native-browser/knowledge-semantic.spec.mjs",
+      "exists": true,
+      "sha256": "3a9f4b23c52810f0ae618d2df77752b9f2541e31d747753efdc5cdae5c57983e",
+      "bytes": 23727,
+      "line_count": 245
+    },
+    "test_agent_generated_acceptance_spec_mjs": {
+      "root": "H",
+      "relative_path": "tests/pg-native-browser/agent-generated-acceptance.spec.mjs",
+      "exists": true,
+      "sha256": "cace3fa7f0f6e6195b2e511085c681bfeaf0633740a89b410b625d6cb782b4c9",
+      "bytes": 15259,
+      "line_count": 152
+    },
+    "test_agent_descriptive_patch_spec_mjs": {
+      "root": "H",
+      "relative_path": "tests/pg-native-browser/agent-descriptive-patch.spec.mjs",
+      "exists": true,
+      "sha256": "7024786f5469d6b7b70251bd3532b0aa1860a3eadce941de03a61d6d6b904db5",
+      "bytes": 23790,
+      "line_count": 245
+    },
+    "test_company_overview_spec_mjs": {
+      "root": "H",
+      "relative_path": "tests/pg-native-browser/company-overview.spec.mjs",
+      "exists": true,
+      "sha256": "46868acf870aef22f8c8f1fd2996a38fd1d22be06753ae71ce59289272673244",
+      "bytes": 19660,
+      "line_count": 269
+    },
+    "test_pg_native_company_overview_test_mjs": {
+      "root": "H",
+      "relative_path": "tests/pg-native-company-overview.test.mjs",
+      "exists": true,
+      "sha256": "fd135f7c29fb848d510bed28bd6c83530d8884b66f04b4ff7e79c485d01e633b",
+      "bytes": 10542,
+      "line_count": 125
+    },
+    "test_document_worker_test_mjs": {
+      "root": "H",
+      "relative_path": "services/pg-api/tests/document-worker.test.mjs",
+      "exists": true,
+      "sha256": "7c80af417b2560966536a93f8a32b432517b174a91d42a79e14a5f01d08a8fa7",
+      "bytes": 4373,
+      "line_count": 91
+    },
+    "test_document_parser_test_mjs": {
+      "root": "H",
+      "relative_path": "services/pg-api/tests/document-parser.test.mjs",
+      "exists": true,
+      "sha256": "45865f5ddeb72ea23e22e4cfbddcb09423c3ff05870fac66bf981025930ac2ed",
+      "bytes": 5094,
+      "line_count": 93
+    },
+    "test_workflow_v2_node_debug_test_mjs": {
+      "root": "H",
+      "relative_path": "services/pg-api/tests/workflow-v2-node-debug.test.mjs",
+      "exists": true,
+      "sha256": "aa0c82dcaa148eb829a6efaf910f7bb69234bff91294b7b4fd26a99609112a98",
+      "bytes": 9555,
+      "line_count": 88
+    },
+    "test_smithery_http_test_mjs": {
+      "root": "H",
+      "relative_path": "services/pg-api/tests/smithery-http.test.mjs",
+      "exists": true,
+      "sha256": "1aba22800eda8899718b9c18f9f75cd85bcf9aebb23257956e6642547c78ab4c",
+      "bytes": 5082,
+      "line_count": 50
+    },
+    "test_tool_connection_http_test_mjs": {
+      "root": "H",
+      "relative_path": "services/pg-api/tests/tool-connection-http.test.mjs",
+      "exists": true,
+      "sha256": "5b378ba72d58e64f785113bd65322bfdc8d8e2da064dc39e63441041746896e0",
+      "bytes": 7123,
+      "line_count": 156
+    }
+  },
+  "limits": [
+    "No database, network or browser was exercised by this audit. Test paths are references to source, not proof of execution.",
+    "String absence by itself is not evidence of a missing feature; classifications combine route dispatch, actual page callbacks and neighboring Native implementations.",
+    "The retained PocketBase application remains current. Native identity must come from its verified employee Cookie; arbitrary browser X-Rh-User-Id is never authority.",
+    "Later implementation changes must be reconciled against this dated snapshot; the inventory cannot certify a future candidate."
+  ],
+  "integrity": {
+    "features": 31,
+    "business_routes": 19,
+    "unmapped_business_routes": [],
+    "missing_referenced_sources": []
+  }
+}

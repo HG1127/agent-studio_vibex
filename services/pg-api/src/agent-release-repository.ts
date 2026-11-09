@@ -1,5 +1,9 @@
 // Full configuration versions are owner-only. Migration046 and its independent
 // startup audit are required; metadata writes and acceptance default to off.
+import {optionalOriginalQuality089OnClient} from './original-quality089-audit.ts'
+import {originalQualityReadOnClient,originalQualityRunPassesOnClient,originalQualityPublicationOnClient,originalQualityRestoreStageOnClient,originalQualitySqlError} from './original-agent-quality-repository.ts'
+import {assertOriginalUiEmployee} from './native-original-ui-preconditions.ts'
+import {originalVersionReleaseProtocol} from '../../../shared/original-version-release-contract.ts'
 import {createHash,randomUUID} from "node:crypto"
 import {HttpError,isUuid,type Identity,type SqlClient,type SqlPool} from "./contracts.ts"
 import {withActor,verifyAgentSpecResources} from "./repository.ts"
@@ -25,19 +29,20 @@ const errors=new Set(["agent_release_actor_unavailable","agent_release_not_found
   "agent_release_source_changed","agent_release_version_changed","agent_release_head_changed","agent_release_untested_ack_required","agent_release_version_not_draft",
   "agent_release_acceptance_unavailable","invalid_agent_release_acceptance","invalid_agent_release_snapshot","invalid_agent_release_publish","invalid_agent_release_delete","invalid_agent_release_restore",
   "agent_release_restore_not_prepared","agent_release_restore_write_changed"])
-async function transaction<T>(pool:SqlPool,identity:Identity,body:(db:SqlClient,actor:string)=>Promise<T>):Promise<T>{
+async function transaction<T>(pool:SqlPool,identity:Identity,body:(db:SqlClient,actor:string,quality:boolean)=>Promise<T>,expectedEmployee?:string):Promise<T>{
   try{return await withActor(pool,identity,async(db,actor)=>{
+    assertOriginalUiEmployee(actor,expectedEmployee)
     await db.query("SET LOCAL lock_timeout='3s'");await db.query("SET LOCAL statement_timeout='5s'")
     const installed=(await db.query<{ok:boolean}>("SELECT EXISTS(SELECT 1 FROM agentstudio.schema_migrations WHERE version='pg_v9_046') AND "+
       "to_regprocedure('agentstudio.agent_release_restore_finish(uuid,uuid,text)') IS NOT NULL AS ok")).rows[0]?.ok
     if(installed!==true)throw new HttpError(503,"agent_release_not_installed")
-    return body(db,actor)
+    return body(db,actor,await optionalOriginalQuality089OnClient(db))
   })}catch(error){
     if(error&&typeof error==="object"&&"code" in error&&error.code==="P0001"&&"message" in error&&errors.has(String(error.message))){
       const code=String(error.message)
       throw new HttpError(code.endsWith("not_found")?404:code==="agent_release_actor_unavailable"?403:code.startsWith("invalid_")?400:409,code)
     }
-    throw error
+    return originalQualitySqlError(error)
   }
 }
 async function receipt(db:SqlClient,spec:string,request:string){
@@ -48,11 +53,11 @@ async function receipt(db:SqlClient,spec:string,request:string){
   return {request_sha256:value.request_sha256,result:result(value.result,spec,request)}
 }
 export class AgentReleaseRepository{
-  readonly pool:SqlPool;readonly enabled:boolean;readonly allowAcceptance:boolean;readonly agents:AutonomousAgentRunRepository
+  readonly originalUiProtocol=originalVersionReleaseProtocol;readonly pool:SqlPool;readonly enabled:boolean;readonly allowAcceptance:boolean;readonly agents:AutonomousAgentRunRepository
   constructor(pool:SqlPool,options:{enabled?:boolean;allowAcceptance?:boolean;allowMcpExecution?:boolean;allowKnowledgeExecution?:boolean;allowHumanInput?:boolean}={}){
-    this.pool=pool;this.enabled=options.enabled===true;this.allowAcceptance=options.allowAcceptance===true;this.agents=new AutonomousAgentRunRepository(pool,options)
+    Object.defineProperty(this,'originalUiProtocol',{value:originalVersionReleaseProtocol,writable:false,enumerable:true,configurable:false});this.pool=pool;this.enabled=options.enabled===true;this.allowAcceptance=options.allowAcceptance===true;this.agents=new AutonomousAgentRunRepository(pool,options)
   }
-  workspace(identity:Identity,rawId:string){const target=specId(rawId);return transaction(this.pool,identity,async(db,actor)=>{
+  workspace(identity:Identity,rawId:string,expectedEmployee?:string){const target=specId(rawId);return transaction(this.pool,identity,async(db,actor,quality)=>{
     const raw=(await db.query<{item:unknown}>("SELECT agentstudio.agent_release_workspace($1::uuid) AS item",[target])).rows[0]?.item
     if(raw===null)throw new HttpError(404,"agent_release_not_found")
     const value=object(raw)
@@ -62,28 +67,28 @@ export class AgentReleaseRepository{
       let current=false
       if(version.test_passed===true&&isUuid(version.test_run_id)&&typeof version.source_sha256==="string"){
         const key=version.test_run_id+":"+version.source_sha256
-        if(!validity.has(key))validity.set(key,await this.currentAcceptance(db,actor,target,version.test_run_id,version.source_sha256))
+        if(!validity.has(key))validity.set(key,await this.currentAcceptance(db,actor,target,version.test_run_id,version.source_sha256,quality))
         current=validity.get(key)===true
       }
       versions.push({...version,test_current:current})
     }
     return {...value,versions}
-  })}
-  detail(identity:Identity,rawId:string,rawVersion:string){const target=specId(rawId),version=specId(rawVersion)
-    return transaction(this.pool,identity,async(db,actor)=>{
+  },expectedEmployee)}
+  detail(identity:Identity,rawId:string,rawVersion:string,expectedEmployee?:string){const target=specId(rawId),version=specId(rawVersion)
+    return transaction(this.pool,identity,async(db,actor,quality)=>{
       const value=await this.ownedDetail(db,target,version)
       return {...value,test_current:value.test_passed===true&&isUuid(value.test_run_id)&&typeof value.source_sha256==="string"&&
-        await this.currentAcceptance(db,actor,target,value.test_run_id,value.source_sha256)}
-    })
+        await this.currentAcceptance(db,actor,target,value.test_run_id,value.source_sha256,quality)}
+    },expectedEmployee)
   }
-  async acceptanceStatus(identity:Identity,rawId:string,rawRun:string){
+  async acceptanceStatus(identity:Identity,rawId:string,rawRun:string,expectedEmployee?:string){
     const target=specId(rawId),run=specId(rawRun)
-    const status=await transaction(this.pool,identity,async(db,actor)=>{
+    const status=await transaction(this.pool,identity,async(db,actor,quality)=>{
       const raw=(await db.query<{item:unknown}>("SELECT agentstudio.agent_release_acceptance_status($1::uuid,$2::uuid) AS item",[target,run])).rows[0]?.item
       if(raw===null)throw new HttpError(404,"agent_release_acceptance_not_found")
       const value=object(raw)
-      return {...value,test_current:typeof value.source_sha256==="string"&&await this.currentAcceptance(db,actor,target,run,value.source_sha256)}
-    })
+      return {...value,test_current:typeof value.source_sha256==="string"&&await this.currentAcceptance(db,actor,target,run,value.source_sha256,quality)}
+    },expectedEmployee)
     // The standard run projection repeats the original source/ACL checks and
     // clears unavailable knowledge output; no private checkpoint is returned.
     return {...status,execution:await this.agents.get(identity,run)}
@@ -96,48 +101,53 @@ export class AgentReleaseRepository{
     parseAgentReleaseStoredSpec(value.spec_snapshot)
     return value
   }
-  async change(identity:Identity,rawId:string,raw:unknown){
+  async change(identity:Identity,rawId:string,raw:unknown,expectedEmployee?:string){
     const target=specId(rawId),choice=parseAgentReleaseChoice(raw),fingerprint=createHash("sha256").update(JSON.stringify({spec_id:target,...choice})).digest("hex")
     const recover=(previous:Awaited<ReturnType<typeof receipt>>)=>{
       if(!previous)return null
       if(previous.request_sha256!==fingerprint)throw new HttpError(409,"agent_release_request_conflict")
       return previous.result
     }
-    const prior=recover(await transaction(this.pool,identity,db=>receipt(db,target,choice.request_id)))
+    const prior=recover(await transaction(this.pool,identity,db=>receipt(db,target,choice.request_id),expectedEmployee))
     if(prior)return prior
     if(!this.enabled)throw new HttpError(403,"agent_release_writes_disabled")
-    return transaction(this.pool,identity,async(db,actor)=>{
+    return transaction(this.pool,identity,async(db,actor,quality)=>{
       await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,46))",[actor+":"+choice.request_id])
       const existing=recover(await receipt(db,target,choice.request_id));if(existing)return existing
-      return this.apply(db,actor,target,choice,fingerprint)
-    })
+      return this.apply(db,actor,target,choice,fingerprint,quality)
+    },expectedEmployee)
   }
-  confirm(identity:Identity,rawId:string,raw:unknown){
+  confirm(identity:Identity,rawId:string,raw:unknown,expectedEmployee?:string){
     const target=specId(rawId),choice=parseAgentReleaseChoice(raw),fingerprint=createHash("sha256").update(JSON.stringify({spec_id:target,...choice})).digest("hex")
     return transaction(this.pool,identity,async db=>{
       const prior=await receipt(db,target,choice.request_id)
       if(!prior)throw new HttpError(404,"agent_release_receipt_not_found")
       if(prior.request_sha256!==fingerprint)throw new HttpError(409,"agent_release_request_conflict")
       return prior.result
-    })
+    },expectedEmployee)
   }
-  private async apply(db:SqlClient,actor:string,target:string,choice:AgentReleaseChoice,fingerprint:string):Promise<ObjectValue>{
-    if(choice.action==="restore")return this.restore(db,actor,target,choice,fingerprint)
+  queryReceipt(identity:Identity,rawId:string,rawRequest:string,expectedEmployee?:string){
+    const target=specId(rawId),request=specId(rawRequest)
+    return transaction(this.pool,identity,async db=>{const value=await receipt(db,target,request);if(!value)throw new HttpError(404,'agent_release_receipt_not_found');return{request_sha256:value.request_sha256,result:value.result}},expectedEmployee)
+  }
+  private async apply(db:SqlClient,actor:string,target:string,choice:AgentReleaseChoice,fingerprint:string,quality:boolean):Promise<ObjectValue>{
+    if(choice.action==="restore")return this.restore(db,actor,target,choice,fingerprint,quality)
     if(choice.action==="acceptance"){
       if(!this.allowAcceptance)throw new HttpError(403,"agent_release_acceptance_disabled")
-      return this.acceptance(db,actor,target,choice,fingerprint)
+      return this.acceptance(db,actor,target,choice,fingerprint,quality)
     }
     let query:string,args:unknown[]
     if(choice.action==="snapshot"){
-      if(choice.test_run_id!==null)await this.stageTest(db,actor,target,choice.test_run_id,choice.source_sha256,"snapshot")
+      if(choice.test_run_id!==null)await this.stageTest(db,actor,target,choice.test_run_id,choice.source_sha256,"snapshot",quality)
       query="SELECT agentstudio.agent_release_snapshot($1::uuid,$2::bigint,$3::text,$4::text,$5::uuid,$6::uuid,$7::text) AS item"
       args=[target,choice.expected_spec_revision,choice.source_sha256,choice.note,choice.test_run_id,choice.request_id,fingerprint]
     }else if(choice.action==="publish"){
-      if(!choice.acknowledge_untested){
+      const requirement=quality?await originalQualityPublicationOnClient(db,actor,target,choice.version_id):null
+      if(!choice.acknowledge_untested||requirement?.requiresNativeTest){
         const version=await this.ownedDetail(db,target,choice.version_id)
         if(version.test_passed!==true||!isUuid(version.test_run_id)||typeof version.source_sha256!=="string")throw new HttpError(409,"agent_release_untested_ack_required")
-        if(!await this.currentAcceptance(db,actor,target,version.test_run_id,version.source_sha256))throw new HttpError(409,"agent_release_untested_ack_required")
-        await this.stageTest(db,actor,target,version.test_run_id,version.source_sha256,"publish")
+        if(!await this.currentAcceptance(db,actor,target,version.test_run_id,version.source_sha256,quality))throw new HttpError(409,"agent_release_untested_ack_required")
+        await this.stageTest(db,actor,target,version.test_run_id,version.source_sha256,"publish",quality)
       }
       query="SELECT agentstudio.agent_release_publish($1::uuid,$2::uuid,$3::bigint,$4::text,$5::text,$6::bigint,$7::bigint,$8::boolean,$9::boolean,$10::uuid,$11::text) AS item"
       args=[target,choice.version_id,choice.expected_spec_revision,choice.source_sha256,choice.version_sha256,choice.expected_version_revision,choice.expected_release_revision,
@@ -148,11 +158,12 @@ export class AgentReleaseRepository{
     }
     return result((await db.query<{item:unknown}>(query,args)).rows[0]?.item,target,choice.request_id)
   }
-  private async acceptance(db:SqlClient,actor:string,target:string,choice:Extract<AgentReleaseChoice,{action:"acceptance"}>,fingerprint:string){
+  private async acceptance(db:SqlClient,actor:string,target:string,choice:Extract<AgentReleaseChoice,{action:"acceptance"}>,fingerprint:string,quality:boolean){
     const owned=(await db.query<{spec:unknown;revision:string|number}>("SELECT spec,revision FROM agentstudio.agent_specs WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[target,actor])).rows[0]
     if(!owned)throw new HttpError(404,"agent_release_not_found")
     const current=object((await db.query<{item:unknown}>("SELECT agentstudio.agent_release_workspace($1::uuid) AS item",[target])).rows[0]?.item)
     if(Number(owned.revision)!==choice.expected_spec_revision||current.source_sha256!==choice.source_sha256)throw new HttpError(409,"agent_release_source_changed")
+    if(quality){const rules=await originalQualityReadOnClient(db,actor,target);if(rules.state!=='configured'||rules.spec_revision!==choice.expected_spec_revision||rules.source_sha256!==choice.source_sha256)throw new HttpError(409,'original_quality_revision_missing')}
     const stored=parseAgentReleaseStoredSpec(owned.spec),binding=choice.model_binding??stored.validated.model_binding
     if(!binding)throw new HttpError(409,"agent_release_model_required")
     await verifyAgentSpecResources(db,actor,{...stored.validated,model_binding:binding})
@@ -161,7 +172,7 @@ export class AgentReleaseRepository{
     return result((await db.query<{item:unknown}>("SELECT agentstudio.agent_release_acceptance($1::uuid,$2::uuid,$3::bigint,$4::text,$5::uuid,$6::text) AS item",
       [target,run.run.id,choice.expected_spec_revision,choice.source_sha256,choice.request_id,fingerprint])).rows[0]?.item,target,choice.request_id)
   }
-  private async currentAcceptance(db:SqlClient,actor:string,target:string,runId:string,sourceSha:string):Promise<boolean>{
+  private async currentAcceptance(db:SqlClient,actor:string,target:string,runId:string,sourceSha:string,quality:boolean):Promise<boolean>{
     const raw=(await db.query<{item:unknown}>("SELECT agentstudio.agent_release_acceptance_status($1::uuid,$2::uuid) AS item",[target,runId])).rows[0]?.item
     if(raw===null)return false
     const acceptance=object(raw)
@@ -180,14 +191,14 @@ export class AgentReleaseRepository{
     }catch(error){if(error instanceof HttpError&&[400,404,409].includes(error.status))return false;throw error}
     const complete=(await db.query<{ok:boolean}>("SELECT EXISTS(SELECT 1 FROM agentstudio.run_steps WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND step_key='wf2_00002_agent' AND status='succeeded') AND "+
       "EXISTS(SELECT 1 FROM agentstudio.run_steps WHERE run_id=$1::uuid AND owner_user_id=$2::uuid AND status='succeeded' AND metadata->>'agent_phase'='model') AS ok",[runId,actor])).rows[0]?.ok
-    return complete===true&&await currentKnowledgeObservations(db,runId)
+    return complete===true&&await currentKnowledgeObservations(db,runId)&&(!quality||await originalQualityRunPassesOnClient(db,actor,target,runId,sourceSha))
   }
-  private async stageTest(db:SqlClient,actor:string,target:string,run:string,sourceSha:string,kind:"snapshot"|"publish"){
-    if(!await this.currentAcceptance(db,actor,target,run,sourceSha))throw new HttpError(409,"agent_release_acceptance_unavailable")
+  private async stageTest(db:SqlClient,actor:string,target:string,run:string,sourceSha:string,kind:"snapshot"|"publish",quality:boolean){
+    if(!await this.currentAcceptance(db,actor,target,run,sourceSha,quality))throw new HttpError(409,"agent_release_acceptance_unavailable")
     await db.query("SELECT set_config('agentstudio.release_checked_test',jsonb_build_object('actor',$1::uuid,'spec',$2::uuid,'run',$3::uuid,'source_sha256',$4::text,'kind',$5::text,'transaction',txid_current()::text)::text,true)",
       [actor,target,run,sourceSha,kind])
   }
-  private async restore(db:SqlClient,actor:string,target:string,choice:Extract<AgentReleaseChoice,{action:"restore"}>,fingerprint:string){
+  private async restore(db:SqlClient,actor:string,target:string,choice:Extract<AgentReleaseChoice,{action:"restore"}>,fingerprint:string,quality:boolean){
     const version=await this.ownedDetail(db,target,choice.version_id),stored=parseAgentReleaseStoredSpec(version.spec_snapshot)
     // Match create/update's resource-before-role lock order. Historical refs
     // never restore a deleted, revoked, untested or changed owned resource.
@@ -199,6 +210,7 @@ export class AgentReleaseRepository{
     if(prepared.replayed===true)return result(prepared.result,target,choice.request_id)
     if(prepared.replayed!==false||typeof prepared.name!=="string"||prepared.name!==version.name||JSON.stringify(prepared.spec_snapshot)!==JSON.stringify(version.spec_snapshot))
       throw new HttpError(409,"agent_release_version_changed")
+    if(quality)await originalQualityRestoreStageOnClient(db,actor,target,choice,fingerprint)
     await db.query("UPDATE agentstudio.agent_specs SET name=$3::text,spec=$4::jsonb,requires_approval=true,revision=revision+1,updated_at=clock_timestamp() "+
       "WHERE id=$1::uuid AND owner_user_id=$2::uuid AND revision=$5::bigint",[target,actor,prepared.name,JSON.stringify(stored.snapshot),choice.expected_spec_revision])
     return result((await db.query<{item:unknown}>("SELECT agentstudio.agent_release_restore_finish($1::uuid,$2::uuid,$3::text) AS item",[target,choice.request_id,fingerprint])).rows[0]?.item,target,choice.request_id)

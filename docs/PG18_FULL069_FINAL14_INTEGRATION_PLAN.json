@@ -1,0 +1,883 @@
+{
+  "format": "full069_final14_source_and_runtime_integration_plan_v1",
+  "status": "FINAL_RUNTIME_SOURCE_INTEGRATED_ACTUAL_VALIDATION_PENDING",
+  "contract_snapshot_scope": "The v24 binding contract and its data-only plan remain unchanged. Integrated runtime source is services/pg-api/src/pg18-full069-final-cli.mjs; source presence is not a passed final14/all13 run or qualifying window.",
+  "contract_snapshot_parent_head": "ed04bebade2f83a6b9f4253c8e7ad34ae422b14e",
+  "matrix": [
+    {
+      "key": "api",
+      "login": "agentstudio_stage_login",
+      "groups": [
+        "agentstudio_api"
+      ],
+      "connection_limit": -1,
+      "phase": "C8",
+      "action": "api",
+      "original_audits": [
+        {
+          "module": "services/pg-api/src/pg18-complete-service-core.mjs",
+          "export": "completeServiceActualLogin",
+          "args": [
+            "api"
+          ]
+        },
+        {
+          "module": "services/pg-api/src/bound-dispatch-role-preflight.ts",
+          "export": "verifyBoundDispatchRole",
+          "args": [
+            "api"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "native_auth",
+      "login": "agentstudio_native_login",
+      "groups": [
+        "agentstudio_native_auth"
+      ],
+      "connection_limit": -1,
+      "phase": "C8",
+      "action": "native-auth",
+      "original_audits": [
+        {
+          "module": "services/pg-api/src/pg18-complete-service-core.mjs",
+          "export": "completeServiceActualLogin",
+          "args": [
+            "native-auth"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "worker",
+      "login": "agentstudio_stage_worker",
+      "groups": [
+        "agentstudio_api",
+        "agentstudio_worker"
+      ],
+      "connection_limit": -1,
+      "phase": "C8",
+      "action": "worker",
+      "original_audits": [
+        {
+          "module": "services/pg-api/src/pg18-complete-service-core.mjs",
+          "export": "completeServiceActualLogin",
+          "args": [
+            "worker"
+          ]
+        },
+        {
+          "module": "services/pg-api/src/worker-role-preflight.ts",
+          "export": "verifyPgWorkerRoleBoundary",
+          "args": []
+        }
+      ]
+    },
+    {
+      "key": "identity",
+      "login": "agentstudio_bound_dispatch_login",
+      "groups": [
+        "agentstudio_bound_dispatch"
+      ],
+      "connection_limit": -1,
+      "phase": "C8",
+      "action": "identity",
+      "original_audits": [
+        {
+          "module": "services/pg-api/src/pg18-complete-service-core.mjs",
+          "export": "completeServiceActualLogin",
+          "args": [
+            "identity"
+          ]
+        },
+        {
+          "module": "services/pg-api/src/bound-dispatch-role-preflight.ts",
+          "export": "verifyBoundDispatchRole",
+          "args": [
+            "identity"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "broker",
+      "login": "agentstudio_model_broker_login",
+      "groups": [
+        "agentstudio_model_broker"
+      ],
+      "connection_limit": -1,
+      "phase": "C8",
+      "action": "broker",
+      "original_audits": [
+        {
+          "module": "services/pg-api/src/pg18-complete-service-core.mjs",
+          "export": "completeServiceActualLogin",
+          "args": [
+            "broker"
+          ]
+        },
+        {
+          "module": "services/pg-api/src/bound-dispatch-role-preflight.ts",
+          "export": "verifyBoundDispatchRole",
+          "args": [
+            "broker"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "index_worker",
+      "login": "agentstudio_knowledge_index_worker_login",
+      "groups": [
+        "agentstudio_knowledge_index_worker"
+      ],
+      "connection_limit": -1,
+      "phase": "C8",
+      "action": "index-worker",
+      "original_audits": [
+        {
+          "module": "services/pg-api/src/pg18-complete-service-core.mjs",
+          "export": "completeServiceActualLogin",
+          "args": [
+            "index-worker"
+          ]
+        },
+        {
+          "module": "services/pg-api/src/knowledge-index-privileges.ts",
+          "export": "verifyKnowledgeIndexLogin",
+          "args": [
+            "worker"
+          ]
+        },
+        {
+          "module": "services/pg-api/src/knowledge-index-privileges.ts",
+          "export": "verifyKnowledgeIndexSchema",
+          "args": [
+            "worker"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "index_broker",
+      "login": "agentstudio_knowledge_index_broker_login",
+      "groups": [
+        "agentstudio_knowledge_index_broker"
+      ],
+      "connection_limit": -1,
+      "phase": "C8",
+      "action": "index-broker",
+      "original_audits": [
+        {
+          "module": "services/pg-api/src/pg18-complete-service-core.mjs",
+          "export": "completeServiceActualLogin",
+          "args": [
+            "index-broker"
+          ]
+        },
+        {
+          "module": "services/pg-api/src/knowledge-index-privileges.ts",
+          "export": "verifyKnowledgeIndexLogin",
+          "args": [
+            "broker"
+          ]
+        },
+        {
+          "module": "services/pg-api/src/knowledge-index-privileges.ts",
+          "export": "verifyKnowledgeIndexSchema",
+          "args": [
+            "broker"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "review_worker",
+      "login": "agentstudio_review_worker_login",
+      "groups": [
+        "agentstudio_review_worker"
+      ],
+      "connection_limit": 3,
+      "phase": "review_worker",
+      "original_audits": [
+        {
+          "module": "services/pg-api/src/agent-assessment-service.ts",
+          "export": "inspectAgentAssessmentOperatorPool",
+          "args": [
+            "worker"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "executor",
+      "login": "agentstudio_local_executor_login",
+      "groups": [
+        "agentstudio_local_executor"
+      ],
+      "connection_limit": 3,
+      "phase": "executor",
+      "original_audits": [
+        {
+          "module": "services/pg-api/src/native-local-executor-service-preflight.ts",
+          "export": "inspectNativeLocalExecutorPreflight",
+          "args": [
+            {
+              "database": "agent_studio",
+              "port": 5333
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "review_dispatch",
+      "login": "agentstudio_review_dispatch_login",
+      "groups": [
+        "agentstudio_review_dispatch"
+      ],
+      "connection_limit": -1,
+      "phase": "review_stack",
+      "original_audits": [
+        {
+          "module": "services/pg-api/src/agent-assessment-service.ts",
+          "export": "inspectAgentAssessmentOperatorPool",
+          "args": [
+            "dispatch"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "design_worker",
+      "login": "agentstudio_design_worker_login",
+      "groups": [
+        "agentstudio_design_worker"
+      ],
+      "connection_limit": -1,
+      "phase": "review_stack",
+      "original_audits": [
+        {
+          "module": "services/pg-api/src/agent-design-runtime-policy.ts",
+          "export": "loadAgentDesignAuditVerifier",
+          "args": []
+        },
+        {
+          "module": "services/pg-api/src/agent-assessment-service.ts",
+          "export": "inspectAgentDesignOperatorPool",
+          "args": [
+            "worker",
+            "actual auditor returned by original loader"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "design_dispatch",
+      "login": "agentstudio_design_dispatch_login",
+      "groups": [
+        "agentstudio_design_dispatch"
+      ],
+      "connection_limit": -1,
+      "phase": "review_stack",
+      "original_audits": [
+        {
+          "module": "services/pg-api/src/agent-design-runtime-policy.ts",
+          "export": "loadAgentDesignAuditVerifier",
+          "args": []
+        },
+        {
+          "module": "services/pg-api/src/agent-assessment-service.ts",
+          "export": "inspectAgentDesignOperatorPool",
+          "args": [
+            "dispatch",
+            "actual auditor returned by original loader"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "plan_workflow_worker",
+      "login": "agentstudio_plan_workflow_worker_login",
+      "groups": [
+        "agentstudio_plan_workflow_worker"
+      ],
+      "connection_limit": 3,
+      "phase": "plan_workflow",
+      "original_audits": [
+        {
+          "module": "services/pg-api/src/pg-runtime-target.ts",
+          "export": "verifyPgRuntimeTarget",
+          "args": []
+        },
+        {
+          "module": "services/pg-api/src/agent-plan-workflow-composition.ts",
+          "export": "inspectAgentPlanWorkflowServicePool",
+          "args": [
+            "agentstudio_plan_workflow_worker"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "plan_workflow_dispatch",
+      "login": "agentstudio_plan_workflow_dispatch_login",
+      "groups": [
+        "agentstudio_plan_workflow_dispatch"
+      ],
+      "connection_limit": 3,
+      "phase": "plan_workflow",
+      "original_audits": [
+        {
+          "module": "services/pg-api/src/pg-runtime-target.ts",
+          "export": "verifyPgRuntimeTarget",
+          "args": []
+        },
+        {
+          "module": "services/pg-api/src/agent-plan-workflow-composition.ts",
+          "export": "inspectAgentPlanWorkflowServicePool",
+          "args": [
+            "agentstudio_plan_workflow_dispatch"
+          ]
+        }
+      ]
+    }
+  ],
+  "qualification": {
+    "original_workers": [
+      {
+        "id": "prepare",
+        "file": "worker-loop.ts",
+        "kinds": [
+          "prepare"
+        ],
+        "unit": "agentstudio-pg18-prepare.service",
+        "args": [
+          "--serve"
+        ]
+      },
+      {
+        "id": "model",
+        "file": "model-worker-loop.ts",
+        "kinds": [
+          "model"
+        ],
+        "unit": "agentstudio-pg18-model.service",
+        "args": [
+          "--serve"
+        ]
+      },
+      {
+        "id": "workflow_safe",
+        "file": "workflow-worker-loop.ts",
+        "kinds": [
+          "workflow_safe"
+        ],
+        "unit": "agentstudio-pg18-workflow.service",
+        "args": [
+          "--serve"
+        ]
+      },
+      {
+        "id": "workflow_v2",
+        "file": "workflow-v2-worker-loop.ts",
+        "kinds": [
+          "workflow_v2"
+        ],
+        "unit": "agentstudio-pg18-workflow.service",
+        "args": [
+          "--serve"
+        ]
+      },
+      {
+        "id": "agent_autonomous",
+        "file": "autonomous-agent-worker-loop.ts",
+        "kinds": [
+          "agent_autonomous"
+        ],
+        "unit": "agentstudio-pg18-agent.service",
+        "args": [
+          "--serve"
+        ]
+      },
+      {
+        "id": "knowledge",
+        "file": "knowledge-index-service.ts",
+        "kinds": [
+          "knowledge_index",
+          "knowledge_query"
+        ],
+        "unit": "agentstudio-pg18-knowledge-index.service",
+        "args": [
+          "--serve",
+          "worker"
+        ]
+      },
+      {
+        "id": "assessment",
+        "file": "agent-assessment-service.ts",
+        "kinds": [
+          "assessment"
+        ],
+        "unit": "agentstudio-pg18-review-worker.service",
+        "args": [
+          "--serve",
+          "worker"
+        ]
+      }
+    ],
+    "limits": {
+      "minimumMs": 86400000,
+      "sampleMs": 30000,
+      "maxGapMs": 45000,
+      "sendMs": 5000,
+      "readerMs": 5000,
+      "nativeMs": 8000,
+      "uidPool": 128
+    },
+    "application_companions": [
+      {
+        "id": "bound_broker",
+        "entry": "bound-dispatch-server.ts",
+        "args": [
+          "--serve"
+        ],
+        "preflight_args": [
+          "--preflight"
+        ],
+        "unit": "agentstudio-pg18-dispatch.service",
+        "origin": "https://127.0.0.1:7453",
+        "credential_keys": [
+          "api",
+          "identity",
+          "broker"
+        ],
+        "design_enabled": false
+      },
+      {
+        "id": "knowledge_broker",
+        "entry": "knowledge-index-service.ts",
+        "args": [
+          "--serve",
+          "broker"
+        ],
+        "preflight_args": [
+          "--preflight",
+          "broker"
+        ],
+        "unit": "agentstudio-pg18-knowledge-index-broker.service",
+        "origin": "https://127.0.0.1:7455",
+        "credential_keys": [
+          "index_broker",
+          "broker"
+        ],
+        "design_enabled": false
+      },
+      {
+        "id": "review_broker",
+        "entry": "agent-assessment-service.ts",
+        "args": [
+          "--serve",
+          "broker"
+        ],
+        "preflight_args": [
+          "--preflight",
+          "broker"
+        ],
+        "unit": "agentstudio-pg18-review-broker.service",
+        "origin": "https://127.0.0.1:7459",
+        "credential_keys": [
+          "api",
+          "review_dispatch",
+          "broker",
+          "design_dispatch"
+        ],
+        "design_enabled": true
+      },
+      {
+        "id": "plan_workflow_worker",
+        "entry": "agent-plan-workflow-service.ts",
+        "args": [
+          "--serve",
+          "worker"
+        ],
+        "preflight_args": [
+          "--preflight",
+          "worker"
+        ],
+        "unit": "agentstudio-pg18-plan-workflow-worker.service",
+        "origin": null,
+        "credential_keys": [
+          "plan_workflow_worker"
+        ],
+        "design_enabled": false
+      },
+      {
+        "id": "plan_workflow_broker",
+        "entry": "agent-plan-workflow-service.ts",
+        "args": [
+          "--serve",
+          "broker"
+        ],
+        "preflight_args": [
+          "--preflight",
+          "broker"
+        ],
+        "unit": "agentstudio-pg18-plan-workflow-broker.service",
+        "origin": null,
+        "credential_keys": [
+          "api",
+          "plan_workflow_dispatch",
+          "broker"
+        ],
+        "design_enabled": false
+      }
+    ],
+    "application_process_count": 13,
+    "Root_Controller_and_namespace_supervisors_counted_as_application_processes": false,
+    "Design_worker_is_existing_assessment_opt_in": true,
+    "Design_dispatch_is_existing_Review_broker_opt_in": true,
+    "no_new_heartbeat_kind_or_generation_or_writer_UID": true,
+    "meaning_of_previous_field": "No new heartbeat kind/generation/Writer UID is introduced by any companion; the original seven processes still consume the original seven fresh Writer UIDs for eight kinds.",
+    "native_credential_keys": [
+      "api",
+      "native_auth",
+      "executor"
+    ],
+    "original_worker_credential_keys": [
+      {
+        "id": "prepare",
+        "credential_keys": [
+          "worker"
+        ]
+      },
+      {
+        "id": "model",
+        "credential_keys": [
+          "worker"
+        ]
+      },
+      {
+        "id": "workflow_safe",
+        "credential_keys": [
+          "worker"
+        ]
+      },
+      {
+        "id": "workflow_v2",
+        "credential_keys": [
+          "worker"
+        ]
+      },
+      {
+        "id": "agent_autonomous",
+        "credential_keys": [
+          "worker"
+        ]
+      },
+      {
+        "id": "knowledge",
+        "credential_keys": [
+          "index_worker"
+        ]
+      },
+      {
+        "id": "assessment",
+        "credential_keys": [
+          "review_worker",
+          "design_worker"
+        ]
+      }
+    ]
+  },
+  "preparation_order": [
+    "C8:api",
+    "C8:native-auth",
+    "C8:first-admin",
+    "C8:worker",
+    "C8:identity",
+    "C8:broker",
+    "C8:index-worker",
+    "C8:index-broker",
+    "review_worker",
+    "executor",
+    "review_stack",
+    "plan_workflow",
+    "Telemetry",
+    "final qualification"
+  ],
+  "source_inputs_reviewed": [
+    {
+      "path": "D:/Downloads/agent_studio_vibex版本/.tmp/F01-F28-full069-review-stack-handoff-v1.json",
+      "kind": "C3",
+      "sha256": "2609e135c191ed3179c05b25b72f7206ce9399d0d87bd9c9cb5f2677311c9cd2"
+    },
+    {
+      "path": "D:/Downloads/agent_studio_vibex版本/.tmp/full069-companion-source-handoff-v2.json",
+      "kind": "Bound_Knowledge_source_assets",
+      "sha256": "e25d29711c72cc05c20933886510a2b2d650f9d6430db133ba1888a3b2a978f8"
+    },
+    {
+      "path": "D:/Downloads/agent_studio_vibex版本/.tmp/F05-full069-fixed-pair-ABI-assets-increment-v1/handoff.json",
+      "kind": "A_F05_ABI_assets",
+      "sha256": "295dbd4b947591a7afdfc09e8cbe7ee1b38c3f91e579977ef14cfc84460d90e1"
+    },
+    {
+      "path": "D:/Downloads/agent_studio_vibex版本/.tmp/F05-full069-fixed-pair-preparer-source-increment-v2/handoff.json",
+      "kind": "A_F05_preparer",
+      "sha256": "2cf53902da9bcfc6f817671c236a2f8912511026d139e3ed6bc889a2e1fd3fc7"
+    },
+    {
+      "path": "D:/Downloads/agent_studio_vibex版本/.tmp/F05-full069-fixed-limits-global-ACL-increment-v3/handoff.json",
+      "kind": "A_F05_limits_and_global_ACL",
+      "sha256": "12b3e3426bb59257c7f9d8ff89275825ca49bae79d5d4c9dff7ada812857f8d3"
+    },
+    {
+      "path": "D:/Downloads/agent_studio_vibex版本/.tmp/F05-full069-explicit-source-review-bundle-increment-v4/handoff.json",
+      "kind": "A_F05_source_assets",
+      "sha256": "2c628cc8c6925f88161772a061a4ecfec20aa0d4d914e653ec5f5c242dc6ba28"
+    },
+    {
+      "path": "D:/Downloads/agent_studio_vibex版本/.tmp/F05-full069-owned-CI-preflights-increment-v5-final/handoff.json",
+      "kind": "A_F05_controlled_CI",
+      "sha256": "62774bc798162e9b8513835c56af4bba8bedd98c87766bdaa43ed5505aca89cb"
+    }
+  ],
+  "original_source_export_audit": [
+    {
+      "path": "services/pg-api/src/pg18-complete-service-core.mjs",
+      "sha256": "e4f4241f623b219f963dc262d03ec8de92c05113af8c5b8f1ea91417015438cf",
+      "original_exports": [
+        "completeServiceActualLogin"
+      ]
+    },
+    {
+      "path": "services/pg-api/src/bound-dispatch-role-preflight.ts",
+      "sha256": "d1c0baf07e4e30145166a8acda135541210dd5bac1527c63a03cb430533e4360",
+      "original_exports": [
+        "verifyBoundDispatchRole"
+      ]
+    },
+    {
+      "path": "services/pg-api/src/worker-role-preflight.ts",
+      "sha256": "16c80da105e10f88c4727bbe49a2374ceb3ac93b5eaf3720f20c4737010a93c5",
+      "original_exports": [
+        "verifyPgWorkerRoleBoundary"
+      ]
+    },
+    {
+      "path": "services/pg-api/src/knowledge-index-privileges.ts",
+      "sha256": "f63b0e2c9906a9d834953bd46f91d180772b2889eb42fd882309ac7995d937e3",
+      "original_exports": [
+        "verifyKnowledgeIndexLogin",
+        "verifyKnowledgeIndexSchema"
+      ]
+    },
+    {
+      "path": "services/pg-api/src/agent-assessment-service.ts",
+      "sha256": "5b2e9dd9a5b93b724be98cd6ee542a09432c41f0177b1d10ba02a6bda2239fff",
+      "original_exports": [
+        "inspectAgentAssessmentOperatorPool",
+        "inspectAgentDesignOperatorPool"
+      ]
+    },
+    {
+      "path": "services/pg-api/src/native-local-executor-service-preflight.ts",
+      "sha256": "659777c417f89d7b53851a115948dd38a5a341a671273fda1aa54bc468a10397",
+      "original_exports": [
+        "inspectNativeLocalExecutorPreflight"
+      ]
+    },
+    {
+      "path": "services/pg-api/src/agent-design-runtime-policy.ts",
+      "sha256": "735ff11d2a916f28b97895a642c65556f0f58cfd1faf54f4233f14b1ac6c8299",
+      "original_exports": [
+        "loadAgentDesignAuditVerifier"
+      ]
+    },
+    {
+      "path": "services/pg-api/src/pg-runtime-target.ts",
+      "sha256": "c185a0f30dd1e7aa091f4dd7c9bfc20c55b689ebc2265ba13cf5110d81aababe",
+      "original_exports": [
+        "verifyPgRuntimeTarget"
+      ]
+    },
+    {
+      "path": "services/pg-api/src/agent-plan-workflow-composition.ts",
+      "sha256": "e786b50d08821c958800d904f06cc9b25563e6d84136529d190f81392cf72146",
+      "original_exports": [
+        "inspectAgentPlanWorkflowServicePool"
+      ]
+    },
+    {
+      "path": "services/pg-api/src/pg18-complete-profile.ts",
+      "sha256": "6dfd232a01592c85cc027d0e92de6816000d643a95d338cef070d63b1ff1b8f2",
+      "original_exports": [
+        "verifyCompleteProfile"
+      ]
+    },
+    {
+      "path": "services/pg-api/src/worker-heartbeat-management-audit.ts",
+      "sha256": "fb13ad9bb6a1d93215f6b975c21d1806d9707d3be77ba644790eea8934325744",
+      "original_exports": [
+        "verifyWorkerHeartbeatManagementCatalog"
+      ]
+    },
+    {
+      "path": "services/pg-api/src/worker-heartbeat-activated-audit.ts",
+      "sha256": "977bc53eeee5aec9f4fcb7e663b11e121583618246df6615ed8b0554eedba1ee",
+      "original_exports": [
+        "verifyWorkerHeartbeatActivatedCatalog"
+      ]
+    }
+  ],
+  "credential_requirements": {
+    "business_accounts": 14,
+    "separate_real_files_and_independent_normalized_password_values": true,
+    "distinct_device_inode_and_Root_private_originals_required": true,
+    "secret_bytes_or_SCRAM_not_in_argv_environment_logs_git_or_review_archive": true,
+    "mounts": "Only separately created actual service UID0400 copies; same-account copies across authorized daemons are intentional. All14 account source secrets remain distinct.",
+    "no_borrowing_or_relabeling": true,
+    "group_memberships": "Exact direct AND reachable groups from matrix; ADMIN false, INHERIT false, SET true; all LOGIN privilege flags false except LOGIN, rolconfig/validuntil null; limits exact per row.",
+    "preflight": "Use current dedicated credentials on original authenticated pools. Prove session_user=current_user=expected LOGIN BEFORE any SET ROLE. No supplied Pool/auditor/clock, positive callback or expected-catalog replacement."
+  },
+  "required_original_preflights": [
+    {
+      "id": "assessment_with_Design",
+      "entry": "agent-assessment-service.ts",
+      "args": [
+        "--preflight",
+        "worker"
+      ],
+      "design_enabled": true,
+      "verified_roles": 2,
+      "additional_leaf": "design-worker.secret",
+      "environment": {
+        "AGENT_STUDIO_PG18_DESIGN_EXECUTION_ENABLED": "true",
+        "AGENT_STUDIO_PG18_DESIGN_EXECUTION_APPROVED": "APPROVE_DISPOSABLE_PG18_AGENT_DESIGN_EXECUTION_ONLY"
+      }
+    },
+    {
+      "id": "review_broker_with_Design",
+      "entry": "agent-assessment-service.ts",
+      "args": [
+        "--preflight",
+        "broker"
+      ],
+      "design_enabled": true,
+      "verified_roles": 6,
+      "additional_leaf": "design-dispatch.secret",
+      "distinct_original_pools": 6
+    },
+    {
+      "id": "F05_worker",
+      "entry": "agent-plan-workflow-service.ts",
+      "args": [
+        "--preflight",
+        "worker"
+      ],
+      "verified_roles": 1
+    },
+    {
+      "id": "F05_broker",
+      "entry": "agent-plan-workflow-service.ts",
+      "args": [
+        "--preflight",
+        "broker"
+      ],
+      "verified_roles": 3
+    },
+    {
+      "id": "Bound_broker",
+      "entry": "bound-dispatch-server.ts",
+      "args": [
+        "--preflight"
+      ],
+      "preflight_loads_model_encryption_key": true,
+      "provider_constructed": false
+    },
+    {
+      "id": "Knowledge_broker",
+      "entry": "knowledge-index-service.ts",
+      "args": [
+        "--preflight",
+        "broker"
+      ],
+      "preflight_loads_model_encryption_key": true,
+      "provider_constructed": false
+    },
+    {
+      "id": "Executor",
+      "entry": "native-local-executor-service-preflight-cli.mjs",
+      "original_read_only_auditor": "inspectNativeLocalExecutorPreflight",
+      "same_Native_process_credential_leaf": "local-executor.secret",
+      "environment_key": "AGENT_STUDIO_PG18_LOCAL_EXECUTOR_PASSWORD_FILE",
+      "listener_or_device_effect_proof": false
+    }
+  ],
+  "binding_contract": {
+    "module": "services/pg-api/src/pg18-full069-final-login-contract.mjs",
+    "format": "pg18_full069_final_login_bindings_v1",
+    "records": 12,
+    "C8_unchanged_original_actions": 8,
+    "C8_final_inspection_before_Review": true,
+    "Review_observation_before_Executor": true,
+    "Executor_observation_before_C3": true,
+    "C3_observation_before_F05": true,
+    "F05_observation_before_Telemetry": true,
+    "all14_credential_hashes_12_operation_sets_native_assessment_and_all5_companion_profiles_and_raw_preflights_pinned": true,
+    "ACK_handling": "Read actual intent/result/observation through each original closed reader, match source, physical target and operation IDs; retain unknown/false commit ACKs verbatim. Positive observations and current audits do not rewrite historic ACKs or authorize a retry.",
+    "raw_record_binding": "Executor must retain its actual Review operation/intent SHA links; C3 retains Review+Executor IDs; F05 retains its own complete+extension source hashes and pair verifier hashes. Do not invent parent fields in original formats.",
+    "new_parser_result": "Always record_only=true, runtime_authorization=false, qualifies_run=false, production_cutover_allowed=false. It is DATA and cannot replace a genuine runtime/private WeakSet capability."
+  },
+  "required_runtime_changes_before_any_final_BEGIN": [
+    "Assemble the complete merged Root/C/A source cohort first. Independently recapture original complete069, original live13 roots, C Bound/Knowledge companion closure+assets, A F05 closure+assets, and this final contract/qualifier closure. Reject overlapping path hashes that differ. Retain all exact053 SQL sources, original050/059/060 tools, runtime14-package manifest/lock, actual Node/network hashes and readonly Root ancestry.",
+    "Prepare C8 -> ReviewWorker -> Executor -> C3 -> F05 on one newly owned synthetic target, taking each original inspection BEFORE its successor account phase. Only then create Telemetry. No old fresh-only catalog/zero-session pass is replayed after successors. New bounded v22/v23 uses its own DIFFERENT fresh target with only C8+Review and executor=false; never reuse the C3/F05 target for that subset fixture.",
+    "Implement an independent final-profile/trust version. The current closed v1 warm/short profile is not silently widened. The final profile requires all14 credentials, all12 actual preparation record sets, source/target/profile pins, Native Executor preflight, assessment Design opt-in and ALL five companion specs/raw original preflights. Sign the complete final configuration only after real reads and checks; no Boolean DTO grants authority.",
+    "Implement a genuine final readonly GLOBAL catalog observer with its own verified runtime, actual Root pools and original full069 API audit. Read every pg_roles and pg_auth_members row plus database/settings/all-schema object+column+routine+type+default+parameter ACLs and RLS policies. Explicitly validate exact source-defined NOLOGIN groups +14 business LOGINs +18 original telemetry roles +original PG18 system allowlist/reserved OIDs/postgres. Reject every unknown row; no prefix or new-LOGIN filtering. Expose only server-side verifier SHA256, never raw SCRAM or C knownVerifiers maps.",
+    "Authenticate all14 individual original LOGIN pools and run every original auditor in matrix against the real connection/transaction; Design auditor comes only from loadAgentDesignAuditVerifier. Run original complete/API catalog and unchanged telemetry management+activated audits too. Exact limits3/-1 are checked and pinned, with connection headroom measured; never alter the original limits or cache authorization across lifecycle boundaries.",
+    "Add a separate owned companion-process supervisor for the five fixed original command/args. Give companions separate exclusive UIDs outside the unchanged128 Writer UID pool and no Writer GIDs or Native Reader GID. Extend the original assessment process by its genuine Design opt-in/credential, and the original Native profile by its genuine Executor gates/credential; keep original seven entry commands/eight heartbeats exactly unchanged.",
+    "All13 application process PID/start_ticks/UID/GID/groups/argv/mount/capability identities, original current Native admin HTTPS/cookie/logout, fresh8 heartbeats, original broker startup/TLS/client fingerprint checks, all14 current LOGIN/role/source/ledger/profile bindings must agree before the original independently signed BEGIN. A ready object or historical preflight is not a live service proof. Keep the original four queue counters and original clock/request budgets unchanged.",
+    "Observe the same actual processes, generations, sources, roles/ACLs and companion configuration throughout at least86400000 actual monotonic+wall ms. Any process/role/credential/source change or missing required companion disqualifies; no fragment accumulation, restart, automatic rebind/retry or mutable acceptance override.",
+    "Stop Workers/new claim admission and dependent companions through each original shutdown/drain budget (Review/F05 keep their own55s/65s/70s policies). Do not impose the seven-heartbeat12s budget on a55s Broker drain. Retain original Writer12s/5s handling unchanged. Require exact owned PID/start and backend_start ended/absence proofs, original four queues0, all owned service pools/listeners closed, then the original independently signed END. Force kill or unknown cleanup cannot qualify."
+  ],
+  "implementation_not_in_this_batch": [
+    "final privileged trust reader/current full14 global observer",
+    "actual fixed companion launcher/identity watcher/drain integration",
+    "final signed profile assembler and actual all-companion readiness",
+    "real bounded all-companion hosted validation",
+    "continuous24h BEGIN/window/END"
+  ],
+  "short_path_invariant": {
+    "executor_enabled": false,
+    "qualifies_run": false,
+    "prerequisite_a5_and_670_and_caeadelta": "separate independent minimal path; no final14 acceptance inferred"
+  },
+  "actual_preparations_performed": false,
+  "actual_services_started": false,
+  "actual24h_started": false,
+  "network_used": false,
+  "sql_executed": false,
+  "runtime_authorization": false,
+  "qualifies_run": false,
+  "production_cutover_allowed": false,
+  "global_original_audits": [
+    {
+      "module": "services/pg-api/src/pg18-complete-profile.ts",
+      "export": "verifyCompleteProfile",
+      "args": []
+    },
+    {
+      "module": "services/pg-api/src/worker-heartbeat-management-audit.ts",
+      "export": "verifyWorkerHeartbeatManagementCatalog",
+      "args": []
+    },
+    {
+      "module": "services/pg-api/src/worker-heartbeat-activated-audit.ts",
+      "export": "verifyWorkerHeartbeatActivatedCatalog",
+      "args": []
+    }
+  ],
+  "auditor_call_notation": "args describe fixed kind/role values after the internally constructed original authenticated Pool/target. They are a source call map, never executable caller-supplied auditors."
+}

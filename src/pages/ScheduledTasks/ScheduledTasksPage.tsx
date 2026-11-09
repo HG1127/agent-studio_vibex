@@ -1,3 +1,5 @@
+import {originalRunDetailHref} from '@/lib/originalRunDetailRoute'
+import {NativeScheduleRunTrace} from './NativeScheduleRunTrace'
 import { Link } from "react-router-dom"
 import {
   Activity, AlertCircle, CalendarClock, CheckCircle2, ChevronRight,
@@ -17,10 +19,12 @@ export function ScheduledTasksPage(p: ReturnType<typeof useScheduledTasks>) {
   const shown = p.items.filter(x=>p.filter==="all"||(p.filter==="active"?x.enabled:!x.enabled))
   const entries = p.history.filter(x=>!p.historyFilter||x.schedule_id===p.historyFilter)
   const activeCount = p.items.filter(x=>x.enabled).length
+  const nativeLocked=p.nativeMode&&(!p.nativeReady||Boolean(p.nativePending)||Boolean(p.busyId)||p.saving)
+  const historyPlans=[...new Map([...p.items.map(t=>[t.id,t.name] as const),...p.history.map(h=>[h.schedule_id,h.native?h.native.schedule_name+(h.native.schedule_deleted?"（已删除）":""):p.items.find(t=>t.id===h.schedule_id)?.name||"已删除的计划"] as const)]).entries()]
   return <SiteShell>
     <div className="min-h-screen flex-1 bg-background text-foreground">
       <header className="sticky top-0 z-20 border-b border-border bg-background/90 px-4 py-4 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
+        <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="rounded-xl bg-primary/10 p-2.5 text-primary"><CalendarClock className="h-5 w-5"/></span>
             <div><h1 className="text-lg font-semibold">定时任务</h1>
@@ -33,19 +37,24 @@ export function ScheduledTasksPage(p: ReturnType<typeof useScheduledTasks>) {
           </button>
         </div>
       </header>
-      <main className="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6">
-        <div className="grid gap-3 sm:grid-cols-3">
-          {[
-            {label:"全部计划",value:p.items.length,icon:CalendarClock},
-            {label:"已启用",value:activeCount,icon:Activity},
-            {label:"最近执行记录",value:p.history.length,icon:History},
-          ].map(m=><div key={m.label} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>{m.label}</span><m.icon className="h-4 w-4"/>
-            </div>
-            <p className="mt-2 text-2xl font-semibold tabular-nums">{m.value}</p>
-          </div>)}
-        </div>
+      <main className="w-full min-w-0 space-y-5 px-3 py-5 sm:px-5 lg:px-7 2xl:px-10">
+        <details className="rounded-xl border border-border bg-card p-3">
+          <summary className="cursor-pointer text-xs font-semibold text-muted-foreground hover:text-foreground">
+            {p.nativeMode?"已加载计划概览":"计划概览"} · {activeCount} 项已启用
+          </summary>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            {[
+              {label:p.nativeMode?"当前筛选已加载计划":"全部计划",value:p.items.length,icon:CalendarClock},
+              {label:"已启用",value:activeCount,icon:Activity},
+              {label:p.nativeMode?"当前筛选已加载历史":"最近执行记录",value:p.history.length,icon:History},
+            ].map(m=><div key={m.label} className="rounded-xl bg-secondary/35 p-3">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{m.label}</span><m.icon className="h-4 w-4"/>
+              </div>
+              <p className="mt-2 text-xl font-semibold tabular-nums">{m.value}</p>
+            </div>)}
+          </div>
+        </details>
         {p.workerAlive===false && <div className="rounded-xl border border-amber-300/50 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
           <strong>后台执行器未在线。</strong> 可以保存计划，但自动触发需要在服务器上运行独立 Worker；
           请前往 <Link to="/tool-hub" className="underline">调试监控</Link> 检查。
@@ -59,7 +68,12 @@ export function ScheduledTasksPage(p: ReturnType<typeof useScheduledTasks>) {
         {p.notice && <div role="status" className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm">
           <CheckCircle2 className="h-4 w-4 text-primary"/>{p.notice}
         </div>}
-        <div className="grid items-start gap-5 lg:grid-cols-[minmax(320px,0.95fr)_minmax(360px,1.4fr)]">
+        {p.nativeMode&&<section aria-label="定时任务服务状态" className="space-y-2 rounded-xl border border-border bg-card p-3 text-xs">
+          <p>{p.nativeResourceNotice||"员工身份和服务能力须核实后才能操作。"}</p>
+          <p>当前接口没有 Worker 心跳证明；启用状态不能证明 Worker 在线。</p>
+          {p.nativePending&&<div role="status"><p>原 {p.nativePending.action} 请求结果尚未核实，写操作已暂停。查询仅使用原请求标识，不会重发。</p><button type="button" disabled={!p.nativeReady||Boolean(p.busyId)} onClick={()=>void p.nativeQueryReceipt()} className="mt-2 rounded-lg border border-primary/30 px-3 py-2 disabled:opacity-40">只读核对原回执</button></div>}
+        </section>}
+        <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
           <ScheduleEditor {...p}/>
           <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -87,11 +101,11 @@ export function ScheduledTasksPage(p: ReturnType<typeof useScheduledTasks>) {
                     <div className="flex items-center gap-2">
                       <span className="truncate text-sm font-semibold">{task.name}</span>
                       <span className={task.enabled?"rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary":"rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground"}>
-                        {task.enabled?"已启用":task.recurrence_kind==="once"&&task.next_at_ms===0?"已执行":"已暂停"}
+                        {task.enabled?"已启用":!p.nativeMode&&task.recurrence_kind==="once"&&task.next_at_ms===0?"已执行":"已暂停"}
                       </span>
                     </div>
                     <p className="mt-1.5 text-xs text-muted-foreground">
-                      {task.target_kind==="agent"?"Agent":"工作流"} · {scheduleDescription(task)}
+                      {task.target_kind==="agent"?"Agent":"工作流"} · {task.nativeIncomplete?"完整时间规则尚未核实，请编辑核对":scheduleDescription(task)}
                     </p>
                   </div>
                   <button type="button" onClick={()=>{
@@ -109,27 +123,28 @@ export function ScheduledTasksPage(p: ReturnType<typeof useScheduledTasks>) {
                   {task.last_due_ms>0&&<span className="ml-3">上次触发：{formatScheduledDate(task.last_due_ms)}</span>}
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <button type="button" disabled={Boolean(p.busyId)||!task.enabled} onClick={()=>void p.action(task,"run_now")}
+                  <button type="button" disabled={Boolean(p.busyId)||!task.enabled||nativeLocked||p.nativeMode&&!p.nativeCapabilities?.automatic_execution_enabled} onClick={()=>void p.action(task,"run_now")}
                     className="inline-flex items-center gap-1 rounded-lg border border-primary/25 bg-primary/10 px-2.5 py-1.5 text-xs text-primary hover:bg-primary/20 disabled:opacity-40">
                     <Play className="h-3.5 w-3.5"/>立即运行
                   </button>
                   <button type="button"
-                    disabled={Boolean(p.busyId)||(!task.enabled&&task.recurrence_kind==="once"&&task.next_at_ms===0)}
+                    disabled={Boolean(p.busyId)||nativeLocked||p.nativeMode&&!(task.enabled?p.nativeCapabilities?.pause_enabled:p.nativeCapabilities?.automatic_execution_enabled)||!p.nativeMode&&(!task.enabled&&task.recurrence_kind==="once"&&task.next_at_ms===0)}
                     onClick={()=>void p.action(task,"toggle")}
                     className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-secondary disabled:opacity-40">
                     {task.enabled?<Pause className="h-3.5 w-3.5"/>:<Zap className="h-3.5 w-3.5"/>}
-                    {task.enabled?"暂停":"启用"}
+                    {task.enabled?"暂停":p.nativeMode?"核对并启用":"启用"}
                   </button>
-                  <button type="button" onClick={()=>p.edit(task)}
+                  <button type="button" aria-label={"编辑定时计划："+task.name} disabled={nativeLocked} onClick={()=>p.edit(task)}
                     className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-secondary">
                     <Pencil className="h-3.5 w-3.5"/>编辑
                   </button>
-                  <button type="button" disabled={Boolean(p.busyId)} onClick={()=>void p.action(task,"delete")}
+                  <button type="button" aria-label={"删除定时计划："+task.name} disabled={Boolean(p.busyId)||nativeLocked||p.nativeMode&&!p.nativeCapabilities?.metadata_writes_enabled} onClick={()=>void p.action(task,"delete")}
                     className="ml-auto inline-flex items-center gap-1 rounded-lg border border-destructive/20 px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/5 disabled:opacity-40">
                     <Trash2 className="h-3.5 w-3.5"/>删除
                   </button>
                 </div>
               </article>)}
+              {p.nativeMode&&p.nativeHasMore&&<button type="button" disabled={nativeLocked} onClick={()=>void p.nativeMore("plans")} className="rounded-lg border border-border px-3 py-2 text-xs">加载更多当前筛选计划</button>}
             </div>
           </section>
         </div>
@@ -141,7 +156,7 @@ export function ScheduledTasksPage(p: ReturnType<typeof useScheduledTasks>) {
             <div className="flex items-center gap-2">
               <select aria-label="筛选执行历史" className="rounded-lg border border-border bg-background px-3 py-2 text-xs"
                 value={p.historyFilter} onChange={e=>p.setHistoryFilter(e.target.value)}>
-                <option value="">全部计划</option>{p.items.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+                <option value="">全部计划</option>{(p.nativeMode?historyPlans:p.items.map(t=>[t.id,t.name] as const)).map(([id,name])=><option key={id} value={id}>{name}</option>)}
               </select>
               {p.historyFilter&&<button type="button" onClick={()=>p.setHistoryFilter("")} className="text-xs text-primary hover:underline">清除</button>}
             </div>
@@ -151,7 +166,7 @@ export function ScheduledTasksPage(p: ReturnType<typeof useScheduledTasks>) {
               entries.map(row=><div key={row.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-background p-3 text-xs">
                 <div className="min-w-0 flex-1 space-y-1">
                   <p className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">{p.items.find(t=>t.id===row.schedule_id)?.name||"已删除的计划"}</span>
+                    <span className="font-medium">{row.native?row.native.schedule_name+(row.native.schedule_deleted?"（已删除）":""):p.items.find(t=>t.id===row.schedule_id)?.name||"已删除的计划"}</span>
                     <span className={["failed","failed_start","invalid_schedule"].includes(row.status)?"rounded-full bg-destructive/10 px-2 py-0.5 text-destructive":"rounded-full bg-secondary px-2 py-0.5 text-muted-foreground"}>
                       {scheduleHistoryLabel(row.status)}
                     </span>
@@ -160,7 +175,7 @@ export function ScheduledTasksPage(p: ReturnType<typeof useScheduledTasks>) {
                   {row.error&&<p className="break-words text-destructive">{row.error}</p>}
                 </div>
                 {row.status==="failed_start" && p.items.some(t=>t.id===row.schedule_id) &&
-                  <button type="button" disabled={Boolean(p.busyId)} onClick={()=>void p.retryFailedLaunch(row)}
+                  <button type="button" disabled={Boolean(p.busyId)||nativeLocked||p.nativeMode&&(!p.nativeCapabilities?.automatic_execution_enabled||Boolean(row.native?.run_id))} onClick={()=>void p.retryFailedLaunch(row)}
                     className="shrink-0 rounded-lg border border-primary/30 px-2.5 py-1.5 text-xs text-primary hover:bg-primary/10 disabled:opacity-40">
                     重试启动
                   </button>}
@@ -171,13 +186,14 @@ export function ScheduledTasksPage(p: ReturnType<typeof useScheduledTasks>) {
                   </button>
                 )}
                 {row.run_id&&<button type="button" title={row.run_id}
-                  onClick={()=>void navigator.clipboard.writeText(row.run_id)
+                  onClick={()=>p.nativeMode?void p.nativeCopyRun(row):void navigator.clipboard.writeText(row.run_id)
                     .then(()=>p.setNotice("已复制运行 ID："+row.run_id)).catch(()=>p.setError("复制失败"))}
                   className="shrink-0 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-secondary">
                   复制运行 ID
                 </button>}
               </div>)}
           </div>
+          {p.nativeMode&&p.nativeHistoryHasMore&&<button type="button" disabled={nativeLocked} onClick={()=>void p.nativeMore("history")} className="mt-3 rounded-lg border border-border px-3 py-2 text-xs">加载更多当前筛选历史</button>}
         </section>
         <Dialog open={Boolean(p.runPreview)} onOpenChange={open => { if (!open) p.setRunPreview(null) }}>
           <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
@@ -192,8 +208,9 @@ export function ScheduledTasksPage(p: ReturnType<typeof useScheduledTasks>) {
                 <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                   <span>{p.runPreview.kind === "workflow" ? "工作流" : "Agent"}</span>
                   <span>状态：{scheduleHistoryLabel(p.runPreview.status)}</span>
-                  <span>事件：{p.runPreview.events} 条</span>
-                  {p.runPreview.kind === "agent" && <Link to={"/run-detail?run=" + encodeURIComponent(p.runPreview.id)}
+                  {p.nativeMode?<span>已存储步骤快照；原始事件数未提供</span>:<span>事件：{p.runPreview.events} 条</span>}
+                  {p.nativeMode&&p.runPreview.nativeRun?.native&&<Link to={originalRunDetailHref({id:p.runPreview.id,kind:p.runPreview.nativeRun.native.kind})} className="ml-auto text-primary underline">打开完整运行记录</Link>}
+                  {!p.nativeMode&&p.runPreview.kind === "agent" && <Link to={"/run-detail?run=" + encodeURIComponent(p.runPreview.id)}
                     className="ml-auto text-primary underline">打开完整 Agent 记录</Link>}
                 </div>
                 {p.runPreview.error && <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{p.runPreview.error}</p>}
@@ -203,10 +220,11 @@ export function ScheduledTasksPage(p: ReturnType<typeof useScheduledTasks>) {
                     {p.runPreview.result || "尚无最终输出。任务可能仍在执行或等待审批。"}
                   </pre>
                 </section>
-                {(p.runPreview.kind === "agent" || p.runPreview.kind === "workflow") &&
+                {p.nativeMode&&p.runPreview.nativeRun&&<NativeScheduleRunTrace run={p.runPreview.nativeRun}/>}
+                {!p.nativeMode&&(p.runPreview.kind === "agent" || p.runPreview.kind === "workflow") &&
                   <RunTraceCard kind={p.runPreview.kind} runId={p.runPreview.id} />}
                 {!!p.runPreview.result && <button type="button"
-                  onClick={() => { if (p.runPreview) void navigator.clipboard.writeText(p.runPreview.result).then(() => p.setNotice("结果已复制")).catch(() => p.setError("复制失败")) }}
+                  onClick={() => { if(p.nativeMode){void p.nativeCopyResult();return} if (p.runPreview) void navigator.clipboard.writeText(p.runPreview.result).then(() => p.setNotice("结果已复制")).catch(() => p.setError("复制失败")) }}
                   className="rounded-lg border border-border px-3 py-2 text-xs hover:bg-secondary">复制最终输出</button>}
               </div>
             ) : null}

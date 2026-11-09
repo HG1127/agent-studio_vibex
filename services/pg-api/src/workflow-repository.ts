@@ -31,6 +31,7 @@ export async function verifyWorkflowGraphResources(db:SqlClient,actor:string,gra
   if(graph.version!==2)return
   for(const node of graph.nodes)await verifyWorkflowResourceReferences(db,actor,node.data)
 }
+import {roleHistoricalSpec,assertOriginalRoleLauncher} from './original-role-history.ts'
 export async function verifyWorkflowResourceReferences(db:SqlClient,actor:string,data:WorkflowGraph["nodes"][number]["data"]){
     await verifyKnowledgeRetrievalBinding(db,data.knowledge_retrieval)
     const {model_binding:model,agent_binding:agent,tool_binding:tool,knowledge_base_ids:kb}=data
@@ -50,7 +51,9 @@ export async function verifyWorkflowResourceReferences(db:SqlClient,actor:string
     if(agent||tool){
       const table=agent?"agent_specs":"tool_connections",id=agent?agent.spec_id:tool!.connection_id
       const revision=agent?agent.spec_revision:tool!.connection_revision
-      const row=(await db.query<{revision:number|string;spec?:unknown}>(
+      if(agent)await assertOriginalRoleLauncher(db,actor,agent.spec_id,agent.spec_revision)
+      const historical=agent?roleHistoricalSpec(db,actor,agent.spec_id,agent.spec_revision):undefined
+      const row=historical?{revision:revision,spec:historical}:(await db.query<{revision:number|string;spec?:unknown}>(
         "SELECT revision"+(agent?",spec":"")+" FROM agentstudio."+table+
         " WHERE id=$1::uuid AND owner_user_id=$2::uuid FOR SHARE",[id,actor])).rows[0]
       if(!row)throw new HttpError(404,"workflow_resource_not_found")
@@ -76,13 +79,14 @@ async function auditGraphWrite(db:SqlClient,actor:string,row:WorkflowRow,action:
 
 export class WorkflowRepository {
   readonly pool:SqlPool
-  constructor(pool:SqlPool) {this.pool=pool}
+  readonly excludeToolTrials:boolean
+  constructor(pool:SqlPool,options:{excludeToolTrials?:boolean}={}) {this.pool=pool;this.excludeToolTrials=options.excludeToolTrials===true}
   list(identity:Identity,limit=30):Promise<WorkflowRow[]> {
     const bounded=Math.max(1,Math.min(50,Math.trunc(limit)))
     return withActor(this.pool,identity,async(db,actor)=>{
       const rows=await db.query<WorkflowRow>(
         "SELECT "+columns+" FROM agentstudio.workflows "+
-        "WHERE owner_user_id=$1::uuid ORDER BY updated_at DESC,id LIMIT $2::int",
+        "WHERE owner_user_id=$1::uuid "+(this.excludeToolTrials?"AND NOT EXISTS(SELECT 1 FROM agentstudio.toolhub_trials trial WHERE trial.owner_user_id=$1::uuid AND trial.workflow_id=agentstudio.workflows.id) ":"")+"ORDER BY updated_at DESC,id LIMIT $2::int",
         [actor,bounded])
       return rows.rows.map(normalizeWorkflow)
     })

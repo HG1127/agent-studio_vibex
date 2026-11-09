@@ -95,5 +95,7 @@ test('production server binds inspected read availability and shared policy comp
  assert.match(source,/allowOwnOperations:ownOperationsAvailable/)
  assert.match(source,/businessHandler=createNativeOwnOperationsBusinessHandler\(/)
  assert.match(source,/available:ownOperationsAvailable/);assert.match(source,/repository:new OwnOperationsRepository\(business\)/)
- assert.ok(source.indexOf('businessHandler=createNativeOwnOperationsBusinessHandler(')<source.indexOf('const localServer=createServer(native.handler)'))
+  assert.match(source,/const originalNativeHandler=async\(req:IncomingMessage,res:ServerResponse\)=>\{\s*if\(originalStaff&&await originalStaff\.handler\(req,res\)\)return\s*await native\.handler\(req,res\)\s*\}/)
+  const own=source.indexOf('businessHandler=createNativeOwnOperationsBusinessHandler('),staff=source.indexOf('const originalNativeHandler=async('),entry=source.indexOf('const entryHandler=createNativeEntryHttpHandler(originalNativeHandler,callerPublicHttp)'),listen=source.indexOf('const localServer=createServer(entryHandler)')
+  assert.ok(own>=0&&staff>own&&entry>staff&&listen>entry,'the actual entry must preserve the inspected Native policy/auth chain through the optional Staff wrapper for every non-public route')
 })

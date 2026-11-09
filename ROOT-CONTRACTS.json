@@ -1,0 +1,115 @@
+{
+  "Root_reference_status": "historical author source reference, not current acceptance",
+  "Root_current_note": "Historical author handoff inventory. Several parent/ordinary/schedule gaps were subsequently adapted in this isolated source candidate. Current status and remaining material080, artifact/quality081, full-page/desktop/runtime acceptance are recorded in docs/PG18_ORIGINAL_UI_API_MAP.json. This file grants no runtime authority.",
+  "schema": "C_monitor074_reviewable_source_contract_v1",
+  "root_basis": "02597d0 (Root-reported abbreviated ACK); each changed Root file has its exact base hash",
+  "delivery_scope": "Independent optional074 source chain; no qualifying execution and no production cutover",
+  "chain": [
+    "Native Cookie resolves current employee -> same Actor transaction -> source/run/case/knowledge checks",
+    "Original Native schedule authorizations/origins -> actual occurrence -> one current fenced monitor check",
+    "Unchanged Root parent/step approval and dispatch fence -> immutable effect/budget slot -> declared request reservation",
+    "Committed once-only encrypted material release -> existing DNS/TLS/redaction network -> full immutable receipt -> controlled business record",
+    "Resumable current-manifest freeze -> fresh ACL/dependency recheck -> semantic analysis -> employee review/latest rejection -> conditional atomic baseline/event commit"
+  ],
+  "new_namespace": "agentstudio.monitor_live_* only; unchanged073 audit composes as predecessor",
+  "default_behavior": {
+    "install_starts_worker": false,
+    "install_starts_network": false,
+    "api_enabled_by_default": false,
+    "employee_writes_require_separate_configuration_gate": true,
+    "execution_requires_separate_approval": true,
+    "ordinary_PB_default_preserved": true
+  },
+  "fixed_security_points": [
+    "no arbitrary X-Rh-User-Id authentication",
+    "Worker cannot create cases, impersonate employee review or revise monitored PERSON identity",
+    "new schema has API SELECT only; all mutations use sealed role-only RPCs",
+    "all MON source GETs require the actual leased Root job/step approval and bound dispatch immediately before material release",
+    "unknown COMMIT never replays provider or capture; source started/ambiguous slots are not reused",
+    "latest rejected record version blocks reuse of old monitor/baseline acceptance",
+    "explicit new Native schedule acknowledgment remains separate; monitor control never calls schedule_activate",
+    "closing transport aborts GETs and zeroes the copied key",
+    "no new default Worker, loop, CLI, scheduler, server, provider or deployment"
+  ],
+  "original_ui": {
+    "baseline": "D original BusinessCaseBinding/BusinessMonitoring/useMonitorHistory/ToolResultReader/BusinessMaterials/BusinessArtifactCenter/BusinessQualityStatus",
+    "changes": "original components retained; API import replacement; existing report download transport refuses missing PG contract; original business section restored in Root RunLauncher",
+    "raw_proposal_compatibility": "save accepts the original 7-field proposal and recomputes normalized definition/hash; derived fields cannot be altered",
+    "control_time_hint": "legacy next_at_ms is bounded and does not replace the already authorized Native schedule next_at",
+    "pilot_used_as_replacement": false,
+    "full_page_acceptance": false
+  },
+  "concrete_missing_Root_contracts": [
+    {
+      "priority": 1,
+      "contract": "original AgentRun parent Native lifecycle adapter",
+      "existing_source": "src/pages/AgentRun/useAgentRun.ts",
+      "evidence": "Root parent still calls getPocketBaseUrl at render, PB agent_specs/agent_runs/model-connections/run_events and browser tickAgentRun; it can block the whole PG page before the migrated business components render.",
+      "needed": [
+        "Native current-employee spec/run/model metadata DTOs in the original fields",
+        "actual owned run detail/timeline and approval/human-input/control actions",
+        "server Worker execution, without browser PB tick",
+        "all original controls remain visible; no suppression of legacy-block observations"
+      ],
+      "candidate": "Use existing Native repositories for a reviewed original-ui facade; do not manufacture empty successful data."
+    },
+    {
+      "priority": 1,
+      "contract": "ordinary owned case-run bootstrap and evidence binding",
+      "needed": [
+        "actual original job/checkpoint/approval binding for a non-monitor business run",
+        "full owned source receipts/material references and current team/document ACL",
+        "initial PERSON identity provenance/version rules"
+      ],
+      "current_boundary": "074 worker adapter is intentionally monitor-run scoped; employee manual case/entity RPCs exist, but ordinary AgentRun integration is not fabricated."
+    },
+    {
+      "priority": 1,
+      "contract": "original material/artifact/quality interfaces",
+      "needed": [
+        "owned material upload/parser/segments/original download",
+        "owned fact/report jobs and actual render outputs",
+        "actual quality validator results"
+      ],
+      "current_boundary": "Original sections remain present and show their original errors; missing contracts are never successful empty responses."
+    },
+    {
+      "priority": 1,
+      "contract": "original Schedules Native activation UI",
+      "needed": [
+        "original schedule controls mapped to real Native draft/activation DTOs",
+        "explicit current employee acknowledgment of model, cost and limits",
+        "fresh actual schedule authority after authoring pauses the schedule"
+      ],
+      "current_boundary": "074 backend never fabricates schedule acknowledgment or invokes schedule_activate. The TCP test uses the actual Native activation repository; the original Schedules page has not been accepted."
+    },
+    {
+      "priority": 1,
+      "contract": "Root original-build browser host fixture",
+      "required_interface": [
+        "profile original-agent-run-monitor074",
+        "head equals actual Hosted GITHUB_SHA and fixed LF seals",
+        "original index.html -> src/main.tsx -> src/App.tsx -> /agent-run build proof",
+        "actual Native Cookie/TCP/074 API, real producer/coordinator and ledger observation",
+        "observe(), collectNext(), finishAnalysis(); missingContracts must be []"
+      ],
+      "source": "tests/helpers/pg-original-monitor074-scenario.mjs",
+      "current_boundary": "Scenario fails missing host/dependencies, legacy-block events, PB/unapproved egress, nonzero provider calls or visible original-page errors."
+    }
+  ],
+  "Root_required_next_steps": [
+    "Review/apply exact whitelisted new files and unique hunks; preserve parallel A/B changes.",
+    "Root reseals final LF inventories/complete profiles; C does not edit existing pins. The new reviewed-source CI gate intentionally remains null until Root seals it.",
+    "Run API/frontend compiler and required pnpm checks under Root authority; no compiler was run locally.",
+    "Run isolated actual PG18 schema/RLS/catalog/Native HTTPS and the independent monitor074 TCP suite; C ran no SQL/Pool/Worker/server/browser.",
+    "Wire the original-page host only after the listed parent/material/artifact/quality contracts exist; do not count partial UI or073 metadata as full monitor acceptance.",
+    "Keep old PB recoverable and production NO-GO; employee UAT/24h remain0."
+  ],
+  "H_edited": false,
+  "Git_edited": false,
+  "pins_resealed_by_C": false,
+  "runtime_authorization": false,
+  "qualifies_run": false,
+  "full_monitor_complete": false,
+  "production_GO": false
+}

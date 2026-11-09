@@ -1,0 +1,21 @@
+async function report(s:Broker,p:Peer,request:string,binding:string,permit:string,value:WorkerHeartbeatReport){
+ s.bridge.check('cleanup')
+ if(!p.boot||p.boot.revoked||!p.backend||p.binding!==binding||!p.permit||!timingSafeEqual(Buffer.from(p.permit),Buffer.from(permit))||value.generation!==p.boot.slot.generation||value.sequence<=p.lastSequence)return writerFail()
+ // An issued permit is consumed synchronously, before any await or reentry.
+ p.permit=undefined;p.lastSequence=value.sequence
+ if(s.paused||s.active||s.bridge.busy()){
+  p.permit=secret();reply(p,request,false,{code:'writer_busy',not_dispatched:true,settled:true,next_permit:p.permit});return
+ }
+ peerCurrent(s,p);s.active=p
+ try{
+  const ack=await s.bridge.record(p.backend,value);peerCurrent(s,p)
+  p.permit=secret();reply(p,request,true,{...ack,next_permit:p.permit})
+ }catch(error){
+  // A Root bridge rejection is returned only after owned cleanup is known.
+  // If cleanup is itself uncertain closePeer rejects, so no settled ACK leaves.
+  if(p.boot)p.boot.revoked=true
+  if(p.backend)await s.bridge.close(p.backend)
+  reply(p,request,false,{code:error instanceof WorkerHeartbeatWriterError?error.code:'writer_uncertain',not_dispatched:false,settled:true})
+  p.socket.end()
+ }finally{if(s.active===p)s.active=undefined}
+}

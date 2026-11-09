@@ -14,7 +14,7 @@ type RunOverviewCardProps = {
   stateMeta: Record<RunStateKey, { label: string; badge: string }>
 }
 
-const TERMINAL_STATES: RunStateKey[] = ["succeeded", "failed", "cancelled"]
+const TERMINAL_STATES: readonly string[] = ["succeeded", "failed", "cancelled"]
 
 export function RunOverviewCard({
   run,
@@ -24,7 +24,7 @@ export function RunOverviewCard({
   harnessLine,
   stateMeta,
 }: RunOverviewCardProps) {
-  const meta = stateMeta[run.status] || stateMeta.failed
+  const meta = run.status === "awaiting_input" ? {label:"待我回复",badge:"bg-primary/10 text-primary"} : stateMeta[run.status] || stateMeta.failed
   const totalSteps = Math.max(run.max_steps, 1)
   const doneSteps = Math.min(Math.max(run.current_step, 0), totalSteps)
   const percent = Math.round((doneSteps / totalSteps) * 100)
@@ -79,9 +79,9 @@ export function RunOverviewCard({
         </div>
         <div className="flex items-center gap-2 rounded-lg bg-muted/60 px-3 py-2">
           <Clock className="h-3.5 w-3.5 shrink-0 text-primary" />
-          <dt className="shrink-0 text-xs text-muted-foreground">{isTerminal ? "结束" : "更新"}</dt>
+          <dt className="shrink-0 text-xs text-muted-foreground">{run.native ? (run.native.finishedAt?"结束":"更新") : isTerminal ? "结束" : "更新"}</dt>
           <dd className="min-w-0 flex-1 truncate text-xs font-medium text-card-foreground">
-            {isTerminal ? formatRunDetailTime(run.updated) : formatRunDetailTime(run.updated) || "—"}
+            {run.native ? formatRunDetailTime(run.native.finishedAt??run.updated) : isTerminal ? formatRunDetailTime(run.updated) : formatRunDetailTime(run.updated) || "—"}
           </dd>
         </div>
       </dl>
@@ -104,17 +104,16 @@ export function RunOverviewCard({
 
       <div className="mt-auto pt-4">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>执行进度</span>
+          <span>{run.native?"已记录步骤":"执行进度"}</span>
           <span>
-            第 {doneSteps} / {totalSteps} 步
+            {run.native ? "已登记 "+run.current_step+" 个执行步骤（非模型轮次）" : <>第 {doneSteps} / {totalSteps} 步</>}
           </span>
         </div>
-        <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
-          <div
-            className="h-full rounded-full bg-primary transition-all duration-500"
-            style={{ width: `${percent}%` }}
-          />
-        </div>
+        {run.native ? <p className="mt-1.5 text-xs text-muted-foreground">后台未提供总进度估算。</p> : (
+          <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-primary transition-all duration-500" style={{width:String(percent)+"%"}} />
+          </div>
+        )}
       </div>
     </div>
   )

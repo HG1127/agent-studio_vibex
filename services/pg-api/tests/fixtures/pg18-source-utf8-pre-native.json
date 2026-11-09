@@ -1,0 +1,29 @@
+{
+  "scope": "reviewed private source reader function bodies before UTF8 allocation change; no authority or cached filesystem state",
+  "functions": [
+    {
+      "path": "services/pg-api/src/pg18-full069-final-sources.mjs",
+      "name": "read",
+      "root": "finalRoot",
+      "raw": "bytes",
+      "source": "function read(relative,deployment=false){const file=path.join(finalRoot,relative);if(typeof relative!=='string'||relative.startsWith('/')||relative.split('/').some(v=>!v||v==='.'||v==='..'))fail();let at=finalRoot;for(const part of relative.split('/')){const d=fs.lstatSync(at);if(!d.isDirectory()||d.isSymbolicLink()||deployment&&(d.uid!==0||d.gid!==0||(d.mode&0o022)!==0))fail();at=path.join(at,part)}const before=fs.lstatSync(file);if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1||before.size<1||before.size>16777216||fs.realpathSync(file)!==file||deployment&&(before.uid!==0||before.gid!==0||(before.mode&0o222)!==0))fail();const bytes=fs.readFileSync(file),after=fs.lstatSync(file);if(['dev','ino','size','mtimeMs','ctimeMs','uid','gid','mode'].some(k=>before[k]!==after[k])||bytes.length!==before.size||bytes.includes(0)||!Buffer.from(bytes.toString('utf8')).equals(bytes))fail();return bytes}",
+      "parent_sha256": "94da32378d28b72bcf37018be71d3a29cf16ad6704bf021fa980cdf7f9707b2f"
+    },
+    {
+      "path": "services/pg-api/src/pg18-complete-companion-sources.mjs",
+      "name": "bytes",
+      "root": "root",
+      "raw": "raw",
+      "source": "function bytes(relative){\n if(!allowedSource(relative)&&!companionReviewAssets.includes(relative))fail('source_path')\n let at=root\n for(const part of relative.split('/')){if(fs.lstatSync(at).isSymbolicLink())fail('source_path');at=path.join(at,part)}\n const a=fs.lstatSync(at);if(a.isSymbolicLink()||!a.isFile()||a.nlink!==1||a.size<1||a.size>16*1024*1024||fs.realpathSync(at)!==at)fail('source_file')\n const raw=fs.readFileSync(at),z=fs.lstatSync(at);if(['dev','ino','size','mtimeMs','ctimeMs'].some(k=>a[k]!==z[k])||raw.includes(0)||raw.toString('utf8').startsWith('\\uFEFF')||!Buffer.from(raw.toString('utf8')).equals(raw))fail('source_changed')\n return raw\n}",
+      "parent_sha256": "86287d9929f90958e398d88fcbd22980933a5c40f4a92da5f9df23a8837eabda"
+    },
+    {
+      "path": "services/pg-api/src/pg18-complete-plan-workflow-sources.mjs",
+      "name": "sourceBytes",
+      "root": "root",
+      "raw": "b",
+      "source": "function sourceBytes(name,deployment=false){\n if(typeof name!=='string'||! /^(?:services\\/pg-api\\/src|shared|docs|ops\\/templates)\\/[A-Za-z0-9_./-]+$/.test(name)||name.split('/').some(p=>!p||p==='.'||p==='..'))fail()\n let at=root;for(const part of name.split('/')){const parent=fs.lstatSync(at);if(parent.isSymbolicLink()||!parent.isDirectory()||deployment&&(parent.uid!==0||parent.gid!==0||(parent.mode&0o022)!==0))fail();at=path.join(at,part)}\n const s=fs.lstatSync(at);if(!s.isFile()||s.isSymbolicLink()||s.nlink!==1||s.size<1||s.size>16*1024*1024||fs.realpathSync(at)!==at||deployment&&(s.uid!==0||s.gid!==0||(s.mode&0o222)!==0))fail()\n const b=fs.readFileSync(at),t=fs.lstatSync(at);for(const k of['dev','ino','size','mtimeMs','ctimeMs','mode','uid','gid'])if(s[k]!==t[k])fail();if(b.includes(0)||!Buffer.from(b.toString('utf8')).equals(b))fail();return b\n}",
+      "parent_sha256": "ce7baa677a7fae18a6238e904e1b2bf9c1825ecab1556ce4dd89459738da2876"
+    }
+  ]
+}

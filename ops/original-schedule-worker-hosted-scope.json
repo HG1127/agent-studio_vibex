@@ -1,0 +1,21 @@
+{
+  "story": "original-scheduled-tasks-worker",
+  "purpose": "YES_DISPOSABLE_ORIGINAL_SCHEDULE_WORKER_TLS_ONLY",
+  "original_route": "/scheduled-tasks",
+  "model_endpoint": "https://127.0.0.1:7459",
+  "synthetic_only": true,
+  "commercial_provider_calls": 0,
+  "new_backend_contracts": 0,
+  "existing_worker_classes": ["ScheduleRuntimeWorker", "WorkflowV2Worker:agent_native_v2", "WorkflowV2Worker:workflow_native_v2"],
+  "existing_broker": "WorkflowV2ModelDispatch and actual private mTLS handlers/clients",
+  "standing_consent": {"Agent_effect_limit": 2, "Workflow_effect_limit": 1, "nonclock_occurrence_limit": 3, "clock_occurrence_limit": 1, "expires_days": 7, "paid_knowledge": false},
+  "stages": ["original_employee_UI", "Agent_actual_worker_complete", "Agent_actual_history_and_reverified_copy", "Workflow_actual_worker_complete", "Workflow_actual_history_and_reverified_copy", "actual_failed_start_safe_UI_retry", "actual_clock_scheduler_complete", "actual_identity_reverification_blocks_stale_copy", "actual_stale_Broker_replay_denied"],
+  "failed_start": {"actual_attempts": 4, "actual_backoff_seconds": [15, 30, 60], "manual_status_or_time_mutation": false},
+  "expected_actual_completed_runs": 4,
+  "expected_actual_model_TLS_POSTs": 4,
+  "expected_actual_model_probes": 2,
+  "Worker_CLI_process_entry_verified": false,
+  "Native_server_process_entry_verified": false,
+  "heartbeat_online_claimed": false,
+  "production_GO": false
+}

@@ -7,14 +7,16 @@ type HarnessMonitorProps = {
   onRefreshMonitor: () => void
 }
 
-function formatDuration(ms: number): string {
+function formatDuration(ms: number | null): string {
+  if (ms === null) return "未记录"
   if (!ms || ms <= 0) return "0 毫秒"
   if (ms < 1000) return `${ms} 毫秒`
   if (ms < 60000) return `${(ms / 1000).toFixed(1)} 秒`
   return `${Math.floor(ms / 60000)} 分 ${Math.round((ms % 60000) / 1000)} 秒`
 }
 
-function formatTokens(n: number): string {
+function formatTokens(n: number | null): string {
+  if (n === null) return "未记录"
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`
   if (n >= 10000) return `${(n / 1000).toFixed(1)}k`
   return String(n)
@@ -29,11 +31,11 @@ export function HarnessMonitor({ monitorData, monitorLoading, onRefreshMonitor }
   const cards = totals
     ? [
         { icon: Activity, label: "总运行", value: String(totals.runs), hint: `成功 ${totals.succeeded} · 失败 ${totals.failed} · 取消 ${totals.cancelled}` },
-        { icon: CheckCircle2, label: "成功率", value: `${totals.success_rate}%`, hint: "最近运行口径（各取 100 条）" },
-        { icon: Gauge, label: "平均步数", value: String(totals.avg_steps), hint: "助手按步 · 工作流按节点" },
+        { icon: CheckCircle2, label: "成功率", value: totals.success_rate === null ? '未记录' : `${totals.success_rate}%`, hint: "最近运行口径（各取 100 条）" },
+        { icon: Gauge, label: "平均步数", value: totals.avg_steps === null ? '未记录' : String(totals.avg_steps), hint: "助手按步 · 工作流按节点" },
         { icon: Timer, label: "平均耗时", value: formatDuration(totals.avg_duration_ms), hint: "从发起到最后一次推进" },
-        { icon: Zap, label: "估算 Token", value: formatTokens(totals.est_tokens_total), hint: `上下文压缩 ${totals.compressions} 次` },
-        { icon: ShieldAlert, label: "审批次数", value: String(totals.approvals), hint: `卡死拦截 ${totals.stuck_loops} 次 · 截断 ${totals.truncations} 次` },
+        { icon: Zap, label: "估算 Token", value: formatTokens(totals.est_tokens_total), hint: totals.compressions === null ? '上下文压缩未记录' : `上下文压缩 ${totals.compressions} 次` },
+        { icon: ShieldAlert, label: "审批次数", value: totals.approvals === null ? '未记录' : String(totals.approvals), hint: `卡死拦截 ${totals.stuck_loops} 次 · ${totals.truncations === null ? '截断未记录' : `截断 ${totals.truncations} 次`}` },
       ]
     : []
 
@@ -118,7 +120,7 @@ export function HarnessMonitor({ monitorData, monitorLoading, onRefreshMonitor }
                       <td className="px-3 py-2 text-right font-semibold text-card-foreground">{tool.calls}</td>
                       <td className="px-3 py-2 text-right text-primary">{tool.success}</td>
                       <td className="px-3 py-2 text-right text-destructive">{tool.failed}</td>
-                      <td className="px-3 py-2 text-right text-muted-foreground">{tool.retried}</td>
+                      <td className="px-3 py-2 text-right text-muted-foreground">{tool.retried ?? '未记录'}</td>
                       <td className="px-3 py-2 text-right text-muted-foreground">{formatDuration(tool.avg_latency_ms)}</td>
                     </tr>
                   ))}

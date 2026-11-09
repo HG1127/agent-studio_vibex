@@ -6,6 +6,7 @@ import {readFileSync} from "node:fs"
 import {fileURLToPath} from "node:url"
 import {isUuid,type SqlPool,type SqlClient} from "./contracts.ts"
 import {applyKnowledgeScope} from "./knowledge-scope-policy.ts"
+import {createWorkerClaimAdmission,type WorkerClaimPermit,type WorkerClaimAdmissionView} from "./worker-claim-admission.ts"
 
 const sql=(name:string)=>readFileSync(
   fileURLToPath(new URL("../../../db/postgres/"+name,import.meta.url)),"utf8")
@@ -77,24 +78,57 @@ async function guardedLease(
 export class AgentPrepareWorker {
   readonly pool:SqlPool
   readonly workerId:string
+  readonly #claimAdmission=createWorkerClaimAdmission({lanes:["prepare"]})
   constructor(pool:SqlPool,workerId:string){
     safeWorkerName(workerId)
     this.pool=pool
     this.workerId=workerId
   }
+  closeNewClaims():void {this.#claimAdmission.close()}
+  // Local prepare claims only, not proof that every Worker kind can drain.
+  claimAdmissionSnapshot():WorkerClaimAdmissionView {return this.#claimAdmission.snapshot()}
   async claim(seconds=90):Promise<LeasedPrepareJob|null>{
     if(!Number.isInteger(seconds)||seconds<15||seconds>300)
       throw new Error("invalid_lease_duration")
-    return inTransaction(this.pool,async(db)=>{
+    const admission=this.#claimAdmission
+    if(admission.snapshot().closed)return null
+    const db=await this.pool.connect()
+    let started=false,commitAttempted=false,dispatched=false
+    let permit:WorkerClaimPermit|null=null
+    try{
+      await db.query("BEGIN");started=true
+      await applyKnowledgeScope(db,this.pool)
       await db.query("SET LOCAL ROLE agentstudio_worker")
-      const result=await db.query<LeasedPrepareJob>(claimSql,
-        [this.workerId,seconds])
-      const row=result.rows[0]
-      if(!row)return null
-      if(!validLease(row,this.workerId))
-        throw Error("invalid_claim_payload")
+      // Final synchronous gate after every connection/scope/role await.
+      // Keep the intent through row validation and transaction acknowledgement.
+      permit=admission.tryEnter("prepare")
+      let row:LeasedPrepareJob|null=null
+      if(permit){
+        const request=admission.dispatch(permit,()=>{
+          dispatched=true
+          return db.query<LeasedPrepareJob>(claimSql,[this.workerId,seconds])
+        })
+        if(request.started){
+          row=(await request.value).rows[0]??null
+          if(row&&!validLease(row,this.workerId))throw Error("invalid_claim_payload")
+        }else permit=null // final gate rejected an undispatched reservation
+      }
+      commitAttempted=true
+      await db.query("COMMIT");started=false
+      if(permit)admission.confirm(permit,{outcome:"commit_confirmed"})
       return row
-    })
+    }catch(error){
+      // Failed COMMIT acknowledgement stays uncertain even if a subsequent
+      // ROLLBACK appears successful: the server may already have committed.
+      if(permit&&dispatched)admission.markUncertain(permit)
+      let rolledBack=false
+      if(started)try{await db.query("ROLLBACK");rolledBack=true}catch{}
+      if(permit){
+        if(!dispatched)admission.discardUndispatched(permit)
+        else if(!commitAttempted&&rolledBack)admission.confirm(permit,{outcome:"rollback_confirmed"})
+      }
+      throw error
+    }finally{db.release()}
   }
   async prepare(job:LeasedPrepareJob):Promise<PrepareTick>{
     if(!validLease(job,this.workerId))

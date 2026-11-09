@@ -1,0 +1,307 @@
+{
+  "protocol": "original_agent_create_fresh_leaf_v1",
+  "story": "original-agent-create-fresh",
+  "parent_commit": "629cf69d52d01bf6feb4c76f759ab90dd837209d",
+  "parent_source_maps_replaced": false,
+  "frozen_SQL_changed": false,
+  "files": [
+    {
+      "path": "src/main.tsx",
+      "sha256": "3ab19d7e28ab1bd6b6cc2a39f968c27667fc53b8c9236a1cb14973de8076aeee"
+    },
+    {
+      "path": "src/App.tsx",
+      "sha256": "a5bd3f40d38694b6e53c95ba429c14c780b866c0bc3768ef391e1822c9a7cc96"
+    },
+    {
+      "path": "src/pages/AgentCreate/AgentCreatePage.tsx",
+      "sha256": "1c66dcf8e4f10a5f252a308992fa7e2aed8b042bdc7a4b842bcec4a07d9705c7"
+    },
+    {
+      "path": "src/pages/Home/useHome.ts",
+      "sha256": "e7d982c49547a58ba200588bb22ca1c1a0e7baa6535c8d97b2749c0784293503"
+    },
+    {
+      "path": "src/lib/agentCreateJourney.ts",
+      "sha256": "c547986b3227c9050ea8056a353fc6f8e02c2b1f7f1dc2606aea3a0e654cbca1"
+    },
+    {
+      "path": "src/lib/agentQualityChecks.ts",
+      "sha256": "7865ffe6b547c350886b3a63892ed7819022368789bb6eec090b0f66d14ce9a0"
+    },
+    {
+      "path": "src/lib/originalAgentCreateReader.ts",
+      "sha256": "770ab3a82b20e948c5b93a6896d64353fbf5d8e508dc505756b03d5ff1e510ee"
+    },
+    {
+      "path": "shared/original-agent-create-read-contract.ts",
+      "sha256": "b425a5513517266d6b5d83c24fdb7f42c9fb1511ececdb5d317e06470aad4cf5"
+    },
+    {
+      "path": "src/lib/originalModelConnectionsApi.ts",
+      "sha256": "9afa49d016104bd6d5b5b0e704fb8cdba4a2fa2f6a959b24c82745a96c757325"
+    },
+    {
+      "path": "src/lib/originalModelConnectionPagination.ts",
+      "sha256": "cb24d183fdb3df8c92b081155e6d6f4af27fa0f1076a494d75c1be628b2289f2"
+    },
+    {
+      "path": "shared/model-connection-pagination-contract.ts",
+      "sha256": "e86576c1cc6edb0d25b302ff82bf913411bccbb2f5c4ce3a53945db95d461dad"
+    },
+    {
+      "path": "src/lib/originalHomeAgentApi.ts",
+      "sha256": "52cb80658b332d13085d86be78766445b27373c2b49f1ac79ef93d5664d60646"
+    },
+    {
+      "path": "src/lib/originalHomeAgentEditor.ts",
+      "sha256": "94d5b302eb963063a73cff0d587a6c4c5d5f6b41d090fc163aa56d55e9ec7940"
+    },
+    {
+      "path": "src/lib/studioAuth.ts",
+      "sha256": "a0e428155ddb11f738ab579d76ee5bf9f02ff2995436cd19659d313f13b4c720"
+    },
+    {
+      "path": "src/lib/studioSessionPrivacy.ts",
+      "sha256": "8e2fc1ec5ba87a34ff5ba86361105451779cd4e9d4781675fd2e8850c5ad8fcf"
+    },
+    {
+      "path": "src/lib/studioBackend.ts",
+      "sha256": "8414f050c076b4b67a991588991ba94777ac6ecfe757978b54a16115d4ebfa75"
+    },
+    {
+      "path": "vibex-local/vite.original-pg.config.ts",
+      "sha256": "81f395f8c9c8066387beb3f166451c333bdefcc73d8585539f3743a4068f5713"
+    },
+    {
+      "path": "ops/build-pg18-native-api-preflight-bundle.mjs",
+      "sha256": "64a75a37c2a6c1481f6cd7929e61315aa7437ac26e20ceb0a10a520afcb97d31"
+    },
+    {
+      "path": "ops/pg18-original-home070-review-plan.mjs",
+      "sha256": "e4a77a78332dda8e84d1637d2daf11838df282f599d3d830fd6f5dd828148dd0"
+    },
+    {
+      "path": "ops/pg18-original-home071-review-plan.mjs",
+      "sha256": "041b6187d2ddbe4d7934b4d40a1285be936ea2b4050fcd2328f52b140a74530b"
+    },
+    {
+      "path": "ops/pg18-original-home072-review-plan.mjs",
+      "sha256": "a72a6a767880415734b48f0217bbcdc2dd233f3cd4160233c4e16e15b8e7ad9f"
+    },
+    {
+      "path": "services/pg-api/src/pg18-ephemeral-ci-guard.mjs",
+      "sha256": "71c2205c1564424b856d43ef9b4a3483b1743b7a0a463f6b3b9f7bb3c2c64458"
+    },
+    {
+      "path": "services/pg-api/tests/helpers/agent-assessment-fixture.mjs",
+      "sha256": "41f747c751a181ef02ddc2060bd86cc15e744420cc7c9688bfa6fb3b8e80266a"
+    },
+    {
+      "path": "services/pg-api/tests/helpers/bound-model-loopback-tls.mjs",
+      "sha256": "d3932a15340329b3e3550b2a58f25ac0f7c045aedc85d01a8b560d1931ce6b4c"
+    },
+    {
+      "path": "services/pg-api/src/contracts.ts",
+      "sha256": "7aa7b9d3332e8200f2d3dd78f88c62acf4b7363b83fdfd41dfa5b04b7c887935"
+    },
+    {
+      "path": "services/pg-api/src/http.ts",
+      "sha256": "b3c65ab1ceb9015736f30bd6c71b372e938552378848c4d5ba7eb5e65953742a"
+    },
+    {
+      "path": "services/pg-api/src/native-config-uat-policy.ts",
+      "sha256": "8905327f7d90356ac4833c2d42c373ff2639f2733a18653190ad77a45307a04f"
+    },
+    {
+      "path": "services/pg-api/src/native-auth-http.mjs",
+      "sha256": "593382524dea309213a7f667d61f26eed18c9e199229457065981ec528679912"
+    },
+    {
+      "path": "services/pg-api/src/native-auth-repository.mjs",
+      "sha256": "3c030654c6aff5a13125cac7ddb78c75c4b92a94a8b9281ed1f8a19a9d988a37"
+    },
+    {
+      "path": "services/pg-api/src/native-entry-http.ts",
+      "sha256": "bb7b73918f643d0d16b615aeeb3829ac70bb6e3a23e360f6b260c34bd98d7f14"
+    },
+    {
+      "path": "services/pg-api/src/native-employee-auth.mjs",
+      "sha256": "96cc6b4978faae6c285335f364b1da89eded8319699ae4599aab98244804dfee"
+    },
+    {
+      "path": "services/pg-api/src/native-home-agent-specs-runtime.ts",
+      "sha256": "4605bfc0c66766bcf85148e517261db54232db04a4ec3e1e0c59a62f8c06a170"
+    },
+    {
+      "path": "services/pg-api/src/native-agent-catalog-runtime.ts",
+      "sha256": "fc6ca1a18904fdee01c9e4e45be38d15906e7b7042bc46df1a85626ad8c51d09"
+    },
+    {
+      "path": "services/pg-api/src/native-monitor-inbox-runtime.ts",
+      "sha256": "17bd61f2d8d222a06cee4d3346288d1632f376d4ff6b4693953e64e3bd0a7f2a"
+    },
+    {
+      "path": "services/pg-api/src/model-connection-repository.ts",
+      "sha256": "c93724685537302d085164eb90af0cccb747b38c6d541c55ccf269a3714f02ef"
+    },
+    {
+      "path": "services/pg-api/src/model-connection-probe.ts",
+      "sha256": "ff5b6bb27b181cc7054f97b8164598c8ee3b0f07f05bd08f829a99bba1b78ea8"
+    },
+    {
+      "path": "services/pg-api/src/model-connection-executor.ts",
+      "sha256": "8f239d7f9e00d267fe4fb3e6d552d8c3761e445ce4c3d4f70d79fef6621aa1aa"
+    },
+    {
+      "path": "services/pg-api/src/autonomous-agent-run-repository.ts",
+      "sha256": "b0817505717c73a447537e76ec9ad70e6deb30a1e69c0ad1ff609760a9df55c7"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-run-repository.ts",
+      "sha256": "01d9acb67fc82fd40eabdee5816fdf8c0877d2806652ce4718861e90cfe7f35c"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-worker.ts",
+      "sha256": "e541917e70bb1f2dde4a8027ac432012f514b946f88d1cfe022217e6c920427e"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-model-dispatch.ts",
+      "sha256": "7dd9104d0d14c75937bbef8c3275bb099e6b0457952d446a5368c4f44a1c1c6c"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-model-client.ts",
+      "sha256": "e9a3ccad490657cec310bcab60b88af21cf22c62c22888c8586f75750fcab5fe"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-model-handler.ts",
+      "sha256": "74aba0319ca477ab19e8c185e85e385807522aec579d769c84fae5f12a09177c"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-dispatch-guard.ts",
+      "sha256": "a1a67a4b4fc668129a9ee1fcdb13ddbed5e8a215aade76cd5a265f248098bcfb"
+    },
+    {
+      "path": "services/pg-api/src/workflow-v2-agent-resources.ts",
+      "sha256": "02e008a1e59a83754ce87612326eafa2d2586c274ff4c8ae3faad72a7c6285e8"
+    },
+    {
+      "path": "services/pg-api/src/knowledge-access-repository.ts",
+      "sha256": "801555a6d85cd2d5af5b170f290902d0d53d21649008c5feaa2f83c9129b02d1"
+    },
+    {
+      "path": "services/pg-api/src/knowledge-repository.ts",
+      "sha256": "6420206c2c3c835c78a698d5e0378be701773a01a48264cd1a5958803e925c16"
+    },
+    {
+      "path": "services/pg-api/src/knowledge-observation-policy.ts",
+      "sha256": "34834d4f87a3d1f0f10f1850b32d509bd35f8e34e15b0ee87f27506f187593df"
+    },
+    {
+      "path": "services/pg-api/src/agent-human-input-policy.ts",
+      "sha256": "ac50ff7cdf68f523db52a404752d16598f2199f551990cf0b78ef67c60f8bc1b"
+    },
+    {
+      "path": "services/pg-api/src/pg18-complete-profile-source.mjs",
+      "sha256": "1de843ca839bcc3cbc280cc3137d7c0857d964c88d702a81ba9903d57c44ec52"
+    },
+    {
+      "path": "tests/helpers/pg-original-login-browser-guard.mjs",
+      "sha256": "4b2031cd2e201c97f80bc9dcd625bff80f7fec08d8d828ec83c31fe9d8ef7b11"
+    },
+    {
+      "path": "tests/helpers/pg-original-login-legacy-observer.mjs",
+      "sha256": "e9d87c70938c21579fe643f6e2c7bcaa613b4127b07d8e0214ab661f731d8c9d"
+    },
+    {
+      "path": "tests/helpers/pg-original-agent-create-guard.mjs",
+      "sha256": "8120d061f114b32af9128cb43d1c66169539f242cbd3dae1bc1a40fe7fba4538"
+    },
+    {
+      "path": "tests/helpers/pg-original-agent-create-reviewed-check.mjs",
+      "sha256": "dd3d34b8141769cd28cfbb53ca933dc614b15489df5855ff2d5696e8c9bf094b"
+    },
+    {
+      "path": "tests/helpers/pg-original-agent-create-policy.mjs",
+      "sha256": "f206967e40c5d0c82da2c67d528ca2ca5c1c580832f9579a590eb40ff65bb03c"
+    },
+    {
+      "path": "tests/helpers/pg-original-agent-create-backend-fixture.mjs",
+      "sha256": "eff5e64e3b1d6deb913b7d04aae3d8a60cc82d12032596710de7404e311ab831"
+    },
+    {
+      "path": "tests/helpers/pg-original-agent-create-browser-fixture.mjs",
+      "sha256": "80a0a14d8f5bce3805490b1f6203e91169abce23b7003a94171998dafd43ef22"
+    },
+    {
+      "path": "tests/helpers/install-original-agent-create-chromium.mjs",
+      "sha256": "2dabe60597398b940afe2b9b45bde37869c194898aa7d852628fa3a4b96688f7"
+    },
+    {
+      "path": "tests/pg-original-agent-create-fresh-genuine.config.mjs",
+      "sha256": "9a5881a8fb3ae47a0c8aca82b1c8d13add935cb3c2ea197facf3f4b425b87da4"
+    },
+    {
+      "path": "tests/pg-original-agent-create-fresh-genuine.spec.mjs",
+      "sha256": "008d3de39280ab1d3432d48c4cd1a8dfa8cd84c7588127125f94a925711006e5"
+    },
+    {
+      "path": "tests/pg-original-agent-create-fresh-source-pure.test.mjs",
+      "sha256": "506e1b8457d2059d013f9903f24e60fa01dce64175243ae26ff1482e732cd586"
+    },
+    {
+      "path": "tests/original-agent-create-read-pure.test.mjs",
+      "sha256": "8e4dcb84bfbc81b4cd2693e3f20f59acbf7621c6cee2981df7f59c16f9f52b88"
+    },
+    {
+      "path": "tests/pg-original-agent-create-fixture-contract-pure.test.mjs",
+      "sha256": "dd85ed27cfdbb83ef4cd0857f337058a924e6d92261bd34410733b7c0b89a501"
+    }
+  ,
+    {"path": "services/pg-api/src/mcp-inventory-http.ts", "sha256": "369000eafbab4baa7806beb889d0d799c63da846f7796fabd2d97a02c29542d3"},
+    {"path": "services/pg-api/src/mcp-inventory-page-cursor.ts", "sha256": "a57728ba6d5afdb3abc7dc1eebe93545bbed672507de0b1359af442a48c180c5"},
+    {"path": "services/pg-api/src/mcp-inventory-pagination.ts", "sha256": "faa04f34a1a7a44b4281517d3a7b1a5dd51712a8fcfea7d6ee172c6548a2f6c6"},
+    {"path": "shared/mcp-inventory-pagination-contract.ts", "sha256": "ab29cc9b9b9adf3dd8865c6b7569a43ac74337a220d43821e6e048e8c1ecd944"},
+    {"path": "shared/original-harness-contract.ts", "sha256": "0ac7d490b1f0f6917e2ee97950387c20f28db8595059ce71e53592446cf3be9c"},
+    {"path": "src/components/site/ResourceQuickStart.tsx", "sha256": "301bd2b4cde3220ec0f9a71403140fd9c6c2ba66a72c2e2f639c504072bd50d8"},
+    {"path": "src/lib/executionCapabilities.ts", "sha256": "c4697bbf5b355f68e752e09803098e2c3ce2a04ac2b5fac8eaa7b70e681b361d"},
+    {"path": "src/lib/harnessData.ts", "sha256": "ad0d9310d11d6332c790fb50535a45134c6b8f8ef73f136ad8e962a66c0034df"},
+    {"path": "src/lib/harnessRequest.ts", "sha256": "c7720010e3d9c58d5e26c9a31b80b5aa996dab832f734f6707b53ef21b692b30"},
+    {"path": "src/lib/originalHarnessApi.ts", "sha256": "2af1241a8e29385a43d30099550433cf59e72194966c4b47d7840e3473e8f0b6"},
+    {"path": "src/lib/originalHarnessSources.ts", "sha256": "f95a242517431984722e288facf7812b218c632f41da072071af7c0bdbc7d2ae"},
+    {"path": "src/lib/originalMcpInventoryApi.ts", "sha256": "0ae9196136d8d85df60f87030b369e894f29a37fed06481a7cd897b8a24f4901"},
+    {"path": "src/lib/originalMcpInventoryPagination.ts", "sha256": "8db891544d2681da71ffd8d82dfeaa25313edeaa9457555131e35c2e558e2d03"},
+    {"path": "src/lib/originalReadPageSession.ts", "sha256": "9988fc4f93a47802b3e9d00417b44ecae2d6006a679852399f89a9ccc1479c5b"},
+    {"path": "src/lib/originalResourceInventorySession.ts", "sha256": "6821af6e8aa819adbd579ceea2c0c8271c188b8e62d10214567b2f1d20989166"},
+    {"path": "src/lib/originalStudioReadTransport.ts", "sha256": "cdf6a4eef8198ab7493f2973bf73a889b14ca85eb61b94009e4d26930f677533"},
+    {"path": "src/lib/originalToolEntry.ts", "sha256": "dded1dcffc5bf4fe2627c81d7bb8c5daaba67ab13eb5c29564f5c73cfc74cc5e"},
+    {"path": "src/lib/resourceAccessGuide.ts", "sha256": "5c4a949fd1f47249e87a1fb9a691bd5135a8acc561b4a66188316c1adcce311b"},
+    {"path": "src/lib/resourceInventory.ts", "sha256": "248797380ce283aae45c8e3df778ea8f88bfff0b53562c2cfdb64ff5355857eb"},
+    {"path": "src/lib/usePgResourceInventory.ts", "sha256": "88e6c2223e2dc9883ab2d8bd2ae141aaedc71d23445a655b2e314b89a57d498c"},
+    {"path": "src/lib/useResourceInventory.ts", "sha256": "a8a0d56094dd19fe7e6c9c6da7775ce15d175f0e98c26e7dc2d41f1846ca6344"},
+    {"path": "src/pages/ExecutionConnections/ExecutionConnectionsPage.tsx", "sha256": "b6d6d12a5237c902a74f6c9f49360a0f092ca3ad339b91de06dfd59dacff5522"},
+    {"path": "src/pages/Harness/HarnessPage.tsx", "sha256": "673422f8cde552edaec9181831ff710285328087264c6c634d98ff25034e1820"},
+    {"path": "src/pages/Harness/useHarness.ts", "sha256": "6c435ebe1017a50302e8379016ea6f863d3256ea27f547c35e1b0a531b35e8d5"},
+    {"path": "src/pages/Harness/usePgHarness.ts", "sha256": "7a3854d98dce1207866b1ec6abcc026993a0523bc8104278b90ced5be2526de7"},
+    {"path": "services/pg-api/src/quality089-release-parent-audit.ts", "sha256": "ac5a38a7ba5ac7bd035a9849cf4cd9682587bcd40543d807b86969e6bdba4bef"},
+    {"path": "services/pg-api/src/quality089-knowledge-parent-audit.ts", "sha256": "8a784e90eb7d6bbc83afa4939b372ee6d9cc9767530f132d373eb677dcb2a60c"},
+    {"path": "services/pg-api/src/original-plugin-market-http.ts", "sha256": "9b02b8db92911d0323bba6ec11ba999a9b8933a83d0266a1f41142750fb2aee1"},
+    {"path": "services/pg-api/src/original-plugin-preview.ts", "sha256": "03ad0fb5c74129931e454010b650779579b5e5f0549c94bd84e383e60ca66c73"},
+    {"path": "src/lib/originalPluginMarketSession.ts", "sha256": "415b59e68d1ee07954a4b547aa9488ac28ae7d4e22814a3a46f08fdee95b5a5c"},
+    {"path": "src/lib/originalPluginMarketSources.ts", "sha256": "1f134bbd027c494fffb99fcdccc70ced7ca6307dbb00ed1455cbcd7beb4cd31f"},
+    {"path": "src/lib/originalPluginMarketTransport.ts", "sha256": "4e3a69436ec2dc46443dfb8d502733e8365a1951f4d2fdb7a29ddd99b289f2fb"},
+    {"path": "src/lib/originalPluginMarketTrial.ts", "sha256": "5de3677c5adfc8e129b26e1c2183074a006b8e80ce447b92fe635621fdf4f38d"},
+    {"path": "src/lib/originalPluginMarketView.ts", "sha256": "c2be0be0c508ce10c29dc6a3a6127be09761d94e51b4a808c4ae6772f4eefcc2"},
+    {"path": "src/lib/originalPluginModelChoice.ts", "sha256": "5a269b131634ada0ee99815d8b252a85889679ff422945ef47ab89c4b3331762"},
+    {"path": "src/lib/smitheryMarketplace.ts", "sha256": "6de56db392908029a686ceefcc686351f6cf988f926dce60e3a8ef6bde24c8eb"},
+    {"path": "src/pages/PluginMarket/usePgOriginalPluginMarket.ts", "sha256": "c74831ce35167a382be14c1bf82a320849908f9e058aeaaa6634de6d954cc34f"}
+,
+    {"path": "services/pg-api/tests/helpers/original-page-ci-entry.mjs", "sha256": "11df109f92c5848dde5f559df66286d3fd2a8f002e17208416a9386b7e253dc1"},
+    {"path": "tests/original-page-registered-entry-pure.test.mjs", "sha256": "b47c9ecc946ade2860ad5f623e9d41226a5835de33498d23786a980f6a783fad"}
+,
+    {"path": "tests/helpers/original-create-owned-pg-source-reference.json", "sha256": "431c85995713fe87cd8825fbc1f2083a26d420f3565a8ed0f7e746785b57d398"},
+    {"path": "tests/pg-original-agent-create-owned-pg-source.test.mjs", "sha256": "4409c6ed8ab429e11553f740bd336179cb3e1aec26738a6266223b18952ce48a"}
+,
+    {"path": "services/pg-api/tests/original-create-parent-sequence-source-pure.test.mjs", "sha256": "e7c9b59f8d4e56404137b942176ad448984bec299523d6ae706ee628b3062811"}
+]
+}

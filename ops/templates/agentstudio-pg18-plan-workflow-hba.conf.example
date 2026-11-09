@@ -1,0 +1,10 @@
+# SOURCE EXAMPLE ONLY. Place each fixed-user block before general matching rules.
+# Keep original C7/Review rules; the preparer only reads pg_hba_file_rules.
+local all agentstudio_plan_workflow_worker_login reject
+host agent_studio agentstudio_plan_workflow_worker_login 127.0.0.1/32 scram-sha-256
+host all agentstudio_plan_workflow_worker_login 0.0.0.0/0 reject
+host all agentstudio_plan_workflow_worker_login ::/0 reject
+local all agentstudio_plan_workflow_dispatch_login reject
+host agent_studio agentstudio_plan_workflow_dispatch_login 127.0.0.1/32 scram-sha-256
+host all agentstudio_plan_workflow_dispatch_login 0.0.0.0/0 reject
+host all agentstudio_plan_workflow_dispatch_login ::/0 reject

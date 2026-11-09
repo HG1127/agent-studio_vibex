@@ -1,0 +1,77 @@
+name: Agent Studio original Role and Skill A/B isolated PG18 SQL proof
+
+on:
+  push:
+    branches: ['codex/pg18-worker-heartbeat-*']
+  workflow_dispatch:
+    inputs:
+      reviewed_head:
+        description: Exact reviewed event head containing the original Role A/B sources
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: original-role-ab-sql-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pg18-original-role-ab-sql:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      AGENT_STUDIO_ORIGINAL_ROLE_AB_SQL_CI: YES_DISPOSABLE_ORIGINAL_ROLE_AB_SQL_ONLY
+      AGENT_STUDIO_ORIGINAL_ROLE_AB_SQL_PROFILE: original-role-ab-sql-v1
+      AGENT_STUDIO_ORIGINAL_ROLE_AB_SQL_EXPECTED_HEAD: '${{ inputs.reviewed_head || github.sha }}'
+      AGENT_STUDIO_ORIGINAL_ROLE_AB_SQL_SOURCES_SHA256: '2bc9c036bd6722517d7ec1146debb73221232f9f36a3fdfa4682b3c22008963d'
+      AGENT_STUDIO_PG18_CI_EPHEMERAL: 'true'
+      AGENT_STUDIO_PG18_CI_WRITE_APPROVED: YES_DISPOSABLE_GITHUB_ONLY
+      AGENT_STUDIO_PG18_CI_HOST: '127.0.0.1'
+      AGENT_STUDIO_PG18_CI_PORT: '5333'
+      AGENT_STUDIO_PG18_CI_DATABASE: agent_studio
+      AGENT_STUDIO_PG18_CI_ADMIN_USER: postgres
+      AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD: 'synthetic-role-ab-${{ github.run_id }}-${{ github.run_attempt }}-only'
+      ROLE_AB_CONTAINER: 'agentstudio-role-ab-${{ github.run_id }}-${{ github.run_attempt }}'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: '${{ inputs.reviewed_head || github.sha }}'
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Locked dependencies without lifecycle scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Actual API compiler and import-safe purpose refusal
+        run: |
+          pnpm --dir services/pg-api check
+          node --experimental-strip-types --test services/pg-api/tests/original-role-ab-sql-ci-guard.test.mjs tests/original-skill-ab-sql-condition-source-pure.test.mjs tests/original-role-catalog-query-source-pure.test.mjs
+      - name: New empty loopback PG18 instance for this job only
+        run: |
+          docker run --detach --name "$ROLE_AB_CONTAINER" --network host --env POSTGRES_DB=agent_studio --env POSTGRES_USER=postgres --env "POSTGRES_PASSWORD=$AGENT_STUDIO_PG18_CI_ADMIN_PASSWORD" pgvector/pgvector:0.8.7-pg18 postgres -h 127.0.0.1 -p 5333
+          ready=false
+          for attempt in $(seq 1 60); do
+            if docker exec "$ROLE_AB_CONTAINER" pg_isready -h 127.0.0.1 -p 5333 -U postgres -d agent_studio; then ready=true; break; fi
+            sleep 1
+          done
+          test "$ready" = true
+      - name: Actual original optional Role and Skill A/B SQL stories
+        run: node --experimental-strip-types --test --test-concurrency=1 services/pg-api/tests/original-role-ab-genuine-pg18.test.mjs
+      - name: Stop only this job's disposable database
+        if: always()
+        run: |
+          if docker container inspect "$ROLE_AB_CONTAINER" >/dev/null 2>&1; then docker rm --force --volumes "$ROLE_AB_CONTAINER"; fi
+      - name: Preserve closed SQL observation including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-role-ab-sql-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/original-role-ab-sql-ci-results/**/observation.json
+          if-no-files-found: warn

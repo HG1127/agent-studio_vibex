@@ -16,6 +16,9 @@ import type { RunEventRow } from "@/pages/AgentRun/useAgentRun"
 import type { StepGroup } from "@/pages/RunDetail/useRunDetail"
 
 type RunTimelineBodyProps = {
+  nativeRun?: import('@/lib/originalRunDetailProjection').OriginalRunDetailMeta
+  onMoreNativeSteps?: () => void
+  nativeBusy?: boolean
   stepGroups: StepGroup[]
   hasRun: boolean
   isLive: boolean
@@ -187,6 +190,7 @@ function EventItem({ evItem }: { evItem: RunEventRow }) {
 }
 
 export function RunTimelineBody({
+  nativeRun, onMoreNativeSteps, nativeBusy,
   stepGroups,
   hasRun,
   isLive,
@@ -212,7 +216,7 @@ export function RunTimelineBody({
   return (
     <div className="flex min-h-64 flex-col rounded-2xl border border-border bg-card p-5 shadow-md">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-base font-semibold tracking-tight text-card-foreground">运行时间线</h2>
+        <h2 className="text-base font-semibold tracking-tight text-card-foreground">{nativeRun?"公开步骤状态快照":"运行时间线"}</h2>
         <div className="flex items-center gap-3">
           {isLive && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
@@ -239,7 +243,19 @@ export function RunTimelineBody({
         </div>
       </div>
 
-      {!hasRun ? (
+      {nativeRun ? <div className="mt-4 space-y-3">
+        <p className="text-xs text-muted-foreground">这些是后台公开步骤的当前状态，不是事件流；未提供的耗时、时间、提示词与推理不作补充。</p>
+        {!nativeRun.sourceAvailable && <p role="status">来源或权限已变化，正文与步骤内容已隐藏。</p>}
+        <ol className="space-y-2">{nativeRun.steps.map(step=><li key={step.step_key} className="rounded-xl border border-border bg-background p-3">
+          <details><summary className="cursor-pointer text-sm">{step.step_key} · {step.status}</summary>
+            {step.updated_at && <p className="mt-1 text-xs">后台记录更新时间：{step.updated_at}</p>}
+            {nativeRun.sourceAvailable && Object.keys(step.metadata).length>0 && <pre className="mt-2 whitespace-pre-wrap break-all text-xs">{JSON.stringify(step.metadata,null,2)}</pre>}
+          </details>
+        </li>)}</ol>
+        {!nativeRun.steps.length && <p className="text-sm text-muted-foreground">当前快照没有可展示步骤。</p>}
+        <p className="text-xs text-muted-foreground">{nativeRun.stepsComplete?"当前公开步骤已读取。":"步骤尚未读完；不能据此宣称完整执行历史。"}</p>
+        {["agent_autonomous","workflow_v2"].includes(nativeRun.kind) && nativeRun.steps.length<1000 && (!nativeRun.stepsComplete || nativeRun.nextAfter===null) && <button type="button" onClick={onMoreNativeSteps} disabled={nativeBusy} className="rounded-lg border px-3 py-2 text-sm">{nativeRun.nextAfter?"读取后续公开步骤":"重新读取公开步骤分页"}</button>}
+      </div> : !hasRun ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 py-10 text-center">
           <span className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
             <Brain className="h-6 w-6" />

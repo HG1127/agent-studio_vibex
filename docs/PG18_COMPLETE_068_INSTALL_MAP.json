@@ -1,0 +1,324 @@
+{
+  "format": "PG18_complete068_optional_install_map_v1",
+  "profile": "complete068",
+  "ordered_sources": [
+    {
+      "order": 1,
+      "path": "db/postgres/001_stage_schema.sql",
+      "Git_LF_sha256": "af29a65a28c3dbde02bde8723b726f5493886d6d155142bc3bf00fd127be0f58",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 2,
+      "path": "db/postgres/010_pg18_native_auth_proposed.sql",
+      "Git_LF_sha256": "a079eb21b4b568fc217c685b5754186c83f25c920a8ffa4e3cbb43337204e695",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 3,
+      "path": "db/postgres/migrations/pg_v9_019_model_connections.sql",
+      "Git_LF_sha256": "8cc09710963b293351fe940c3b9816eefdd4e74169e63df519963c616ec48165",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 4,
+      "path": "db/postgres/migrations/pg_v9_020_model_credential_broker.sql",
+      "Git_LF_sha256": "8b1f89474764f8b778794f640b5a8097a74a6ce2dc72d04e419cb99f4d455c6d",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 5,
+      "path": "db/postgres/migrations/pg_v9_021_tool_connections.sql",
+      "Git_LF_sha256": "b4813598d2425796807437711c850c69c7a7a19440d8e7dce9d7e87c70e88d7b",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 6,
+      "path": "db/postgres/migrations/pg_v9_022_schedule_draft_fence.sql",
+      "Git_LF_sha256": "d0dc31be66d536174412bc4b6d880154c42099dc208858152e3edeaa18a4bcfe",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 7,
+      "path": "db/postgres/migrations/pg_v9_023_workflow_safe_worker.sql",
+      "Git_LF_sha256": "86cd4687f4b8d7e5a069edee1de5a2346e9a5b99fac12c9d0ba0ef7d8d8fbf7d",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 8,
+      "path": "db/postgres/migrations/pg_v9_024_bound_dispatch_identity.sql",
+      "Git_LF_sha256": "014d1ccb4e20a79a7470a1d1af0c3decf847fd4980278070b88e86382a07ee5c",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 9,
+      "path": "db/postgres/migrations/pg_v9_025_workflow_model_identity.sql",
+      "Git_LF_sha256": "e381465d120fb4db72ef2ef5fb1234ee384df051197e327db3f341f53956af3f",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 10,
+      "path": "db/postgres/migrations/pg_v9_026_workflow_tool_identity.sql",
+      "Git_LF_sha256": "fbd3ca935c8042035dd912a22653e9d4e89ed2f90dac7433d341da21328ba602",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 11,
+      "path": "db/postgres/migrations/pg_v9_027_workflow_agent_identity.sql",
+      "Git_LF_sha256": "a2328b832557e2798d2ee28a6d4ff04085ab7dd5e43f34427083d375d4608266",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 12,
+      "path": "db/postgres/migrations/pg_v9_028_autonomous_agent_identity.sql",
+      "Git_LF_sha256": "61252ea7a1cd07e82a32c03f9cad729741ed3598aa4041b5738858971398b58b",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 13,
+      "path": "db/postgres/migrations/pg_v9_029_mcp_connections.sql",
+      "Git_LF_sha256": "b05d813d1f360c4f41cf8c7c89537a0deb4c97112ff218ec38ed909859a3b25c",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 14,
+      "path": "db/postgres/migrations/pg_v9_030_mcp_tool_identity.sql",
+      "Git_LF_sha256": "2f9d84779b88e07864fa9dc5684097afeb80a17d9e999fc7580ec8bb7e7da31d",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 15,
+      "path": "db/postgres/migrations/pg_v9_031_smithery_managed.sql",
+      "Git_LF_sha256": "97cb633de97819dee8cc23e5b2560e52f42c7aa41b2bd772987513cc73aae094",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 16,
+      "path": "db/postgres/migrations/pg_v9_032_knowledge_access.sql",
+      "Git_LF_sha256": "214661d3da9bfe664f882c81a7e183b1381f610cf820fdab65426c9545a59327",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 17,
+      "path": "db/postgres/migrations/pg_v9_033_knowledge_content.sql",
+      "Git_LF_sha256": "2106ee6b54d3a76c6dd668aa39567d759e31b30d4b4ed7095afe11fd184e4f6c",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 18,
+      "path": "db/postgres/migrations/pg_v9_034_knowledge_runtime.sql",
+      "Git_LF_sha256": "96d311946f7ff4edb9e2f676090f194ff78f4688a34af0f89ee406e29a08b4ce",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 19,
+      "path": "db/postgres/migrations/pg_v9_035_knowledge_embedding_state.sql",
+      "Git_LF_sha256": "1017a4837a8fbed996ce0976e0e23499181f79bfab4edb2ad18e60509580776a",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 20,
+      "path": "db/postgres/migrations/pg_v9_036_knowledge_embedding_consent.sql",
+      "Git_LF_sha256": "a80f2574b7daccdd828e9e4554b86dd2306096ff250e735eea627b567d6a8474",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 21,
+      "path": "db/postgres/migrations/pg_v9_037_knowledge_index_runtime.sql",
+      "Git_LF_sha256": "c52881b111c9e0b642d4c57bc95a7788fd55532d1a7c00503fd27298753f5e9c",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 22,
+      "path": "db/postgres/migrations/pg_v9_038_knowledge_query_runtime.sql",
+      "Git_LF_sha256": "aade721ad2d592c07bc016627fa68f765366877fad2876db1ace02685b6fa848",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 23,
+      "path": "db/postgres/migrations/pg_v9_039_knowledge_execution_source.sql",
+      "Git_LF_sha256": "f1a63f4a3858baf4d58b16c3b44b28b1ad44255f19186a71ed2591ab8bfb0d76",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 24,
+      "path": "db/postgres/migrations/pg_v9_040_approved_semantic_tools.sql",
+      "Git_LF_sha256": "872709dc884656a756cd0ebf16413bb4353f50b7f0bcf9f9826ce3510a513b4a",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 25,
+      "path": "db/postgres/migrations/pg_v9_041_keyword_observations.sql",
+      "Git_LF_sha256": "15d00b287e2b8a094a77e6b6d50ecd46a5ff5f28e5442120da4f967a993746f5",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 26,
+      "path": "db/postgres/migrations/pg_v9_042_agent_knowledge_observations.sql",
+      "Git_LF_sha256": "d1430704ff5484b5e534fe10a7099ad78c84b4b19a0f56eaba20d344b17718ee",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 27,
+      "path": "db/postgres/migrations/pg_v9_043_workflow_sample_lineage.sql",
+      "Git_LF_sha256": "4b6c340b5be4cc85e36e541d31f94cadc838d9cbb46bf271b7468ffe8455aa2f",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 28,
+      "path": "db/postgres/migrations/pg_v9_044_schedule_execution.sql",
+      "Git_LF_sha256": "6069d9e556a12fac57ee11556b573d1a51e4638dc2d453d1b72fb53743449de7",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 29,
+      "path": "db/postgres/migrations/pg_v9_045_agent_collaboration.sql",
+      "Git_LF_sha256": "cd26ccd3ebdaa1f6e727a4563a13c39e7abdd4c0901e136413b8789b3a37b872",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 30,
+      "path": "db/postgres/migrations/pg_v9_046_agent_releases.sql",
+      "Git_LF_sha256": "95b89d0d904e8130963378e3ef03874fc6e4cdcd43c6d56b38db2ccfda3c9dfa",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 31,
+      "path": "db/postgres/migrations/pg_v9_047_employee_governance.sql",
+      "Git_LF_sha256": "a766ec0adf05ea04fe72550f5a0fd24dad383f02c0134f6b38b3c4e1f6f06022",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 32,
+      "path": "db/postgres/migrations/pg_v9_048_agent_human_input.sql",
+      "Git_LF_sha256": "57ac90dbe6fe73d6653e249d9bb94c1364c289799e979f38c41c6da107cc7fd8",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 33,
+      "path": "db/postgres/migrations/pg_v9_049_agent_memory.sql",
+      "Git_LF_sha256": "963f8e6fbfe9a18796579931a989e3d47b5c4b54492343acc2142f5e1575d2e3",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 34,
+      "path": "db/postgres/migrations/pg_v9_050_agent_memory_context.sql",
+      "Git_LF_sha256": "d7889f7dc7be4cd6a8d6d00d2895a1c954c29da6d66d1b55ba02534e43275c89",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 35,
+      "path": "db/postgres/migrations/pg_v9_051_agent_memory_derived.sql",
+      "Git_LF_sha256": "2d23d26f11cd2c86e603a59e0355706a76d082a9a97261dfd9aa4522e30d7de1",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 36,
+      "path": "db/postgres/migrations/pg_v9_052_agent_memory_outcome.sql",
+      "Git_LF_sha256": "ae6d8d0d2d61c8887e4807313d218d4d89f8fdfdf482f5a28907c81ef08642cf",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 37,
+      "path": "db/postgres/migrations/pg_v9_053_agent_memory_failure_source.sql",
+      "Git_LF_sha256": "c8df98a50f5a22245031bea13182a668016f7b5548fe92e76d6022833bcd25c4",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 38,
+      "path": "db/postgres/migrations/pg_v9_054_agent_feedback.sql",
+      "Git_LF_sha256": "872510847e8c1a8dfd3043dd89bbc419c5edfca7f4264a6fa06c1e378bc43b9a",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 39,
+      "path": "db/postgres/migrations/pg_v9_055_agent_optimization.sql",
+      "Git_LF_sha256": "e379316acc119e28c3e4f54108b8f10138e7a485bc75d9753f8a3bc2cc9ae3b0",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 40,
+      "path": "db/postgres/migrations/pg_v9_056_agent_review_ledger.sql",
+      "Git_LF_sha256": "50e1b8e33b44f8075daaf6bcb9413b932e2127d117d6f37740312822925ac2d5",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 41,
+      "path": "db/postgres/migrations/pg_v9_057_agent_assessment_execution.sql",
+      "Git_LF_sha256": "c34737b9982429ad79dec0d36420f5186b32bdbb5d2964b202d5c83ec86dc13f",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 42,
+      "path": "db/postgres/migrations/pg_v9_058_agent_opinion_read.sql",
+      "Git_LF_sha256": "98116d261958358a800754bc631726d373e6d7986dbfb73e700de624f2f5e92e",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 43,
+      "path": "db/postgres/migrations/pg_v9_059_agent_generated_acceptance.sql",
+      "Git_LF_sha256": "74f884019a36ef33b8f8c95396fe6fa8ec128ece904c915e3495312d4a0d8063",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 44,
+      "path": "db/postgres/migrations/pg_v9_060_agent_descriptive_patch.sql",
+      "Git_LF_sha256": "b8aac275e692a81d2e05c8825f33bba7e5f418199e3dce97a409832f951ccbc9",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 45,
+      "path": "db/postgres/migrations/pg_v9_061_company_overview.sql",
+      "Git_LF_sha256": "fc02db13a38de7fcb7a78afdadf9c966e58fc8339fd9cc1e57bac3fa84243923",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 46,
+      "path": "db/postgres/migrations/pg_v9_062_agent_design.sql",
+      "Git_LF_sha256": "bd735c5a61dab098c846c93e30a2fad636b409ded40064a8cf311e0710a1e82e",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 47,
+      "path": "db/postgres/migrations/pg_v9_063_agent_template_market.sql",
+      "Git_LF_sha256": "b582c1ab75780b36828f0f81c926f0bf9eb727a5b78d24be9fb838b5a9d1c80b",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 48,
+      "path": "db/postgres/migrations/pg_v9_064_agent_plan_workflow.sql",
+      "Git_LF_sha256": "dbb01ca01ff50def0275d3bb14544313c19a263128012831a86a1573cb8ff9ba",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 49,
+      "path": "db/postgres/migrations/pg_v9_065_agent_internal_share.sql",
+      "Git_LF_sha256": "e1996ca4f767a8bdfd1f8c430f3e213f1cea49daf5f6614f65e5b40c2aabd8b6",
+      "action": "Existing001..065 unchanged; exact current Root Git LF UTF8 source."
+    },
+    {
+      "order": 50,
+      "path": "db/postgres/migrations/pg_v9_066_agent_approval_delegation.sql",
+      "Git_LF_sha256": "e9d3de270e65d3f9ccfc003e3f35f69c3079441b72143bfa8ab613464d8c5f40",
+      "action": "New066 optional isolated exact-current-step delegation; original050/default and065 predecessors unchanged."
+    },
+    {
+      "order": 51,
+      "path": "db/postgres/migrations/pg_v9_067_native_local_devices.sql",
+      "Git_LF_sha256": "908beb0a10c726d665968036e7f5fa01373afff61610b9db1356c52f374ef563",
+      "action": "Explicit optional Native device profile only; no LOGIN, secret, service activation or production cutover."
+    },
+    {
+      "order": 52,
+      "path": "db/postgres/migrations/pg_v9_068_agent_public_callers.sql",
+      "Git_LF_sha256": "da5977e5b0f4f86f76073b215037383be84c149eaaf348c6764da59f070f15ec",
+      "action": "Explicit full fresh profile includes independently optional067 and068; no activation or existing-schema upgrade."
+    }
+  ],
+  "old050_059_060_preserved": true,
+  "actual_original066_and_independent067_and068_catalog_audits_required": true,
+  "historical_066_or067_evidence_is_not068_acceptance": true,
+  "actual_unified_install_restore_pending": true,
+  "independent_Caller_fixture_map_remains51_sources_without067": true,
+  "production_GO": false
+}

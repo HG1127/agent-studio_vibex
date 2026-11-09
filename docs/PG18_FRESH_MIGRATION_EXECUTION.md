@@ -2,6 +2,16 @@
 
 Status: **IN PROGRESS / production NO-GO**. This record tracks the current worktree, not a deployed release.
 
+## Current source integration checkpoint — 2026-10-30 (Asia/Shanghai)
+
+The prepared CI-only delta is based on `b4f7304b2df581efb4682f1f7d6b75161df39a2a`. The original seven-worker validation and the final14/all13 fixture now run in two independent fresh matrix runners, retaining their original commands, environment, permissions and timeouts. The final13 actor now uses the directory returned by the genuine run-store API instead of the earlier immutable context snapshot. Closed actor phase observations and existing trust diagnostics are forwarded without changing the original error wrapper, result decisions or cleanup. All39 selected source test files passed417 checks. Both actual matrix paths and interruption validation remain pending.
+
+At source-parent b4f7304, all50 quality jobs passed with3044 main tests and13 triggered feature workflows passed (39 successful jobs and1 skipped Executor job, which is not a pass). Reader28/Writer26 and all9 Worker matrices (293 actual TCP tests) passed. Fresh installation/restore passed10 checks; verified source loading, original nonce binding, Executor/C3/F05 preparation and the Control14 verifier passed. The all13 actor still refused a dependency whose inner operand was not captured. Actual error cleanup verified both owned groups absent with no forced cleanup. The following original seven-worker validation encountered fixed profile paths already created by the preceding fixture. Independent source review confirmed the stale store bug, but this is not evidence of the actual hidden runtime operand.
+
+All500 application files retain their previous local raw bytes. Their local capture SHA is `134a50202d88431cc2c5908d15d2e024e4d788a6b4cc3d1d1cff8d51030015ed`;6194 Git LF pins are checked separately. Earlier compiler, archive and hosted evidence retains its recorded scope and commit. Missing diagnostic output alone does not establish whether trust context publication occurred.
+
+No F01–F31 action is closed by these source or historical checks. Qualifying continuous Worker hours **0**, employee signoffs **0**, target authentication **unverified**, production **NO-GO**. See `current_candidate_status_evidence` in [the execution registry](PG18_MIGRATION_EXECUTION_20261029.json). Earlier entries below are historical snapshots.
+
 ## Confirmed scope
 
 The user confirmed in this chat that all existing PocketBase data is test data and need not be retained/imported. Prepare a fresh PostgreSQL 18 application with the existing business features. This removes the old-record import and reconciliation requirement. It does not waive employee authentication, owner/team authorization, approval, audit, execution safety, HTTPS UAT, or a recoverable old application. No live database has been cleared and no service has been switched.

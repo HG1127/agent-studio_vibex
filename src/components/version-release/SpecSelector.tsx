@@ -3,6 +3,7 @@ import { Link } from "react-router-dom"
 import type { SavedSpecRow, SpecVersionRow } from "@/pages/VersionRelease/useVersionRelease"
 
 type SpecSelectorProps = {
+  disabled?:boolean;publicationKnown?:boolean
   specList: SavedSpecRow[]
   isLoadingSpecs: boolean
   selectedSpecId: string
@@ -12,6 +13,7 @@ type SpecSelectorProps = {
 }
 
 export function SpecSelector({
+  disabled=false,publicationKnown=true,
   specList,
   isLoadingSpecs,
   selectedSpecId,
@@ -51,14 +53,14 @@ export function SpecSelector({
               id="vr-spec-select"
               value={selectedSpecId}
               onChange={(ev) => onSelect(ev.target.value)}
-              disabled={isLoadingSpecs}
+              disabled={disabled || isLoadingSpecs}
               className="w-full appearance-none rounded-xl border border-border bg-background px-4 py-2.5 pr-10 text-sm text-card-foreground shadow-sm transition focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isLoadingSpecs && <option value="">正在加载助手方案…</option>}
               {!isLoadingSpecs && <option value="">请选择一个助手方案</option>}
               {specList.map((row) => (
                 <option key={row.id} value={row.id}>
-                  {row.name}（{row.source === "template" ? "模板创建" : "需求生成"}）
+                  {row.name}（{row.source === "template" ? "模板创建" : row.source === "unknown" ? "来源未记录" : "需求生成"}）
                 </option>
               ))}
             </select>
@@ -76,7 +78,7 @@ export function SpecSelector({
           ) : (
             <span className="inline-flex items-center gap-2 rounded-full bg-muted px-4 py-2 text-xs text-muted-foreground">
               <Megaphone className="h-3.5 w-3.5" />
-              该助手尚未发布任何版本
+              {publicationKnown ? "该助手尚未发布任何版本" : "发布状态尚未核实"}
             </span>
           )}
         </div>

@@ -1,0 +1,33 @@
+# SOURCE EXAMPLE ONLY. NO [Install]. Do not copy/start without separate review.
+# Source delivery/preparation is not runtime approval or production GO.
+[Unit]
+Description=Agent Studio isolated PlanWorkflow Worker (independent F05 LOGIN)
+After=network.target
+
+[Service]
+Type=simple
+User=agentstudio-plan-workflow-worker
+Group=agentstudio-plan-workflow-worker
+WorkingDirectory=/opt/agentstudio-pg18/services/pg-api
+EnvironmentFile=/etc/agentstudio/plan-workflow/worker.conf
+LoadCredential=worker.secret:/etc/agentstudio/secrets/plan-workflow-worker.secret
+LoadCredential=plan-workflow-ca.pem:/etc/agentstudio/plan-workflow/ca.pem
+LoadCredential=plan-workflow-worker.pem:/etc/agentstudio/plan-workflow/worker.pem
+LoadCredential=plan-workflow-worker.key:/etc/agentstudio/plan-workflow/worker.key
+ExecStartPre=/usr/local/bin/node --experimental-strip-types /opt/agentstudio-pg18/services/pg-api/src/agent-plan-workflow-service.ts --preflight worker
+ExecStart=/usr/local/bin/node --experimental-strip-types /opt/agentstudio-pg18/services/pg-api/src/agent-plan-workflow-service.ts --serve worker
+Restart=no
+TimeoutStopSec=70
+UMask=0077
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1
+IPAddressAllow=::1

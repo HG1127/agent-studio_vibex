@@ -33,7 +33,7 @@ function version(raw:unknown):PgNativeAgentReleaseVersion{
 }
 function acceptance(raw:unknown):PgNativeAcceptanceSummary{
   const v=object(raw),steps=positive(v.max_steps),status=v.status
-  if(steps>30||typeof status!=="string"||!["queued","running","awaiting_approval","paused","succeeded","failed","cancelled"].includes(status))invalid()
+  if(steps>30||typeof status!=="string"||!["queued","running","awaiting_approval","awaiting_input","paused","succeeded","failed","cancelled"].includes(status))invalid()
   return {run_id:id(v.run_id),spec_revision:positive(v.spec_revision),source_sha256:hash(v.source_sha256),max_steps:steps,status,created_at:date(v.created_at)}
 }
 export function agentReleaseChoice(raw:unknown):AgentReleaseChoice{return parseAgentReleaseChoice(raw)}

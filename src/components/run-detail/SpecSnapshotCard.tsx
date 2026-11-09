@@ -39,7 +39,7 @@ export function SpecSnapshotCard({ snapshot, run }: SpecSnapshotCardProps) {
         <span className="min-w-0">
           <span className="block text-base font-semibold tracking-tight text-card-foreground">方案配置快照</span>
           <span className="block truncate text-xs text-muted-foreground">
-            {snapshot ? snapshot.name || run.spec_name || "运行所用方案" : "方案已删除，展示运行时配置记录"}
+            {run.native ? "完整运行时方案与临时覆盖快照尚未提供" : snapshot ? snapshot.name || run.spec_name || "运行所用方案" : "方案已删除，展示运行时配置记录"}
           </span>
         </span>
         <ChevronDown
@@ -49,7 +49,12 @@ export function SpecSnapshotCard({ snapshot, run }: SpecSnapshotCardProps) {
 
       {open && (
         <div className="flex flex-col gap-2 px-5 pb-5">
-          {snapshot ? (
+          {run.native ? <>
+            <SnapshotRow label="原资源 ID">{run.native.resourceId}</SnapshotRow>
+            <SnapshotRow label="运行记录版本">{run.native.revision??"未提供"}</SnapshotRow>
+            {run.native.maxRounds!==null && <SnapshotRow label="记录的模型轮次上限">{run.native.maxRounds}</SnapshotRow>}
+            <p className="text-xs text-muted-foreground">没有读取当前资源名或配置来替代历史快照。</p>
+          </> : snapshot ? (
             <>
               <SnapshotRow label="目标">
                 <p className="whitespace-pre-wrap">{snapshot.goal || "—"}</p>
