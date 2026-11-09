@@ -53,6 +53,13 @@ permission expansion or replay was added.
   account marker unchanged. Test installation, profile and feed are removed.
 - CI for `c0d44a8f`: all nine jobs pass:
   https://github.com/HG1127/agent-studio_vibex/actions/runs/42564891407 .
+- Source/docs `32c69512` also passes all nine branch CI jobs:
+  https://github.com/HG1127/agent-studio_vibex/actions/runs/42565595879 .
+  Its main CI bootstrap twice stopped on upstream PocketBase download 504s,
+  before product tests. A CI-only official-release API fallback was then added;
+  local download/checksum proof uses the same 0.40.5 Linux archive SHA-256
+  `1dbea1b01eb3dfe64953513859d01e759c96650c4e3264fa4eecd54b769382e4`.
+  The fallback changes no packaged runtime or update artifact.
 - Standards/spec review and test-isolation follow-up: no outstanding findings.
 
 ## Proposed delivery and rollback

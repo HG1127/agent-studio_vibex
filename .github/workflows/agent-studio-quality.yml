@@ -167,14 +167,22 @@ jobs:
       - name: Install isolated PostgreSQL CI-only dependencies
         run: pnpm --dir services/pg-api install --ignore-workspace --frozen-lockfile --ignore-scripts
       - name: Install PocketBase 0.40.5 for integration and unit tests
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p .ci-bin
-          curl -fsSL --retry 3 \
+          if ! curl -fsSL --retry 3 \
             https://github.com/pocketbase/pocketbase/releases/download/v0.40.5/pocketbase_0.40.5_linux_amd64.zip \
-            -o .ci-bin/pocketbase.zip
-          curl -fsSL --retry 3 \
+            -o .ci-bin/pocketbase.zip || ! curl -fsSL --retry 3 \
             https://github.com/pocketbase/pocketbase/releases/download/v0.40.5/checksums.txt \
-            -o .ci-bin/checksums.txt
+            -o .ci-bin/checksums.txt; then
+            # The public download endpoint can return repeated cached 504s.
+            # Use the same official release's API assets; keep checksum checks.
+            gh release download v0.40.5 --repo pocketbase/pocketbase \
+              --pattern pocketbase_0.40.5_linux_amd64.zip --pattern checksums.txt \
+              --dir .ci-bin --clobber
+            mv .ci-bin/pocketbase_0.40.5_linux_amd64.zip .ci-bin/pocketbase.zip
+          fi
           (cd .ci-bin && grep -F 'pocketbase_0.40.5_linux_amd64.zip' checksums.txt | sed 's/  pocketbase_0.40.5_linux_amd64.zip/  pocketbase.zip/' | sha256sum --check)
           unzip -q .ci-bin/pocketbase.zip pocketbase -d .ci-bin
           chmod +x .ci-bin/pocketbase
