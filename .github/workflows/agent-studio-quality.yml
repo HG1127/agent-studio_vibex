@@ -36,6 +36,14 @@ jobs:
           $env:TMP = $env:TEMP
           $env:TMPDIR = $env:TEMP
           node --test --test-concurrency=2 tests/application-cold-start.test.mjs tests/local-applications.test.mjs
+      - name: Local confirmation visibility and deadline (synthetic private IPC)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .tmp/ci-confirmation | Out-Null
+          $env:TEMP = (Resolve-Path .tmp/ci-confirmation).Path
+          $env:TMP = $env:TEMP
+          $env:TMPDIR = $env:TEMP
+          node tests/desktop-confirmation.chrome.mjs
   pg17-tcp-isolated:
     name: Real PostgreSQL 17 / RLS / multi-worker (ephemeral)
     runs-on: ubuntu-latest
