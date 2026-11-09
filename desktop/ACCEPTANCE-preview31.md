@@ -1,6 +1,7 @@
 # Preview31: local confirmation visibility
 
-Status: local technical acceptance passed; publication requires approval.
+Status: published to the existing acceptance feed; actual company-HTTPS
+30-to-31 update passed. Employee EXE revalidation and the business case remain pending.
 
 ## Problem and change
 
@@ -60,27 +61,40 @@ permission expansion or replay was added.
   local download/checksum proof uses the same 0.40.5 Linux archive SHA-256
   `1dbea1b01eb3dfe64953513859d01e759c96650c4e3264fa4eecd54b769382e4`.
   The fallback changes no packaged runtime or update artifact.
+- Final main source `51abafca` passes all nine CI jobs:
+  https://github.com/HG1127/agent-studio_vibex/actions/runs/42567736568 .
 - Standards/spec review and test-isolation follow-up: no outstanding findings.
 
-## Proposed delivery and rollback
+## Delivery and rollback
 
-Only the existing computer-use acceptance feed is proposed for Preview31:
+User explicitly approved Preview31 publication on 2026-11-09. Only the existing
+computer-use acceptance feed was updated:
 `https://192.168.1.133:8443/desktop-updates/acceptance/computer-use-20261106/stable/latest.json`.
 
-Prepared signed manifest SHA-256:
+Published signed manifest SHA-256:
 `5ace00b1d5444ed50c18812c6637b7af753ce6b99ebb8ec2c674a6d7e92e0d0a`.
-The current Preview30 manifest SHA-256 is
+The backed-up Preview30 manifest SHA-256 is
 `a26b69e2d9935ad98cc58eb2139cf5fd615ee21a99a3374d1edf7ef102ea58f3`.
-Publication will check that baseline, back it up, verify the immutable installer
-through company HTTPS, atomically replace the signed feed, then read it back.
+Publication checked that baseline, backed it up, verified the old rollback and
+new immutable installers through company HTTPS, atomically replaced the signed
+feed, and read it back. Backup:
+`/var/backups/agentstudio-lan/desktop-artifacts-20261109T062536Z-preview31`.
+The temporary server upload directory was removed after publication.
 Publication failure restores the prior feed only if it still contains our
-candidate. Client installation failure retains the existing transactional
-rollback. A successfully installed newer version is not silently downgraded.
+candidate. Client installation failure retains transactional rollback; a
+successfully installed newer version is not silently downgraded.
 
-No backend restart, database change or general-channel promotion is needed for
-this client-only fix. The general channel remains Preview26. The existing
+The actual unmodified Preview30 updater then used this company-HTTPS feed in an
+isolated installation: verified original signature and candidate hash, downloaded
+the published installer, restarted to Preview31 with a successful health receipt,
+and retained its entire desktop configuration and synthetic account marker.
+Its installation, profile and download copy were removed; only the small receipt,
+log and screenshot remain. This test did not use the employee's account/profile.
+
+No backend restart, database change or general-channel promotion was performed.
+The general channel remains Preview26. The existing
 PocketBase/Worker source `dc842bd6bdab5e8aac9d10cd5386b70d8feec719` remains compatible.
 
-After approval: verify an actual company-HTTPS 30→31 upgrade, update the desktop
-release baseline, then resume the original WorkBuddy case in the employee EXE.
-The complete research/report/source business case remains **pending**.
+The desktop release baseline now records this technically verified Preview31.
+The employee's installed EXE was last observed at Preview30; its in-app update
+and the original WorkBuddy research/report/source case remain **pending**.
