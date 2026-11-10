@@ -1,5 +1,5 @@
 {
-  "sourceCommit": "213589685b35c2317531f4505ccf2f9689bf5f41",
+  "sourceCommit": "c11dd6199bb7d822c8b051b79f1f4af1f213697d",
   "version": "0.1.0-preview.33",
   "platform": "win32-x64",
   "codeSigned": false,
@@ -38,5 +38,5 @@
     "runModelVisibility": "immutable-record-and-next-choice-with-keyboard-resource-entry",
     "visualWindowArgument": "optional-exact-observed-window-check-without-target-override"
   },
-  "sourceState": "candidate-working-tree-after-preview32"
+  "sourceState": "committed-unified-source-with-release-metadata"
 }
