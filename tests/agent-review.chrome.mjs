@@ -459,6 +459,16 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
       assert.equal(await evaluate("document.querySelector('#run-quick-spec')?.closest('section')?.textContent?.includes('模型、工具与执行资源统一在') ?? false"),false,
         "the duplicate resource-settings helper caption must be removed from the Agent selection header")
 
+      await cmd('Input.dispatchKeyEvent',{type:'keyDown',key:'<',code:'Comma',windowsVirtualKeyCode:188,modifiers:10})
+      await cmd('Input.dispatchKeyEvent',{type:'keyUp',key:'<',code:'Comma',windowsVirtualKeyCode:188,modifiers:10})
+      await wait('Boolean(document.querySelector("[data-run-settings-drawer]"))',
+        'Ctrl+Shift+Comma must open the resource settings without clicking or launching a task')
+      assert.equal((await api('GET','/api/agent_runs/'+first.run_id)).status,'failed',
+        'opening model settings must not retry the failed task')
+      await cmd('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',windowsVirtualKeyCode:27})
+      await cmd('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',windowsVirtualKeyCode:27})
+      await wait('!document.querySelector("[data-run-settings-drawer]")','Escape closes the settings without changing the task')
+
       const openSettings=await evaluate("(()=>{const b=document.querySelector('#run-settings-open');const state={target:b?.outerHTML||null,buttons:[...document.querySelectorAll('button')].map(x=>({text:x.textContent,aria:x.getAttribute('aria-label'),id:x.id})).slice(-20)};if(b)b.click();return JSON.stringify(state)})()")
 
       assert.ok(String(openSettings).includes('run-settings-open'),"resource settings must be available from the run header")
@@ -479,6 +489,13 @@ test("real Chrome: review, auto tools, global editing, routing and plugin naviga
       assert.equal(chooseAlternate,true)
       await wait('document.querySelector("#model-select")?.value==='+JSON.stringify(alternate),
         "resource-settings model selection changed before retry")
+      await cmd('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',windowsVirtualKeyCode:27})
+      await cmd('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',windowsVirtualKeyCode:27})
+      await wait('!document.querySelector("[data-run-settings-drawer]")','close resources before checking the visible model summaries')
+      assert.equal(await evaluate("document.querySelector('[data-recorded-run-model]')?.textContent?.trim()"),
+        'Review Chrome mock · review-ui-model','the recorded model must remain the immutable run snapshot when the next model changes')
+      assert.ok(await evaluate("document.querySelector('[data-next-run-model]')?.textContent?.includes('review-ui-model-alt')"),
+        'the selected next-run model must be visible outside the closed resource drawer')
       const clickedDetail=await evaluate("(()=>{const heading=[...document.querySelectorAll('h2')].find(h=>h.textContent?.includes('运行未正常完成'));const card=heading?.parentElement?.parentElement;const button=[...(card?.querySelectorAll('button')||[])].find(b=>b.textContent?.trim()==='重新运行');if(!button||button.disabled)return false;button.click();return true})()")
       assert.equal(clickedDetail,true,"failed result panel must provide an enabled retry action")
       let current=null,detailRetryAccepted=false

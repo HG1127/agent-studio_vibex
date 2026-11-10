@@ -24,7 +24,7 @@ const metadata={
  expiresInSeconds:30,message:'Synthetic screenshot only. Input appends to the draft; verify the next screenshot before claiming completion.',
 }
 const resultText=JSON.stringify(metadata),engineRequests=[],modelErrors=[]
-let directory,dataDirectory,pb,token='',origin='',logs='',stage='setup',failure=null,cleanup='pending',savedReference=''
+let directory,dataDirectory,pb,token='',origin='',logs='',stage='setup',failure=null,cleanup='pending',savedReference='',chosenDecision=null
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))
 const model=createServer((req,res)=>{void (async()=>{
  res.setHeader('Content-Type','application/json')
@@ -39,10 +39,11 @@ const model=createServer((req,res)=>{void (async()=>{
  const planning=(body.messages||[]).some(message=>message.role==='system'&&String(message.content).includes('助手执行引擎'))
  if(planning)engineRequests.push(body)
  // Exercise the user's intervening read sequence, without any desktop action.
- const decision=planning&&engineRequests.length<=2
+ const decision=chosenDecision||(planning&&engineRequests.length<=2
   ?{action:'tool',tool:'result_read',tool_input:{result_id:savedReference,
     field:engineRequests.length===1?'content':'text',offset:0,limit:8000}}
-  :{action:'ask_user',question:'Synthetic context inspection is paused; no desktop action was requested.'}
+  :{action:'tool',tool:'apps.act_visual',tool_input:{app:appId,observation,
+    x:0,y:0,action:'type',text:'Public research fixture; approval must remain mandatory.'}})
  res.end(JSON.stringify({choices:[{message:{role:'assistant',content:JSON.stringify(decision)}}]}))
  })().catch(error=>{
   modelErrors.push(String(error.message).slice(0,150))
@@ -134,11 +135,22 @@ try{
  await request('POST','/api/model-connections/test',{connection_id:connection.item.id})
  const device=await request('POST','/api/local-devices',{name:'Synthetic WorkBuddy computer'},{expected:201})
  const paired=await request('POST','/api/public/local-executor/pair',{code:device.pairing_code},{auth:''})
- await request('POST','/api/public/local-executor/poll',{tools:[{
+ const advertisedTools=[...Array.from({length:48},(_,i)=>({
+  name:'fixture.padding_'+i,description:'Non-executable context fixture. '+'.'.repeat(520),
+  inputSchema:{type:'object',properties:{fixture:{type:'string'}},additionalProperties:false},
+ })),{
   name:'apps.observe_visual',description:'Synthetic visual observation; no native application is connected.',
   inputSchema:{type:'object',properties:{app:{type:'string',enum:[appId]},window:{type:'string'}},
    required:['app','window'],additionalProperties:false},
- }]},{auth:'',headers:{'X-Studio-Device-Token':paired.token}})
+ },{
+  name:'apps.act_visual',description:'Synthetic input action; this fixture must stop before dispatch.',
+  inputSchema:{type:'object',properties:{app:{type:'string',enum:[appId]},observation:{type:'string'},
+   x:{type:'integer'},y:{type:'integer'},action:{type:'string',enum:['click','type']},text:{type:'string'}},
+   required:['app','observation','x','y','action'],additionalProperties:false},
+ }]
+ assert.ok(JSON.stringify(advertisedTools).length>24000,'fixture must exercise a catalog accepted beyond the old prompt truncation')
+ await request('POST','/api/public/local-executor/poll',{tools:advertisedTools},
+  {auth:'',headers:{'X-Studio-Device-Token':paired.token}})
  const spec=await request('POST','/api/agent_specs',{name:'Synthetic visual context regression',spec:{
   goal:'Inspect complete synthetic screenshot metadata at the model boundary',task_scope:'Only isolated fixture data',
   tools:['local_computer'],roles:[],task_plan:['Inspect the supplied synthetic observation'],
@@ -146,7 +158,7 @@ try{
  }})
  const run=await request('POST','/api/agent-runs/start',{
   spec_id:spec.id,instruction:'Inspect the completed synthetic WorkBuddy observation. Do not execute any desktop action.',
-  model:modelId,config:{local_device_id:device.id,max_steps:6,max_model_calls:12,tools:{},
+  model:modelId,config:{local_device_id:device.id,max_steps:6,max_model_calls:12,tools:{local_computer:true},
    custom_model:{connection_id:connection.item.id,model_id:modelId}},
  })
  const jobId=randomBytes(12).toString('hex'),now=Date.now()
@@ -177,6 +189,12 @@ try{
   assert.deepEqual(modelErrors,[],'local model fixture must not fail while handling requests')
   assert.equal(engineRequests.length,round+1,'each real planner request must reach the local model exactly once')
   const blocks=engineRequests[round].messages.flatMap(message=>Array.isArray(message.content)?message.content:[{type:'text',text:String(message.content||'')}])
+  const catalogLine=String(engineRequests[round].messages.find(m=>m.role==='system').content)
+   .split('\n').find(line=>line.startsWith('local_computer'))
+  let projectedCatalog
+  try{projectedCatalog=JSON.parse(catalogLine.slice(catalogLine.indexOf('[{')))}
+  catch{assert.fail('LOCAL_CATALOG_TRUNCATED: the model must receive a complete parseable tool catalog, including the final visual input schema')}
+  assert.deepEqual(projectedCatalog,advertisedTools,'no currently advertised subtool or schema constraint may disappear from the model contract')
   const images=blocks.filter(block=>block.type==='image_url')
   assert.equal(images.length,1,'planner must retain the private job PNG across result reads')
   assert.equal(images[0].image_url.url,'data:image/png;base64,'+png,'model must receive the exact synthetic PNG')
@@ -190,6 +208,64 @@ try{
   if(round===1)assert.ok(text.includes('result_field_unavailable'),'a missing content field must be visible as a recoverable tool error')
   if(round===2)assert.ok(text.includes('"field":"text"'),'the real result_read must have supplied the stored metadata')
  }
+ stage='route_catalog_action_to_review'
+ const routed=await request('GET','/api/agent-runs/'+run.run_id+'/detail')
+ assert.equal(routed.run.status,'awaiting_approval',
+  'LOCAL_TOOL_ROUTE_LOST: a currently advertised local action must reach the normal approval instead of an unknown top-level tool error')
+ assert.equal(routed.run.checkpoint.pending_approval.tool,'local_computer')
+ assert.deepEqual(routed.run.checkpoint.pending_approval.input,{tool:'apps.act_visual',arguments:{
+  app:appId,observation,x:0,y:0,action:'type',text:'Public research fixture; approval must remain mandatory.'}})
+ assert.equal(routed.events.filter(e=>e.event_type==='tool_call'&&e.content?.tool==='local_computer').length,0,
+  'normalizing a tool name must never execute an unapproved local action')
+ const assertNoDispatch=async()=>{
+  const read=new DatabaseSync(path.join(dataDirectory,'data.db'),{readOnly:true,timeout:5000})
+  try{assert.equal(read.prepare("SELECT count(*) AS count FROM studio_local_jobs WHERE status IN ('queued','running')").get().count,0,
+   'no route may queue a local operation before its exact approval')}
+  finally{read.close()}
+ }
+ await assertNoDispatch()
+ const routeCase=async(label,{authorized=true,revoke=false,tool='apps.act_visual',input={app:appId,observation,x:0,y:0,action:'click'}}={})=>{
+  stage=label
+  const deniedSpec=await request('POST','/api/agent_specs',{name:'Synthetic route boundary '+label,spec:{
+   goal:'Verify a denied route never becomes an executable grant',task_scope:'Isolated fixture only',
+   tools:authorized?['local_computer']:[],roles:[],task_plan:['Inspect one model decision'],
+   deliverables:['Denied route evidence'],done_criteria:['No unapproved device job exists'],
+  }})
+  const deniedRun=await request('POST','/api/agent-runs/start',{spec_id:deniedSpec.id,instruction:'Synthetic route boundary only',
+   model:modelId,config:{...(authorized?{local_device_id:device.id}:{}),max_steps:6,max_model_calls:12,
+    tools:{},custom_model:{connection_id:connection.item.id,model_id:modelId}}})
+  if(revoke)await request('POST','/api/local-devices/'+device.id+'/revoke',{})
+  chosenDecision={action:'tool',tool,tool_input:input}
+  await request('POST','/api/llm/agent-engine/'+deniedRun.run_id+'/tick',{})
+  const detail=await request('GET','/api/agent-runs/'+deniedRun.run_id+'/detail')
+  assert.notEqual(detail.run.status,'awaiting_approval',label+' must not produce an executable approval')
+  assert.equal(Boolean(detail.run.checkpoint?.pending_approval),false,label+' must not create pending authority')
+  await assertNoDispatch()
+ }
+ await routeCase('unknown_local_tool',{tool:'apps.not_registered'})
+ await routeCase('local_computer_not_authorized',{authorized:false})
+ await routeCase('malformed_local_arguments',{input:[]})
+ await routeCase('null_local_arguments',{input:null})
+ await routeCase('primitive_local_arguments',{input:'invalid'})
+ stage='approved_alias_is_enqueued_once'
+ const planningCallsBeforeApproval=engineRequests.length
+ await request('POST','/api/agent-runs/'+run.run_id+'/approve',{decision:'approve'})
+ await request('POST','/api/llm/agent-engine/'+run.run_id+'/tick',{})
+ await request('POST','/api/llm/agent-engine/'+run.run_id+'/tick',{})
+ assert.equal(engineRequests.length,planningCallsBeforeApproval,'resuming the reviewed alias must not ask the model to rewrite its approved arguments')
+ let approvedJob
+ const queued=new DatabaseSync(path.join(dataDirectory,'data.db'),{readOnly:true,timeout:5000})
+ try{
+  const rows=queued.prepare('SELECT id,status,payload FROM studio_local_jobs WHERE run_id=? AND id<>?').all(run.run_id,jobId)
+  assert.equal(rows.length,1,'a repeated tick must not enqueue a second copy of the approved input')
+  approvedJob=rows[0]
+  assert.equal(approvedJob.status,'queued','the fixture must stop before any native executor claims the action')
+  assert.deepEqual(JSON.parse(approvedJob.payload).arguments,routed.run.checkpoint.pending_approval.input.arguments)
+  assert.equal(JSON.parse(approvedJob.payload).tool,'apps.act_visual')
+ }finally{queued.close()}
+ await request('POST','/api/local-jobs/'+approvedJob.id+'/cancel',{})
+ await assertNoDispatch()
+ await routeCase('revoked_device_cannot_route',{revoke:true})
 }catch(error){failure=error}
 finally{
  const stopped=await Promise.allSettled([stopHeadlessPocketBase(pb),closeServer(model)])

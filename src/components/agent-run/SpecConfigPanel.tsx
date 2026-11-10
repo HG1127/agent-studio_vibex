@@ -242,6 +242,7 @@ export function SpecConfigPanel({
             ))}
           </optgroup>
         </select>
+        <p className="text-xs leading-relaxed text-muted-foreground">需要看图操作应用时，请选择支持图片输入的模型；连接正常不代表具备看图能力。</p>
         {isCustomModel ? (
           <p className="flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-2 text-xs text-primary">
             <PlugZap className="h-3.5 w-3.5 shrink-0" />

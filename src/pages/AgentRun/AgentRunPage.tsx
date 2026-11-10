@@ -1,7 +1,7 @@
 import {BusinessCaseBinding} from '@/components/agent-run/BusinessCaseBinding'
 import {ToolGrantPanel} from '@/components/agent-run/ToolGrantPanel'
 import {ExecutionBudgetStatus} from '@/components/agent-run/ExecutionBudgetPanel'
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { AlertCircle, ArrowRight, FileCheck2, LogIn, Rocket, SlidersHorizontal, X } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -33,6 +33,23 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
   const finished=Boolean(p.activeRun && ["succeeded","failed","cancelled"].includes(p.activeRun.status))
   const [runView, setRunView] = useState({ scope: "", value: "results" })
   const [settingsOpen,setSettingsOpen]=useState(false)
+  useEffect(()=>{
+    const openSettings=(event:KeyboardEvent)=>{
+      if(event.defaultPrevented||event.repeat||event.altKey||!event.shiftKey||
+        !(event.ctrlKey||event.metaKey)||event.code!=="Comma"||document.querySelector('[aria-modal="true"]'))return
+      event.preventDefault()
+      setSettingsOpen(true)
+    }
+    window.addEventListener("keydown",openSettings)
+    return()=>window.removeEventListener("keydown",openSettings)
+  },[])
+  const snapshotModel=p.activeRun?.config?.custom_model
+  const recordedCustom=snapshotModel&&typeof snapshotModel==="object"&&!Array.isArray(snapshotModel)
+    ?snapshotModel as Record<string,unknown>:null
+  const recordedModelId=typeof recordedCustom?.model_id==="string"?recordedCustom.model_id:p.activeRun?.model.replace(/^custom:/,"")||"未记录"
+  const recordedConnection=typeof recordedCustom?.connection_name==="string"?recordedCustom.connection_name:""
+  const recordedModel=recordedConnection?`${recordedConnection} · ${recordedModelId}`:recordedModelId
+  const nextModel=p.customModels.find(option=>option.value===p.model)?.label||"请选择运行模型"
   const viewScope = p.activeRun?.id || ""
   const selectedView = runView.scope === viewScope ? runView.value : defaultRunView(p.activeRun?.status)
   const openRunView = (value: string) => setRunView({ scope: viewScope, value })
@@ -145,10 +162,18 @@ export function AgentRunPage(p: ReturnType<typeof useAgentRun>) {
                     <option value="">选择已保存的 Agent</option>
                     {p.specList.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
                   </select>
+                  <dl aria-label="模型选择状态" className="mt-2 space-y-1 text-xs text-muted-foreground">
+                    {p.activeRun&&<div className="flex min-w-0 gap-2"><dt className="shrink-0">当前记录模型</dt>
+                      <dd data-recorded-run-model className="min-w-0 truncate text-foreground" title={recordedModel}>{recordedModel}</dd></div>}
+                    {!p.isLive&&<div className="flex min-w-0 gap-2"><dt className="shrink-0">{p.activeRun?"下次运行模型":"本次选用模型"}</dt>
+                      <dd data-next-run-model className="min-w-0 truncate" title={nextModel}>{nextModel}</dd></div>}
+                  </dl>
                 </div>
                 <button type="button" onClick={()=>setSettingsOpen(true)} aria-label="打开本次 Agent 配置" id="run-settings-open"
+                  aria-keyshortcuts="Control+Shift+, Meta+Shift+," title="资源与设置 · Ctrl/⌘+Shift+,"
                   className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-3 text-xs font-semibold text-primary transition hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary">
                   <SlidersHorizontal className="h-4 w-4"/>资源与设置
+                  <kbd className="hidden rounded border border-primary/20 px-1 py-0.5 text-[10px] font-normal sm:inline">Ctrl/⌘ ⇧ ,</kbd>
                   {p.runReadiness.issues.length>0&&<span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
                     {p.runReadiness.issues.length} 项待补齐
                   </span>}

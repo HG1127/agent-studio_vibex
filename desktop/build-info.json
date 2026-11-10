@@ -1,6 +1,6 @@
 {
-  "sourceCommit": "daa27bea52ab554796c2466e3ababb9f633a4d34",
-  "version": "0.1.0-preview.31",
+  "sourceCommit": "9f885bc320034850fc7331f8976ee96f0c661d9f",
+  "version": "0.1.0-preview.32",
   "platform": "win32-x64",
   "codeSigned": false,
   "integratedSources": {
@@ -33,7 +33,9 @@
     "boundedWindowCapture": "foreground-identity-occlusion-checked-fallback-native-pixels-verified",
     "visualActionRecovery": "pre-dispatch-expiry-reobserve-without-input-or-success-evidence",
     "singleInstance": "same-installation-silent-reveal-version-aware-conflict",
-    "localOperationConfirmation": "visible-private-review-countdown-expiry-and-explicit-consent"
+    "localOperationConfirmation": "visible-private-review-countdown-expiry-and-explicit-consent",
+    "visualToolRouting": "exact-owned-live-catalog-routing-through-original-approval",
+    "runModelVisibility": "immutable-record-and-next-choice-with-keyboard-resource-entry"
   },
-  "sourceState": "committed-unified-source-with-release-metadata"
+  "sourceState": "candidate-source-not-yet-published"
 }
