@@ -1,5 +1,5 @@
 {
-  "minimumDesktopVersion": "0.1.0-preview.31",
+  "minimumDesktopVersion": "0.1.0-preview.32",
   "branch": "main",
   "requiredAncestors": [
     "8fcd466667b8a4c896835315a809b4d62b78ec21",
@@ -21,7 +21,8 @@
     "25591acd367f2428bcc05bd1f8f8539ccef87f59",
     "3ca99850d4530bc0c958258584c0d002395fc970",
     "dc842bd6bdab5e8aac9d10cd5386b70d8feec719",
-    "51abafca7c05282740f2a8bdc02a18621750972e"
+    "51abafca7c05282740f2a8bdc02a18621750972e",
+    "d237e774a7440d389aefb34defb4711f867db1ba"
   ],
   "requiredFiles": [
     "desktop/update-controller.cjs",
@@ -84,21 +85,22 @@
     "daa27bea52ab554796c2466e3ababb9f633a4d34",
     "c0d44a8f3aaeb20fa9a3a0503c71bd5e7bdcd528"
   ],
-  "verifiedUnifiedSnapshotCommit": "27558e93ac4e90df66dee6136ef85f1fdb0a5991",
-  "verifiedPackagingCommit": "6c145e3780b0ba31ce00bf95e1c1644fa363d7a3",
-  "verifiedRuntimeSourceCommit": "daa27bea52ab554796c2466e3ababb9f633a4d34",
-  "verifiedManifestSha256": "5ace00b1d5444ed50c18812c6637b7af753ce6b99ebb8ec2c674a6d7e92e0d0a",
+  "verifiedUnifiedSnapshotCommit": "d237e774a7440d389aefb34defb4711f867db1ba",
+  "verifiedPackagingCommit": "755029a47094e246da25bffa574c8903c825b554",
+  "verifiedRuntimeSourceCommit": "213589685b35c2317531f4505ccf2f9689bf5f41",
+  "verifiedManifestSha256": "6e6f4839e94e4b536bd331b7a3e4d9cb107a9a42b4051727b1bb747b1006f42c",
   "verifiedDeliveryMethod": "signed-in-app-update",
   "verifiedUpdateFeed": "https://192.168.1.133:8443/desktop-updates/acceptance/computer-use-20261106/stable/latest.json",
-  "verifiedBackendSourceCommit": "dc842bd6bdab5e8aac9d10cd5386b70d8feec719",
-  "verifiedCIRun": 42567736568,
-  "verificationScope": "technical-acceptance-and-real-company-https-update",
+  "verifiedBackendSourceCommit": "d237e774a7440d389aefb34defb4711f867db1ba",
+  "verifiedCIRun": 42746980555,
+  "verificationScope": "technical-acceptance-signed-channel-and-native-exe-observation",
   "formalUpdateChannelVersion": "0.1.0-preview.26",
-  "employeeLastObservedVersion": "0.1.0-preview.30",
-  "employeeRevalidation": "pending-user-in-app-update",
+  "employeeLastObservedVersion": "0.1.0-preview.32",
+  "employeeRevalidation": "native-exe-observed-with-original-device-connected",
   "businessAcceptance": {
     "status": "pending",
     "runId": "xgyuu8225ixb4q6",
-    "note": "No WorkBuddy research input or submission yet"
+    "note": "Public WorkBuddy research remains incomplete; a separate real MiniMax-M3.1-Flash run clicked successfully before an extra window argument was refused without input.",
+    "latestDiagnosticRunId": "17a1kx8jdu1nlvc"
   }
 }
