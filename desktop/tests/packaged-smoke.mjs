@@ -9,6 +9,8 @@ import {randomBytes} from 'node:crypto'
 import {spawn} from 'node:child_process'
 import {pipeline} from 'node:stream'
 import {fileURLToPath} from 'node:url'
+import {DatabaseSync} from 'node:sqlite'
+import {_electron as electron,expect} from 'playwright/test'
 import {spawnHeadlessPocketBase,stopHeadlessPocketBase} from '../../tests/helpers/headless-pocketbase.mjs'
 import {prepareGuidedConnection} from '../../local-executor/setup.mjs'
 import {createElectronApplicationFixture} from '../../tests/helpers/electron-application-fixture.windows.mjs'
@@ -16,13 +18,16 @@ import {inspectApplication} from '../../local-executor/applications.mjs'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..')
 const executable=path.resolve(process.argv[2]||'')
 const installOption=process.argv.find(x=>x.startsWith('--install-dir='))?.slice('--install-dir='.length)
+const resourceSmoke=process.argv.includes('--resource-settings-smoke')
+assert.ok(!resourceSmoke||!installOption&&!process.argv.includes('--development'),
+  'resource-settings smoke requires a packaged application, not development or an installer')
 await fs.access(executable)
 const dir=await fs.mkdtemp(path.join(os.tmpdir(),'agentstudio-desktop-smoke-'))
 const data=await fs.mkdtemp(path.join(os.tmpdir(),'agentstudio-desktop-db-'))
 const key=randomBytes(32).toString('hex')
 const sleep=ms=>new Promise(r=>setTimeout(r,ms))
 const listener=net.createServer();await new Promise(r=>listener.listen(0,'127.0.0.1',r));const port=listener.address().port;await new Promise(r=>listener.close(r))
-let pb,client,workbench,report,electronFixture,applicationGrant,passed=false
+let pb,client,nativeClient,workbench,report,electronFixture,applicationGrant,passed=false,fixtureModelCalls=0
 const sockets=new Set()
 try {
   pb=spawnHeadlessPocketBase(process.env.POCKETBASE_BIN||path.join(root,'vibex-local/bin/windows/pocketbase.exe'),['serve','--http=127.0.0.1:'+port,'--dir='+data,'--hooksDir='+path.join(root,'pocketbase/pb_hooks')],{cwd:path.join(root,'pocketbase'),env:{AGENT_STUDIO_AUTH_MODE:'standalone',AGENT_STUDIO_LEGACY_TEST_ONLY:'false',AGENT_STUDIO_ALLOW_ANON:'false',AGENT_STUDIO_BOOTSTRAP_SECRET:key,AGENT_STUDIO_SECRET_KEY:randomBytes(16).toString('hex'),AGENT_STUDIO_BACKGROUND_WORKER:'false'}})
@@ -31,6 +36,8 @@ try {
   for(let i=0;i<100;i++){try{if((await fetch(pbOrigin+'/api/health')).ok)break}catch{}await sleep(150)}
   const created=await fetch(pbOrigin+'/api/studio/bootstrap',{method:'POST',headers:{'Content-Type':'application/json','X-Agent-Studio-Setup-Key':key},body:JSON.stringify({email:'desktop-smoke@example.test',password:'Isolated-desktop-fixture-2026!',display_name:'桌面隔离验收'})});assert.equal(created.status,201)
   workbench=http.createServer((req,res)=>{
+    if(resourceSmoke&&req.url==='/v1/models'){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({data:[{id:'native-model'},{id:'native-model-alt'}]}));return}
+    if(resourceSmoke&&req.url==='/v1/chat/completions'){fixtureModelCalls++;req.resume();res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({choices:[{message:{role:'assistant',content:'Synthetic native settings fixture'}}]}));return}
     if(!req.url.startsWith('/__pb/')){res.writeHead(404);res.end();return}
     const target=http.request(pbOrigin+req.url.slice(5),{method:req.method,headers:{...req.headers,host:'127.0.0.1:'+port}},up=>{if(res.destroyed){up.destroy();return}res.writeHead(up.statusCode,up.headers);pipeline(up,res,()=>{})})
     target.on('error',()=>{if(!res.destroyed){res.writeHead(502);res.end()}});pipeline(req,target,()=>{})
@@ -57,7 +64,9 @@ try {
   const env={...process.env,PATH:path.join(process.env.SystemRoot,'System32')}
   if(process.argv.includes('--system-temp')){const original=path.join(process.env.LOCALAPPDATA,'Temp');Object.assign(env,{TEMP:original,TMP:original,TMPDIR:original})}
   for(const name of Object.keys(env))if(/^(NODE_OPTIONS|NODE_PATH|ELECTRON_RUN_AS_NODE|AGENT_STUDIO_RUNTIME_ROOT)$/i.test(name))delete env[name]
-  client=spawn(executable,[...(process.argv.includes('--development')?[path.join(root,'desktop')]:[]),'--desktop-test-home='+path.join(dir,'profile'),'--desktop-test-server='+server,'--desktop-smoke-report='+reportPath,...(process.argv.includes('--desktop-entry-smoke')?['--desktop-entry-smoke']:[]),...(installOption?['/S','/D='+path.resolve(installOption)]:[])],{cwd:dir,env,windowsHide:true,stdio:'ignore'})
+  const launchArguments=[...(process.argv.includes('--development')?[path.join(root,'desktop')]:[]),'--desktop-test-home='+path.join(dir,'profile'),'--desktop-test-server='+server,'--desktop-smoke-report='+reportPath,...(process.argv.includes('--desktop-entry-smoke')?['--desktop-entry-smoke']:[]),...(installOption?['/S','/D='+path.resolve(installOption)]:[])]
+  if(resourceSmoke){nativeClient=await electron.launch({executablePath:executable,args:launchArguments,cwd:dir,env,timeout:60000});client=nativeClient.process()}
+  else client=spawn(executable,launchArguments,{cwd:dir,env,windowsHide:true,stdio:'ignore'})
   for(let i=0;i<(installOption?1200:360);i++){try{report=JSON.parse(await fs.readFile(reportPath,'utf8'));break}catch{}await sleep(500)}
   assert.equal(report?.started,true,'packaged app startup: '+JSON.stringify(report||{}))
   if(process.argv.includes('--system-temp')){
@@ -161,6 +170,56 @@ try {
   assert.equal(await fs.readFile(prepared.configFile,'utf8'),originalConfig,'cancelled in-app review changed local permissions')
   const manager=await fetch(report.managerOrigin+'/api/state');assert.equal(manager.status,403)
   const code=await (await fetch(report.origin+'/__desktop/runtime.js')).text();assert.ok(code.includes(server));assert.ok(!code.includes(login.data.token))
+  if(resourceSmoke){
+    const nativeIdentity=await nativeClient.evaluate(({app})=>({packaged:app.isPackaged,version:app.getVersion()}))
+    assert.equal(nativeIdentity.packaged,true,'resource checks cannot report a development renderer as a packaged EXE')
+    assert.equal(nativeIdentity.version,report.version,'native application and reported desktop version must match')
+    const authenticated=async(method,route,body)=>{
+      const value=await request(method,'/__pb'+route,body,{Authorization:login.data.token})
+      assert.equal(value.status,200,route+' must use the isolated employee API');return value.data
+    }
+    const connection=await authenticated('POST','/api/model-connections',{name:'Native model fixture',provider:'openai',
+      api_key:'synthetic-native-model-key',base_url:server+'/v1',models:['native-model','native-model-alt']})
+    await authenticated('POST','/api/model-connections/test',{connection_id:connection.item.id})
+    const spec=await authenticated('POST','/api/agent_specs',{name:'Native resource model fixture',spec:{
+      goal:'Verify model settings in the actual packaged EXE',task_scope:'Isolated native test only',
+      tools:['calculate'],roles:[],task_plan:['Inspect resource settings without running'],
+      deliverables:['Visible immutable model and next choice'],done_criteria:['No model call or retry occurs'],
+    }})
+    const run=await authenticated('POST','/api/agent-runs/start',{spec_id:spec.id,instruction:'Synthetic native settings only',
+      model:'native-model',config:{max_steps:6,max_model_calls:12,
+        custom_model:{connection_id:connection.item.id,model_id:'native-model'}}})
+    const fixtureDb=new DatabaseSync(path.join(data,'data.db'),{timeout:5000})
+    try{fixtureDb.prepare("UPDATE agent_runs SET status='failed',error='Synthetic settings fixture; no application work was attempted' WHERE id=?").run(run.run_id)}
+    finally{fixtureDb.close()}
+    const modelCallsBefore=fixtureModelCalls
+    const runCounts=()=>{
+      const read=new DatabaseSync(path.join(data,'data.db'),{readOnly:true,timeout:5000})
+      try{return read.prepare('SELECT count(*) AS count FROM agent_runs').get().count}finally{read.close()}
+    }
+    const runsBefore=runCounts()
+    const snapshotBefore=await authenticated('GET','/api/agent_runs/'+run.run_id)
+    const main=nativeClient.windows().find(window=>window.url().startsWith(report.origin+'/'))
+    assert.ok(main,'resource checks must use the owned packaged EXE renderer, never a separate browser')
+    await main.goto(report.origin+'/agent-run?spec='+spec.id+'&run='+run.run_id)
+    await expect(main.locator('[data-recorded-run-model]')).toHaveText('Native model fixture · native-model')
+    await main.keyboard.press('Control+Shift+,')
+    await expect(main.locator('[data-run-settings-drawer]')).toBeVisible()
+    await main.locator('#model-select').selectOption('custom:'+connection.item.id+':native-model-alt')
+    await main.keyboard.press('Escape')
+    await expect(main.locator('[data-run-settings-drawer]')).toHaveCount(0)
+    await expect(main.locator('[data-recorded-run-model]')).toHaveText('Native model fixture · native-model')
+    await expect(main.locator('[data-next-run-model]')).toContainText('native-model-alt')
+    const unchanged=await authenticated('GET','/api/agent_runs/'+run.run_id)
+    assert.equal(unchanged.status,'failed');assert.equal(unchanged.config.custom_model.model_id,'native-model')
+    assert.equal(unchanged.checkpoint.attempt_no,snapshotBefore.checkpoint.attempt_no,'settings cannot retry the current attempt')
+    assert.equal(runCounts(),runsBefore,'settings cannot create a new task')
+    assert.equal(fixtureModelCalls,modelCallsBefore,'opening settings and selecting a future model must not start any paid planning call')
+    const evidence=path.join(root,'.tmp','preview32-acceptance');await fs.mkdir(evidence,{recursive:true})
+    await main.screenshot({path:path.join(evidence,'native-model-state.png')})
+    report.resourceModelState={actualPackagedRenderer:nativeIdentity.packaged,nativeVersion:nativeIdentity.version,keyboardOpen:true,escapeClose:true,
+      recordedModelUnchanged:true,nextChoiceVisible:true,noRunOrModelCall:true}
+  }
   passed=true
   console.log('PACKAGED_DESKTOP_SMOKE '+JSON.stringify({...report,testHome:dir,backend:'isolated-standalone-pocketbase',verifiedEmployeeJwt:true,forgedIdentityDenied:true,bundledNode:true,developerPathRemoved:true,realFileJob:true,nativeFileApplications,electronColdStart,electronObservation,unapprovedJobDenied:true,inAppPermissionReview:true,cancelledReviewUnchanged:true,productionData:false}))
   if(process.argv.includes('--keep-open')){
@@ -171,6 +230,7 @@ try {
   // Ask only this synthetic application to quit before the desktop tree is
   // stopped. Unrelated employee applications are never test cleanup targets.
   if(electronFixture){await fs.writeFile(electronFixture.finish,'finish').catch(()=>{});await sleep(500)}
+  await nativeClient?.close().catch(()=>{})
   if(client&&client.exitCode===null){
     if(process.platform==='win32'){
       const stop=spawn(path.join(process.env.SystemRoot,'System32','taskkill.exe'),['/PID',String(client.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'})
