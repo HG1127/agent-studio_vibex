@@ -37,12 +37,14 @@ export function registerApplicationVision({permission,addTool,checked,windows,co
  addTool('apps.observe_visual','视觉观察已授权应用窗口，跳过控件树。截图图片坐标与30秒一次性凭据供 act_visual 使用。截图须已授权；activate:true 须本机确认。',{app:app(desktop),window:str,activate:{type:'boolean'}},async(args,signal)=>{
   exact(args,['app','window','activate'],['app','window']);if(!allowed.has(args.app))throw Error('application_denied');if(args.activate!==undefined&&typeof args.activate!=='boolean')throw Error('invalid_application_arguments');return observe(await checked(args.app),args.window,args.activate===true,signal)
  },['app','window'])
- if(controlled.length)addTool('apps.act_visual','按最新窗口截图的图片坐标点击、输入、按键或滚动。无需控件编号，每次仍须本机确认；只能操作原授权窗口。操作后返回新截图，accepted 仅表示动作回执，不代表业务完成。',{app:app(controlled),observation:str,x:{type:'integer'},y:{type:'integer'},action:{type:'string',enum:['click','type','key','scroll']},text:{type:'string',maxLength:4000},key:{type:'string',enum:keys},scrollY:{type:'integer',minimum:-10,maximum:10}},async(args,signal)=>{
-  exact(args,['app','observation','x','y','action','text','key','scrollY'],['app','observation','x','y','action'])
+ if(controlled.length)addTool('apps.act_visual','按最新窗口截图的图片坐标点击、输入、按键或滚动。无需控件编号，每次仍须本机确认；只能操作原授权窗口。window 可选，仅校验它与本次截图窗口一致，不能改选窗口。操作后返回新截图，accepted 仅表示动作回执，不代表业务完成。',{app:app(controlled),observation:str,window:{type:'string',pattern:'^[0-9]{1,20}$'},x:{type:'integer'},y:{type:'integer'},action:{type:'string',enum:['click','type','key','scroll']},text:{type:'string',maxLength:4000},key:{type:'string',enum:keys},scrollY:{type:'integer',minimum:-10,maximum:10}},async(args,signal)=>{
+  exact(args,['app','observation','window','x','y','action','text','key','scrollY'],['app','observation','x','y','action'])
+  if(args.window!==undefined&&(typeof args.window!=='string'||!/^\d{1,20}$/.test(args.window)))throw Error('invalid_application_arguments')
   if(!writeAllowed.has(args.app))throw Error('application_control_denied')
   const g=await checked(args.app),prior=observations.get(g.id);observations.delete(g.id);invalidateControls(g.id)
   if(!g.control)throw Error('application_control_denied')
   if(!prior||prior.token!==args.observation||clock()-prior.created>30000)return expiredAction(g,args.action)
+  if(args.window!==undefined&&args.window!==prior.window.id)throw Error('application_window_changed')
   if(!['click','type','key','scroll'].includes(args.action)||!Number.isInteger(args.x)||!Number.isInteger(args.y)||args.x<0||args.y<0||args.x>=prior.iw||args.y>=prior.ih)throw Error('application_coordinate_denied')
   if(args.action==='type'?(typeof args.text!=='string'||!args.text||args.text.length>4000||/[\x00-\x1f\x7f]/.test(args.text)):args.text!==undefined)throw Error('invalid_application_arguments')
   if(args.action==='key'?!keys.includes(args.key):args.key!==undefined)throw Error('invalid_application_arguments')

@@ -108,6 +108,10 @@ try{
  await clickMenu('版本更新')
  page=await wait(async()=>{for(const candidate of client.windows())if(candidate.url().endsWith('/ui/updates.html'))return candidate},'update window')
  await expect(page.locator('#current')).toContainText(fromVersion,{timeout:15000})
+ await bounded(client.evaluate(({app,BrowserWindow},home)=>{
+  if(app.getPath('userData')!==home)throw Error('isolated_update_profile_mismatch')
+  for(const window of BrowserWindow.getAllWindows())window.setTitle('Agent Studio · 专用升级测试（隔离账号，请等待自动关闭）')
+ },home),10000,'label isolated update windows')
  if(!externalFeed){
  const manifestFile=path.join(output,'stable/latest.json'),original=await fs.readFile(manifestFile,'utf8'),tampered=JSON.parse(original)
  tampered.payload=Buffer.from('{"version":"999.0.0"}').toString('base64')

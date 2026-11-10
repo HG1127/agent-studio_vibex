@@ -1,6 +1,6 @@
 {
   "sourceCommit": "213589685b35c2317531f4505ccf2f9689bf5f41",
-  "version": "0.1.0-preview.32",
+  "version": "0.1.0-preview.33",
   "platform": "win32-x64",
   "codeSigned": false,
   "integratedSources": {
@@ -35,7 +35,8 @@
     "singleInstance": "same-installation-silent-reveal-version-aware-conflict",
     "localOperationConfirmation": "visible-private-review-countdown-expiry-and-explicit-consent",
     "visualToolRouting": "exact-owned-live-catalog-routing-through-original-approval",
-    "runModelVisibility": "immutable-record-and-next-choice-with-keyboard-resource-entry"
+    "runModelVisibility": "immutable-record-and-next-choice-with-keyboard-resource-entry",
+    "visualWindowArgument": "optional-exact-observed-window-check-without-target-override"
   },
-  "sourceState": "committed-unified-source-with-release-metadata"
+  "sourceState": "candidate-working-tree-after-preview32"
 }

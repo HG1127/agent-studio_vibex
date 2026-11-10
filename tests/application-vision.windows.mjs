@@ -61,8 +61,9 @@ class Fixture {
 }
 `
 
-async function waitFor(read,label){
- for(let n=0;n<120;n++){
+async function waitFor(read,label,timeoutMs=6000){
+ const deadline=Date.now()+timeoutMs
+ while(Date.now()<deadline){
   if(childError)throw childError
   if(child&&(child.exitCode!==null||child.signalCode!==null))throw Error('owned_fixture_exited_before_'+label)
   const value=await read();if(value)return value
@@ -110,7 +111,9 @@ try{
  child=spawn(exe,[],{windowsHide:false,stdio:'ignore',shell:false,env:{...process.env}});processStopped=false
  child.once('error',error=>{childError=error})
  await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject)})
- const metadata=await waitFor(()=>readJson(path.join(run,'window.json')),'window_ready')
+ const readinessStarted=Date.now()
+ const metadata=await waitFor(()=>readJson(path.join(run,'window.json')),'window_ready',30000)
+ summary.windowReadyMs=Date.now()-readinessStarted
  const grant=await inspectApplication(exe,{name:'Synthetic visual acceptance fixture',control:true}),tools=new Map()
  runtime=registerApplications({
   config:{roots:[{name:'work',path:run}],applications:{format:'agent-studio-applications-v1',enabled:true,images:true,grants:[grant]}},
@@ -143,18 +146,21 @@ try{
  await call('apps.launch',{})
  let observed=await call('apps.observe_visual',{window:metadata.id})
  assert.equal(observed.actionable,true)
+ await assert.rejects(call('apps.act_visual',{observation:observed.observation,window:metadata.approval,x:1,y:1,action:'click'}),/application_window_changed/)
+ assert.equal(approvals,0,'a mismatched window echo cannot request approval or target the approval fixture')
+ observed=await call('apps.observe_visual',{window:metadata.id})
  const point=name=>({x:Math.floor(metadata[name][0]*observed.imageSize.width/observed.window.width),y:Math.floor(metadata[name][1]*observed.imageSize.height/observed.window.height)})
  const draft='已有草稿：',addition='审批后追加中文，保留原草稿',text=draft+addition
- observed=await call('apps.act_visual',{observation:observed.observation,...point('input'),action:'click'})
+ observed=await call('apps.act_visual',{observation:observed.observation,window:metadata.id,...point('input'),action:'click'})
  assert.equal(observed.accepted,true);await inspect({text:draft,count:0,editor:true})
- observed=await call('apps.act_visual',{observation:observed.observation,...point('input'),action:'type',text:addition})
+ observed=await call('apps.act_visual',{observation:observed.observation,window:metadata.id,...point('input'),action:'type',text:addition})
  assert.equal(observed.accepted,true);await inspect({text,count:0,editor:true})
  const spent=observed.observation
  observed=await call('apps.act_visual',{observation:spent,...point('button'),action:'click'})
  assert.equal(observed.accepted,true);await inspect({text,count:1})
  const receipt=await readJson(path.join(run,'receipt.json'));assert.deepEqual(receipt,{text,count:1})
  assert.equal(approvals,3,'click, append and save must each have a separate foreground-stealing approval')
- const expired=await call('apps.act_visual',{observation:spent,...point('button'),action:'click'})
+ const expired=await call('apps.act_visual',{observation:spent,window:metadata.id,...point('button'),action:'click'})
  assert.equal(expired.status,'needs_observation');assert.equal(expired.effectState,'not_started');assert.equal(expired.accepted,false)
  assert.equal(approvals,3,'spent credentials cannot request approval or replay the save')
  await inspect({text,count:1});assert.deepEqual(await readJson(path.join(run,'receipt.json')),receipt)
@@ -164,7 +170,7 @@ try{
  await assert.rejects(call('apps.act_visual',{observation:observed.observation,...point('password'),action:'type',text:'MUST_NOT_ENTER'}),/sensitive_control/)
  await inspect({text,count:1});assert.deepEqual(await readJson(path.join(run,'receipt.json')),receipt)
  assert.equal(approvals,5)
- Object.assign(summary,{status:'PASS',realNativeClick:true,realNativeTyping:true,controlTreeRequired:false,foregroundRestoredAfterEachApproval:true,approvalRemainedVisible:true,approvalTextUnchanged:true,chineseAppendPreservedDraft:true,saveCount:1,oneUseToken:true,passwordInputDenied:true,approvals})
+ Object.assign(summary,{status:'PASS',matchingWindowEcho:true,mismatchedWindowDenied:true,legacyWindowOmission:true,realNativeClick:true,realNativeTyping:true,controlTreeRequired:false,foregroundRestoredAfterEachApproval:true,approvalRemainedVisible:true,approvalTextUnchanged:true,chineseAppendPreservedDraft:true,saveCount:1,oneUseToken:true,passwordInputDenied:true,approvals})
 }catch(error){failure=error;summary.error=safeError(error)}finally{
  try{await runtime?.close()}catch(error){cleanupErrors.push('runtime:'+safeError(error))}
  if(child){

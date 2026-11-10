@@ -4,12 +4,12 @@ import {registerApplicationVision} from '../local-executor/application-vision.mj
 import {executeClaim} from '../local-executor/connection.mjs'
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j4f8AAAAASUVORK5CYII='
 function fixture({images=true,control=true,confirm=async()=>true}={}){
- const grant={id:'a'.repeat(24),adapter:'desktop',name:'Fixture',path:'D:\\Fixture.exe',control},handlers=new Map(),calls=[]
+ const grant={id:'a'.repeat(24),adapter:'desktop',name:'Fixture',path:'D:\\Fixture.exe',control},handlers=new Map(),schemas=new Map(),calls=[]
  let now=1000,postFailure=false,background=false,changed=false,checks=0,captureError=null,nativeActionError=null
  const view=()=>({window:{id:'123',title:'Fixture',pid:42,x:10,y:20,width:800,height:600,foreground:!background},image:captureError?null:png,imageError:captureError,imageWidth:400,imageHeight:300})
- const runtime=registerApplicationVision({permission:{images,grants:[grant]},addTool:(name,_d,_s,fn)=>handlers.set(name,fn),checked:async id=>{checks++;if(changed)throw Error('application_binary_changed');assert.equal(id,grant.id);return grant},windows:async()=>[{id:'123',title:'Fixture',foreground:!background}],confirm,clock:()=>now,native:async input=>{calls.push(input);if(input.action==='act'){if(nativeActionError)throw Error(nativeActionError);return {accepted:true}}if(postFailure)throw Error('application_capture_failed');return view()}})
+ const runtime=registerApplicationVision({permission:{images,grants:[grant]},addTool:(name,_d,properties,fn,required)=>{handlers.set(name,fn);schemas.set(name,{properties,required})},checked:async id=>{checks++;if(changed)throw Error('application_binary_changed');assert.equal(id,grant.id);return grant},windows:async()=>[{id:'123',title:'Fixture',foreground:!background}],confirm,clock:()=>now,native:async input=>{calls.push(input);if(input.action==='act'){if(nativeActionError)throw Error(nativeActionError);return {accepted:true}}if(postFailure)throw Error('application_capture_failed');return view()}})
  const call=async(name,args)=>{const r=await handlers.get('apps.'+name)({app:grant.id,...args});return typeof r==='string'?JSON.parse(r):JSON.parse(r.text)}
- return {call,calls,handlers,grant,runtime,setNow:n=>now=n,setPostFailure:v=>postFailure=v,setBackground:v=>background=v,setCaptureError:v=>captureError=v,setChanged:v=>changed=v,setNativeActionError:v=>nativeActionError=v,get checks(){return checks}}
+ return {call,calls,handlers,schemas,grant,runtime,setNow:n=>now=n,setPostFailure:v=>postFailure=v,setBackground:v=>background=v,setCaptureError:v=>captureError=v,setChanged:v=>changed=v,setNativeActionError:v=>nativeActionError=v,get checks(){return checks}}
 }
 
 test('unavailable bounded screenshots return recovery guidance without an input token or replay',async()=>{
@@ -29,6 +29,50 @@ test('visual tools require explicit screenshot permission and respect read-only 
  assert.equal(fixture({images:false}).handlers.size,0)
  const read=fixture({control:false});assert.equal(read.handlers.has('apps.act_visual'),false);const result=await read.call('observe_visual',{window:'123'});assert.equal(result.actionable,false);assert.equal(result.observation,null)
  await assert.rejects(read.call('observe_visual',{window:'123',activate:true}),/control_denied/)
+})
+
+test('a visual action may echo the exact observed window without changing its target',async()=>{
+ let confirmations=0
+ const f=fixture({confirm:async()=>{confirmations++;return true}})
+ assert.equal(f.schemas.get('apps.act_visual').properties.window.type,'string')
+ assert.equal(f.schemas.get('apps.act_visual').required.includes('window'),false,'old clients can continue omitting the window echo')
+ const before=await f.call('observe_visual',{window:'123'})
+ const after=await f.call('act_visual',{observation:before.observation,window:'123',x:200,y:150,action:'click'})
+ assert.equal(after.accepted,true)
+ assert.equal(confirmations,1)
+ const actions=f.calls.filter(c=>c.action==='act')
+ assert.equal(actions.length,1)
+ assert.equal(actions[0].window,'123')
+ assert.equal(actions[0].pid,42)
+ assert.equal(actions[0].x,400)
+ assert.equal(actions[0].y,300)
+ assert.equal((await f.call('act_visual',{observation:before.observation,window:'123',x:200,y:150,action:'click'})).effectState,'not_started')
+ assert.equal(f.calls.filter(c=>c.action==='act').length,1,'echoing a window cannot replay a used capability')
+})
+
+test('an echoed window cannot redirect a visual action or loosen argument validation',async()=>{
+ for(const extra of [{window:'999'},{window:123},{window:''},{window:'123\n'},{window:'1'.repeat(21)},{window:'123',unexpected:true}]){
+  let confirmations=0
+  const f=fixture({confirm:async()=>{confirmations++;return true}})
+  const before=await f.call('observe_visual',{window:'123'})
+  await assert.rejects(f.call('act_visual',{observation:before.observation,x:2,y:3,action:'click',...extra}),/application_window_changed|invalid_application_arguments/)
+  assert.equal(confirmations,0)
+  assert.equal(f.calls.filter(c=>c.action==='act').length,0)
+ }
+})
+
+test('the job channel preserves a matching window echo through confirmation and one native action',async()=>{
+ let confirmations=0,completion
+ const f=fixture({confirm:async()=>{confirmations++;return true}}),before=await f.call('observe_visual',{window:'123'})
+ await executeClaim(async(route,body)=>{if(route.endsWith('/check'))return {active:true};completion=body;return {ok:true}},
+  {execute:request=>f.handlers.get(request.tool)(request.arguments)},
+  {id:'visual-window-echo-fixture',claim:'fixture-only',deadline_ms:Date.now()+120000,input:{tool:'apps.act_visual',arguments:{app:f.grant.id,window:'123',observation:before.observation,x:200,y:150,action:'click'}}})
+ assert.equal(completion.ok,true)
+ assert.equal(JSON.parse(completion.result.text).effectState,'accepted')
+ assert.equal(completion.result.images.length,1,'the action result retains its new screenshot')
+ assert.equal(confirmations,1)
+ assert.equal(f.calls.filter(c=>c.action==='act').length,1)
+ assert.equal(f.calls.find(c=>c.action==='act').window,'123')
 })
 test('a screenshot is a one-use window-scoped image-space action capability',async()=>{
  const f=fixture(),before=await f.call('observe_visual',{window:'123'}),after=await f.call('act_visual',{observation:before.observation,x:200,y:150,action:'click'})
