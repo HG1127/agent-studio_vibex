@@ -9,6 +9,7 @@ export async function verifyDesktopReleaseBaseline(root=project){
  const read=async file=>JSON.parse(await fs.readFile(path.join(root,file),'utf8'))
  const [baseline,info,pkg]=await Promise.all([read('desktop/release-baseline.json'),read('desktop/build-info.json'),read('desktop/package.json')])
  if(info.version!==pkg.version||compare(info.version,baseline.minimumDesktopVersion)<0)throw Error('桌面版本不符合最新统一发布基线')
+ if(baseline.verifiedDesktopVersion&&compare(baseline.verifiedDesktopVersion,baseline.minimumDesktopVersion)<0)throw Error('已验证桌面版本记录低于统一发布基线')
  if(!Array.isArray(baseline.requiredAncestors)||!baseline.requiredAncestors.length)throw Error('缺少已验收桌面基线提交')
  for(const commit of baseline.requiredAncestors){
   if(!/^[a-f0-9]{40}$/.test(commit))throw Error('桌面基线提交格式无效')

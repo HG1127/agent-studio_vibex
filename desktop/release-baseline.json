@@ -62,10 +62,10 @@
     "df17d1c6654b9df4f2ba83e6aec43caa18121be9",
     "36a005624b60a0b9de08c70638581f4de319bc02"
   ],
-  "verifiedSourceCommit": "51abafca7c05282740f2a8bdc02a18621750972e",
-  "verifiedDesktopVersion": "0.1.0-preview.31",
-  "verifiedInstallerSha256": "aa92f066da4e06f95089941642faa6110fcf9e978df6aefa33deb8b456f3f3d2",
-  "verifiedInstallerBytes": 276063429,
+  "verifiedSourceCommit": "d237e774a7440d389aefb34defb4711f867db1ba",
+  "verifiedDesktopVersion": "0.1.0-preview.32",
+  "verifiedInstallerSha256": "a322f0892dd5b506bc4aa8ca0717a3c74be665d54bcec3f4911329ac90a70934",
+  "verifiedInstallerBytes": 276064533,
   "verifiedSourceState": "committed-unified-source-with-release-metadata",
   "verifiedIntegratedPatches": [
     "ccbf7cb083f3c0cf10e8653ef7e359fae16ea166",
@@ -83,7 +83,9 @@
     "25591acd367f2428bcc05bd1f8f8539ccef87f59",
     "3ca99850d4530bc0c958258584c0d002395fc970",
     "daa27bea52ab554796c2466e3ababb9f633a4d34",
-    "c0d44a8f3aaeb20fa9a3a0503c71bd5e7bdcd528"
+    "c0d44a8f3aaeb20fa9a3a0503c71bd5e7bdcd528",
+    "9f885bc320034850fc7331f8976ee96f0c661d9f",
+    "213589685b35c2317531f4505ccf2f9689bf5f41"
   ],
   "verifiedUnifiedSnapshotCommit": "d237e774a7440d389aefb34defb4711f867db1ba",
   "verifiedPackagingCommit": "755029a47094e246da25bffa574c8903c825b554",
@@ -102,5 +104,12 @@
     "runId": "xgyuu8225ixb4q6",
     "note": "Public WorkBuddy research remains incomplete; a separate real MiniMax-M3.1-Flash run clicked successfully before an extra window argument was refused without input.",
     "latestDiagnosticRunId": "17a1kx8jdu1nlvc"
+  },
+  "previousVerifiedRelease": {
+    "version": "0.1.0-preview.31",
+    "sourceCommit": "51abafca7c05282740f2a8bdc02a18621750972e",
+    "installerSha256": "aa92f066da4e06f95089941642faa6110fcf9e978df6aefa33deb8b456f3f3d2",
+    "installerBytes": 276063429,
+    "manifestSha256": "5ace00b1d5444ed50c18812c6637b7af753ce6b99ebb8ec2c674a6d7e92e0d0a"
   }
 }

@@ -21,6 +21,14 @@ async function fixture(t){
 test('desktop release accepts a real Git ancestor and matching unified versions',async t=>{
  const f=await fixture(t);assert.equal((await verifyDesktopReleaseBaseline(f.root)).status,'PASS')
 })
+
+test('desktop release refuses a floor newer than its recorded verified desktop',async t=>{
+ const f=await fixture(t)
+ await f.write('desktop/release-baseline.json',{...f.baseline,verifiedDesktopVersion:'0.1.0-preview.11'})
+ await assert.rejects(verifyDesktopReleaseBaseline(f.root),/已验证.*基线/)
+ await f.write('desktop/release-baseline.json',{...f.baseline,verifiedDesktopVersion:'0.1.0-preview.12'})
+ assert.equal((await verifyDesktopReleaseBaseline(f.root)).status,'PASS')
+})
 test('desktop release refuses a baseline commit from an unmerged branch',async t=>{
  const f=await fixture(t),release=f.git('rev-parse','HEAD');f.git('checkout','--detach',f.ancestor);await fs.writeFile(path.join(f.root,'other'),'unmerged');f.git('add','.');f.git('commit','-m','other');const other=f.git('rev-parse','HEAD');f.git('checkout','--detach',release)
  await f.write('desktop/release-baseline.json',{...f.baseline,requiredAncestors:[other]});await assert.rejects(verifyDesktopReleaseBaseline(f.root),/缺少提交/)
